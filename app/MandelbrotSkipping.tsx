@@ -47,6 +47,9 @@ const SCORE_DEPTH_CAP = 2_000_000;
 const SOURCES_PER_SKIP = 100;
 const MAX_SOURCES = 800;
 const POINT_BUDGET = 200_000;
+const CURVE_SEGMENTS = 3;
+const LINE_SEGMENT_BUDGET = 50_000;
+const LINE_SEGMENT_CAPACITY = LINE_SEGMENT_BUDGET + MAX_SOURCES;
 const DEPTH_STEPS_PER_ACCELERATION = 32;
 const INVISIBLE_STEP_LIMIT = 48;
 const SCORE_KEY = "mandelbrot-skipping:scores:v1";
@@ -59,11 +62,20 @@ struct Params {
   sourceCount: u32,
   batch: u32,
   maxDepth: u32,
-  pad0: u32,
+  lineStride: u32,
   center: vec2f,
   viewHalf: vec2f,
 }
 struct OrbitPoint { position: vec2f, depth: f32, pad: f32 }
+struct CurveSegment {
+  start: vec2f,
+  control1: vec2f,
+  control2: vec2f,
+  end: vec2f,
+  freshness: f32,
+  depth: f32,
+  pad: vec2f,
+}
 struct OrbitState {
   z: vec2f,
   c: vec2f,
@@ -82,6 +94,8 @@ struct DrawArgs {
   firstInstance: u32,
 }
 @group(0) @binding(3) var<storage, read_write> drawArgs: DrawArgs;
+@group(0) @binding(4) var<storage, read_write> lineSegments: array<CurveSegment>;
+@group(0) @binding(5) var<storage, read_write> lineDrawArgs: DrawArgs;
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) id: vec3u) {
@@ -91,18 +105,43 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
   if (state.alive == 0u || state.step >= params.maxDepth) { return; }
   let acceleratedBatch = min(params.batch, 1u + state.step / ${DEPTH_STEPS_PER_ACCELERATION}u);
   for (var i = 0u; i < acceleratedBatch; i++) {
+    let from = state.z;
     let z = vec2f(
       state.z.x * state.z.x - state.z.y * state.z.y,
       2.0 * state.z.x * state.z.y
     ) + state.c;
     state.z = z;
     state.step += 1u;
+    let fromClip = (from - params.center) / params.viewHalf;
     let clip = (z - params.center) / params.viewHalf;
+    let depthColor = log2(f32(state.step) + 1.0) / 25.6;
     if (all(abs(clip) <= vec2f(1.0))) {
       state.invisibleRun = 0u;
       let slot = atomicAdd(&drawArgs.vertexCount, 1u);
       if (slot < ${POINT_BUDGET}u) {
-        vertices[slot] = OrbitPoint(clip, log2(f32(state.step) + 1.0) / 25.6, 0.0);
+        vertices[slot] = OrbitPoint(clip, depthColor, 0.0);
+      }
+      if (all(abs(fromClip) <= vec2f(1.0)) && state.step % params.lineStride == 0u) {
+        let future = vec2f(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + state.c;
+        let futureClip = (future - params.center) / params.viewHalf;
+        let incoming = clip - fromClip;
+        let outgoing = futureClip - clip;
+        let incomingLength = length(incoming);
+        let outgoingLength = length(outgoing);
+        let safeOutgoing = outgoing / max(outgoingLength, 0.00001);
+        let curvedOutgoing = safeOutgoing * min(outgoingLength, incomingLength * 1.5);
+        let control1 = fromClip + incoming / 3.0;
+        let control2 = clip - curvedOutgoing / 3.0;
+        if (incomingLength <= 0.5) {
+          let lineVertex = atomicAdd(&lineDrawArgs.vertexCount, ${CURVE_SEGMENTS * 2}u);
+          let lineSlot = lineVertex / ${CURVE_SEGMENTS * 2}u;
+          if (lineSlot < ${LINE_SEGMENT_CAPACITY}u) {
+            lineSegments[lineSlot] = CurveSegment(
+              fromClip, control1, control2, clip,
+              f32(i + 1u) / f32(acceleratedBatch), depthColor, vec2f(0.0)
+            );
+          }
+        }
       }
     } else {
       state.invisibleRun += 1u;
@@ -129,6 +168,48 @@ struct VSOut { @builtin(position) position: vec4f, @location(0) color: vec3f }
 }
 @fragment fn fs(in: VSOut) -> @location(0) vec4f {
   return vec4f(in.color * style.alpha, style.alpha);
+}
+`;
+
+const lineShader = /* wgsl */ `
+struct CurveSegment {
+  start: vec2f,
+  control1: vec2f,
+  control2: vec2f,
+  end: vec2f,
+  freshness: f32,
+  depth: f32,
+  pad: vec2f,
+}
+@group(0) @binding(0) var<storage, read> segments: array<CurveSegment>;
+struct VSOut {
+  @builtin(position) position: vec4f,
+  @location(0) color: vec3f,
+  @location(1) alpha: f32,
+}
+fn bezier(curve: CurveSegment, t: f32) -> vec2f {
+  let u = 1.0 - t;
+  return u * u * u * curve.start
+    + 3.0 * u * u * t * curve.control1
+    + 3.0 * u * t * t * curve.control2
+    + t * t * t * curve.end;
+}
+@vertex fn vs(@builtin(vertex_index) vertex: u32) -> VSOut {
+  let curveIndex = vertex / ${CURVE_SEGMENTS * 2}u;
+  let localVertex = vertex % ${CURVE_SEGMENTS * 2}u;
+  let subsegment = localVertex / 2u;
+  let endpoint = localVertex % 2u;
+  let t = f32(subsegment + endpoint) / f32(${CURVE_SEGMENTS});
+  let curve = segments[curveIndex];
+  let depth = clamp(curve.depth, 0.0, 1.0);
+  var out: VSOut;
+  out.position = vec4f(bezier(curve, t), 0.0, 1.0);
+  out.color = mix(vec3f(0.08, 0.66, 0.86), vec3f(0.78, 1.0, 0.70), depth);
+  out.alpha = 0.46 * pow(curve.freshness, 0.78) * mix(0.14, 1.0, t);
+  return out;
+}
+@fragment fn fs(in: VSOut) -> @location(0) vec4f {
+  return vec4f(in.color * in.alpha, in.alpha);
 }
 `;
 
@@ -171,12 +252,14 @@ const displayShader = /* wgsl */ `
 ${fullscreenVertex}
 @group(0) @binding(0) var pondTexture: texture_2d<f32>;
 @group(0) @binding(1) var trailTexture: texture_2d<f32>;
-@group(0) @binding(2) var displaySampler: sampler;
+@group(0) @binding(2) var lineTexture: texture_2d<f32>;
+@group(0) @binding(3) var displaySampler: sampler;
 @fragment fn displayFs(in: VSOut) -> @location(0) vec4f {
   let base = textureSample(pondTexture, displaySampler, in.uv).rgb;
   let raw = textureSample(trailTexture, displaySampler, in.uv).rgb * 1.9;
   let glow = vec3f(1.0) - exp(-raw);
-  return vec4f(base + glow, 1.0);
+  let lines = textureSample(lineTexture, displaySampler, in.uv).rgb * 1.35;
+  return vec4f(base + glow + lines, 1.0);
 }
 `;
 
@@ -246,15 +329,19 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
   const usage = (globalThis as any).GPUBufferUsage;
   const textureUsage = (globalThis as any).GPUTextureUsage;
   const vertexBuffer = device.createBuffer({ size: POINT_BUDGET * 16, usage: usage.STORAGE | usage.VERTEX });
+  const lineSegmentBuffer = device.createBuffer({ size: LINE_SEGMENT_CAPACITY * 48, usage: usage.STORAGE });
   const stateBuffer = device.createBuffer({ size: MAX_SOURCES * 32, usage: usage.STORAGE | usage.COPY_DST });
   const indirectBuffer = device.createBuffer({ size: 16, usage: usage.STORAGE | usage.COPY_DST | usage.INDIRECT });
+  const lineIndirectBuffer = device.createBuffer({ size: 16, usage: usage.STORAGE | usage.COPY_DST | usage.INDIRECT });
   const paramsBuffer = device.createBuffer({ size: 32, usage: usage.UNIFORM | usage.COPY_DST });
   const styleBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
   const pondBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
   const fadeBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
+  const lineFadeBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
   const sampler = device.createSampler({ magFilter: "nearest", minFilter: "nearest" });
   const computeModule = device.createShaderModule({ code: computeShader });
   const pointModule = device.createShaderModule({ code: pointShader });
+  const lineModule = device.createShaderModule({ code: lineShader });
   const pondModule = device.createShaderModule({ code: pondShader });
   const fadeModule = device.createShaderModule({ code: fadeShader });
   const displayModule = device.createShaderModule({ code: displayShader });
@@ -278,6 +365,18 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
     }] },
     primitive: { topology: "point-list" },
   });
+  const linePipeline = device.createRenderPipeline({
+    layout: "auto",
+    vertex: { module: lineModule, entryPoint: "vs" },
+    fragment: { module: lineModule, entryPoint: "fs", targets: [{
+      format: "rgba8unorm",
+      blend: {
+        color: { srcFactor: "one", dstFactor: "one", operation: "max" },
+        alpha: { srcFactor: "one", dstFactor: "one", operation: "max" },
+      },
+    }] },
+    primitive: { topology: "line-list" },
+  });
   const pondPipeline = device.createRenderPipeline({
     layout: "auto", vertex: { module: pondModule, entryPoint: "vs" },
     fragment: { module: pondModule, entryPoint: "pondFs", targets: [{ format: "rgba8unorm" }] },
@@ -286,6 +385,11 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
   const fadePipeline = device.createRenderPipeline({
     layout: "auto", vertex: { module: fadeModule, entryPoint: "vs" },
     fragment: { module: fadeModule, entryPoint: "fadeFs", targets: [{ format: "rgba16float" }] },
+    primitive: { topology: "triangle-list" },
+  });
+  const lineFadePipeline = device.createRenderPipeline({
+    layout: "auto", vertex: { module: fadeModule, entryPoint: "vs" },
+    fragment: { module: fadeModule, entryPoint: "fadeFs", targets: [{ format: "rgba8unorm" }] },
     primitive: { topology: "triangle-list" },
   });
   const displayPipeline = device.createRenderPipeline({
@@ -298,9 +402,14 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
     { binding: 1, resource: { buffer: vertexBuffer } },
     { binding: 2, resource: { buffer: stateBuffer } },
     { binding: 3, resource: { buffer: indirectBuffer } },
+    { binding: 4, resource: { buffer: lineSegmentBuffer } },
+    { binding: 5, resource: { buffer: lineIndirectBuffer } },
   ] });
   const pointBind = device.createBindGroup({ layout: pointPipeline.getBindGroupLayout(0), entries: [
     { binding: 0, resource: { buffer: styleBuffer } },
+  ] });
+  const lineBind = device.createBindGroup({ layout: linePipeline.getBindGroupLayout(0), entries: [
+    { binding: 0, resource: { buffer: lineSegmentBuffer } },
   ] });
 
   let sourceCount = 0;
@@ -308,8 +417,10 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
   let frame = 0;
   let disposed = false;
   let textures: any[] = [];
+  let lineTextures: any[] = [];
   let pondTexture: any = null;
   let fadeBinds: any[] = [];
+  let lineFadeBinds: any[] = [];
   let displayBinds: any[] = [];
   let textureIndex = 0;
   let width = 0;
@@ -328,18 +439,26 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
     canvas.width = width;
     canvas.height = height;
     textures.forEach((texture) => texture.destroy());
+    lineTextures.forEach((texture) => texture.destroy());
     pondTexture?.destroy();
     textures = [0, 1].map(() => makeTexture("rgba16float", textureUsage.RENDER_ATTACHMENT | textureUsage.TEXTURE_BINDING));
+    lineTextures = [0, 1].map(() => makeTexture("rgba8unorm", textureUsage.RENDER_ATTACHMENT | textureUsage.TEXTURE_BINDING));
     pondTexture = makeTexture("rgba8unorm", textureUsage.RENDER_ATTACHMENT | textureUsage.TEXTURE_BINDING);
     fadeBinds = textures.map((texture) => device.createBindGroup({ layout: fadePipeline.getBindGroupLayout(0), entries: [
       { binding: 0, resource: texture.createView() },
       { binding: 1, resource: sampler },
       { binding: 2, resource: { buffer: fadeBuffer } },
     ] }));
-    displayBinds = textures.map((texture) => device.createBindGroup({ layout: displayPipeline.getBindGroupLayout(0), entries: [
+    lineFadeBinds = lineTextures.map((texture) => device.createBindGroup({ layout: lineFadePipeline.getBindGroupLayout(0), entries: [
+      { binding: 0, resource: texture.createView() },
+      { binding: 1, resource: sampler },
+      { binding: 2, resource: { buffer: lineFadeBuffer } },
+    ] }));
+    displayBinds = textures.map((texture, index) => device.createBindGroup({ layout: displayPipeline.getBindGroupLayout(0), entries: [
       { binding: 0, resource: pondTexture.createView() },
       { binding: 1, resource: texture.createView() },
-      { binding: 2, resource: sampler },
+      { binding: 2, resource: lineTextures[index].createView() },
+      { binding: 3, resource: sampler },
     ] }));
     device.queue.writeBuffer(pondBuffer, 0, new Float32Array([width / height, 0, 0, 0]));
     const pondBind = device.createBindGroup({ layout: pondPipeline.getBindGroupLayout(0), entries: [
@@ -355,6 +474,10 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
       const pass = encoder.beginRenderPass({ colorAttachments: [{ view: texture.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
       pass.end();
     }
+    for (const texture of lineTextures) {
+      const pass = encoder.beginRenderPass({ colorAttachments: [{ view: texture.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
+      pass.end();
+    }
     device.queue.submit([encoder.finish()]);
     textureIndex = 0;
   }
@@ -363,6 +486,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
   observer.observe(canvas);
   resize();
   device.queue.writeBuffer(fadeBuffer, 0, new Float32Array([1, 0, 0, 0]));
+  device.queue.writeBuffer(lineFadeBuffer, 0, new Float32Array([0.58, 0, 0, 0]));
 
   function draw() {
     if (disposed || !textures.length) return;
@@ -371,6 +495,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
     ints[0] = sourceCount;
     ints[1] = batch;
     ints[2] = MAX_VISUAL_DEPTH;
+    ints[3] = Math.max(1, Math.ceil(sourceCount * batch / LINE_SEGMENT_BUDGET));
     const floats = new Float32Array(ints.buffer);
     floats[4] = POND_CENTER.x;
     floats[5] = POND_CENTER.y;
@@ -379,7 +504,9 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
     device.queue.writeBuffer(paramsBuffer, 0, ints);
     device.queue.writeBuffer(styleBuffer, 0, new Float32Array([0.62, 0, 0, 0]));
     device.queue.writeBuffer(indirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
+    device.queue.writeBuffer(lineIndirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
     const destination = textures[1 - textureIndex];
+    const lineDestination = lineTextures[1 - textureIndex];
     const encoder = device.createCommandEncoder();
     if (sourceCount > 0) {
       const compute = encoder.beginComputePass();
@@ -393,6 +520,11 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
     fade.setBindGroup(0, fadeBinds[textureIndex]);
     fade.draw(3);
     fade.end();
+    const lineFade = encoder.beginRenderPass({ colorAttachments: [{ view: lineDestination.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
+    lineFade.setPipeline(lineFadePipeline);
+    lineFade.setBindGroup(0, lineFadeBinds[textureIndex]);
+    lineFade.draw(3);
+    lineFade.end();
     if (sourceCount > 0) {
       const orbit = encoder.beginRenderPass({ colorAttachments: [{ view: destination.createView(), loadOp: "load", storeOp: "store" }] });
       orbit.setPipeline(pointPipeline);
@@ -400,6 +532,11 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
       orbit.setVertexBuffer(0, vertexBuffer);
       orbit.drawIndirect(indirectBuffer, 0);
       orbit.end();
+      const lines = encoder.beginRenderPass({ colorAttachments: [{ view: lineDestination.createView(), loadOp: "load", storeOp: "store" }] });
+      lines.setPipeline(linePipeline);
+      lines.setBindGroup(0, lineBind);
+      lines.drawIndirect(lineIndirectBuffer, 0);
+      lines.end();
     }
     const display = encoder.beginRenderPass({ colorAttachments: [{ view: context.getCurrentTexture().createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } }] });
     display.setPipeline(displayPipeline);
@@ -437,6 +574,10 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
         const pass = encoder.beginRenderPass({ colorAttachments: [{ view: texture.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
         pass.end();
       }
+      for (const texture of lineTextures) {
+        const pass = encoder.beginRenderPass({ colorAttachments: [{ view: texture.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
+        pass.end();
+      }
       device.queue.submit([encoder.finish()]);
     },
     destroy() {
@@ -444,14 +585,18 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
       cancelAnimationFrame(frame);
       observer.disconnect();
       textures.forEach((texture) => texture.destroy());
+      lineTextures.forEach((texture) => texture.destroy());
       pondTexture?.destroy();
       vertexBuffer.destroy();
+      lineSegmentBuffer.destroy();
       stateBuffer.destroy();
       indirectBuffer.destroy();
+      lineIndirectBuffer.destroy();
       paramsBuffer.destroy();
       styleBuffer.destroy();
       pondBuffer.destroy();
       fadeBuffer.destroy();
+      lineFadeBuffer.destroy();
       device.destroy();
     },
   };
