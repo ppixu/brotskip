@@ -1260,11 +1260,16 @@ export default function MandelbrotSkipping() {
     : hud.phase === "resolving" ? `Resolving the pond · ${Math.round(hud.progress * 100)}%`
     : "Press Space or throw again";
 
+  const resetAndFocusCanvas = () => {
+    restartRef.current();
+    requestAnimationFrame(() => gameCanvasRef.current?.focus());
+  };
+
   return (
     <main className="gameShell">
       <section className="playfield" aria-label="Mandelbrot rock skipping game">
         <canvas ref={gpuCanvasRef} className="gpuCanvas" aria-hidden="true" />
-        <canvas ref={gameCanvasRef} className="gameCanvas" aria-label="Drag the white orb backward and release it across the water" />
+        <canvas ref={gameCanvasRef} className="gameCanvas" tabIndex={0} aria-label="Throw ready. Drag the white orb backward and release it across the water" />
       </section>
 
       <aside className={`scoreRail ${hud.phase === "result" ? "hasResult" : ""}`} aria-label="Score and local high scores">
@@ -1273,6 +1278,9 @@ export default function MandelbrotSkipping() {
           <strong className="liveNumber">{formatNumber(hud.score)}</strong>
           <span className="liveMeta">{hud.skips} skips · {hud.deepest ? formatNumber(hud.deepest) : "0"} deep</span>
           <span className="liveProgress"><i style={{ width: `${Math.max(2, hud.progress * 100)}%` }} /></span>
+          {(hud.phase === "flying" || hud.phase === "resolving") && (
+            <button className="rethrowButton" onClick={resetAndFocusCanvas} aria-label="Cancel this throw and rethrow">Rethrow</button>
+          )}
         </section>
 
         {hud.phase === "result" && (
@@ -1281,7 +1289,7 @@ export default function MandelbrotSkipping() {
             <div className="resultStats">{hud.skips} exact orbit seeds reached {formatNumber(hud.deepest)} depth.</div>
             <div className="nameRow">
               <input className="nameInput" aria-label="High score name" value={playerName} maxLength={12} onChange={(event) => renameCurrent(event.target.value)} />
-              <button className="throwButton" onClick={() => restartRef.current()}>Throw again</button>
+              <button className="throwButton" onClick={resetAndFocusCanvas}>Throw again</button>
             </div>
           </section>
         )}

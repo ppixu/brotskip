@@ -47,6 +47,7 @@ button, input { font: inherit; }
 .gpuCanvas { z-index: 0; }
 .gameCanvas { z-index: 1; cursor: grab; }
 .gameCanvas:active { cursor: grabbing; }
+.gameCanvas:focus-visible { outline: 1px solid rgba(98, 232, 255, .65); outline-offset: -2px; }
 
 .scoreRail {
   position: relative;
@@ -104,6 +105,28 @@ button, input { font: inherit; }
   background: var(--cyan);
   box-shadow: 0 0 8px rgba(98, 232, 255, .7);
   transition: width 80ms linear;
+}
+.rethrowButton {
+  align-self: flex-start;
+  min-height: 44px;
+  margin-top: 13px;
+  padding: 0 14px;
+  border: 1px solid rgba(190, 238, 248, .28);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .035);
+  color: #b9d7df;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.rethrowButton:hover,
+.rethrowButton:focus-visible {
+  border-color: rgba(210, 247, 255, .62);
+  background: rgba(255, 255, 255, .08);
+  color: white;
+  outline: none;
 }
 
 .railResult {
