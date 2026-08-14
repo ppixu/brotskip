@@ -4,7 +4,7 @@
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 
 
 WIDTH = 768
@@ -70,13 +70,22 @@ def main() -> None:
 
     light = np.log1p(density.astype(np.float64))
     occupied = light[light > 0]
-    low = np.percentile(occupied, 18)
-    high = np.percentile(occupied, 99.85)
+    low = np.percentile(occupied, 58)
+    high = np.percentile(occupied, 99.9)
     normalized = np.clip((light - low) / max(high - low, 1e-9), 0, 1)
-    normalized = normalized ** 0.78
-    contour_phase = normalized * 11.0
-    contour = np.exp(-((contour_phase - np.rint(contour_phase)) / 0.17) ** 2) * normalized
-    alpha = np.clip(normalized * 0.62 + contour * 0.48, 0, 1)
+    smooth = np.asarray(
+        Image.fromarray((normalized * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(2.0)),
+        dtype=np.float64,
+    ) / 255
+    gradient_y, gradient_x = np.gradient(smooth)
+    edges = np.hypot(gradient_x, gradient_y)
+    edge_scale = max(np.percentile(edges[edges > 0], 99.4), 1e-9)
+    edges = np.clip(edges / edge_scale, 0, 1) * normalized ** 0.9
+    contour_phase = smooth * 9.0
+    contours = np.exp(-((contour_phase - np.rint(contour_phase)) / 0.105) ** 2) * normalized ** 1.12
+    core = normalized ** 1.48
+    alpha = np.clip(core * 0.72 + contours * 0.44 + edges * 0.82, 0, 1)
+    alpha[normalized < 0.045] = 0
 
     rgba = np.zeros((HEIGHT, WIDTH, 4), dtype=np.uint8)
     rgba[..., 0] = (70 + normalized * 80).astype(np.uint8)
@@ -84,7 +93,7 @@ def main() -> None:
     rgba[..., 2] = (128 + normalized * 112).astype(np.uint8)
     rgba[..., 3] = (alpha * 255).astype(np.uint8)
 
-    output = Path(__file__).resolve().parents[1] / "public" / "buddhabrot-contours.png"
+    output = Path(__file__).resolve().parents[1] / "public" / "buddhabrot-contours-v2.png"
     output.parent.mkdir(parents=True, exist_ok=True)
     Image.fromarray(rgba).save(output, optimize=True)
     print(output)

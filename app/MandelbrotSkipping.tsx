@@ -981,7 +981,7 @@ export default function MandelbrotSkipping() {
       buddhabrotReady = true;
       flashlightDirty = true;
     };
-    buddhabrotImage.src = "/buddhabrot-contours.png";
+    buddhabrotImage.src = "/buddhabrot-contours-v2.png";
 
     function anchor() { return { x: width * 0.5, y: height * 0.82 }; }
     function minDimension() { return Math.min(width, height); }
@@ -1472,10 +1472,11 @@ export default function MandelbrotSkipping() {
           geometry.apexX + geometry.directionX * geometry.range,
           geometry.apexY + geometry.directionY * geometry.range,
         );
-        mask.addColorStop(0, "rgba(255, 255, 255, 0)");
-        mask.addColorStop(.06, "rgba(255, 255, 255, .68)");
-        mask.addColorStop(.48, "rgba(255, 255, 255, .94)");
-        mask.addColorStop(.88, "rgba(255, 255, 255, .34)");
+        mask.addColorStop(0, "rgba(255, 255, 255, .72)");
+        mask.addColorStop(.055, "rgba(255, 255, 255, .96)");
+        mask.addColorStop(.30, "rgba(255, 255, 255, .62)");
+        mask.addColorStop(.62, "rgba(255, 255, 255, .22)");
+        mask.addColorStop(.84, "rgba(255, 255, 255, .06)");
         mask.addColorStop(1, "rgba(255, 255, 255, 0)");
         flashlightContext.fillStyle = mask;
         traceFlashlightCone(flashlightContext, geometry);
@@ -1489,7 +1490,7 @@ export default function MandelbrotSkipping() {
 
       ctx.save();
       ctx.globalCompositeOperation = "screen";
-      ctx.globalAlpha = .24;
+      ctx.globalAlpha = .30;
       ctx.drawImage(flashlightCanvas, 0, 0, width, height);
       ctx.restore();
 
@@ -1502,8 +1503,9 @@ export default function MandelbrotSkipping() {
         geometry.apexX + geometry.directionX * geometry.range,
         geometry.apexY + geometry.directionY * geometry.range,
       );
-      haze.addColorStop(0, "rgba(184, 230, 220, .025)");
-      haze.addColorStop(.55, "rgba(130, 205, 198, .012)");
+      haze.addColorStop(0, "rgba(184, 230, 220, .032)");
+      haze.addColorStop(.38, "rgba(130, 205, 198, .011)");
+      haze.addColorStop(.78, "rgba(90, 150, 150, 0)");
       haze.addColorStop(1, "rgba(90, 150, 150, 0)");
       ctx.fillStyle = haze;
       ctx.fillRect(0, 0, width, height);
