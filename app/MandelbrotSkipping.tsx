@@ -975,6 +975,8 @@ export default function MandelbrotSkipping() {
     const buddhabrotImage = new Image();
     let buddhabrotReady = false;
     let flashlightDirty = true;
+    let flashlightCacheMode: "cone" | "spot" | null = null;
+    let cursorSpot = { x: 0, y: 0, inside: false, lastMoved: -Infinity };
 
     buddhabrotImage.decoding = "async";
     buddhabrotImage.onload = () => {
@@ -1459,40 +1461,75 @@ export default function MandelbrotSkipping() {
       target.drawImage(buddhabrotImage, topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y);
     }
 
-    function drawFlashlight() {
+    function drawFlashlight(now: number) {
       const geometry = flashlightGeometry();
-      if (!geometry || !buddhabrotReady || !flashlightContext) return;
-      if (flashlightDirty) {
+      const spotAge = now - cursorSpot.lastMoved;
+      const spotVisible = !geometry && phase !== "aiming" && cursorSpot.inside && spotAge < 900;
+      const mode = geometry ? "cone" : spotVisible ? "spot" : null;
+      if (!mode || !buddhabrotReady || !flashlightContext) return;
+      if (flashlightDirty || flashlightCacheMode !== mode) {
         flashlightContext.clearRect(0, 0, width, height);
         flashlightContext.save();
-        flashlightContext.filter = "blur(14px)";
-        const mask = flashlightContext.createLinearGradient(
-          geometry.apexX,
-          geometry.apexY,
-          geometry.apexX + geometry.directionX * geometry.range,
-          geometry.apexY + geometry.directionY * geometry.range,
-        );
-        mask.addColorStop(0, "rgba(255, 255, 255, .72)");
-        mask.addColorStop(.055, "rgba(255, 255, 255, .96)");
-        mask.addColorStop(.30, "rgba(255, 255, 255, .62)");
-        mask.addColorStop(.62, "rgba(255, 255, 255, .22)");
-        mask.addColorStop(.84, "rgba(255, 255, 255, .06)");
-        mask.addColorStop(1, "rgba(255, 255, 255, 0)");
-        flashlightContext.fillStyle = mask;
-        traceFlashlightCone(flashlightContext, geometry);
-        flashlightContext.fill();
+        if (geometry) {
+          flashlightContext.filter = "blur(14px)";
+          const mask = flashlightContext.createLinearGradient(
+            geometry.apexX,
+            geometry.apexY,
+            geometry.apexX + geometry.directionX * geometry.range,
+            geometry.apexY + geometry.directionY * geometry.range,
+          );
+          mask.addColorStop(0, "rgba(255, 255, 255, .72)");
+          mask.addColorStop(.055, "rgba(255, 255, 255, .96)");
+          mask.addColorStop(.30, "rgba(255, 255, 255, .62)");
+          mask.addColorStop(.62, "rgba(255, 255, 255, .22)");
+          mask.addColorStop(.84, "rgba(255, 255, 255, .06)");
+          mask.addColorStop(1, "rgba(255, 255, 255, 0)");
+          flashlightContext.fillStyle = mask;
+          traceFlashlightCone(flashlightContext, geometry);
+          flashlightContext.fill();
+        } else {
+          const radius = 74;
+          const mask = flashlightContext.createRadialGradient(cursorSpot.x, cursorSpot.y, 0, cursorSpot.x, cursorSpot.y, radius);
+          mask.addColorStop(0, "rgba(255, 255, 255, .98)");
+          mask.addColorStop(.34, "rgba(255, 255, 255, .82)");
+          mask.addColorStop(.72, "rgba(255, 255, 255, .28)");
+          mask.addColorStop(1, "rgba(255, 255, 255, 0)");
+          flashlightContext.fillStyle = mask;
+          flashlightContext.beginPath();
+          flashlightContext.arc(cursorSpot.x, cursorSpot.y, radius, 0, TAU);
+          flashlightContext.fill();
+        }
         flashlightContext.restore();
         flashlightContext.globalCompositeOperation = "source-in";
         drawMappedBuddhabrot(flashlightContext);
         flashlightContext.globalCompositeOperation = "source-over";
         flashlightDirty = false;
+        flashlightCacheMode = mode;
       }
 
       ctx.save();
       ctx.globalCompositeOperation = "screen";
-      ctx.globalAlpha = .30;
+      const spotFade = spotAge < 180 ? 1 : Math.max(0, 1 - (spotAge - 180) / 720);
+      ctx.globalAlpha = geometry ? .30 : .38 * spotFade * spotFade;
       ctx.drawImage(flashlightCanvas, 0, 0, width, height);
       ctx.restore();
+
+      if (!geometry) {
+        const radius = 74;
+        ctx.save();
+        ctx.globalCompositeOperation = "screen";
+        ctx.globalAlpha = spotFade;
+        const halo = ctx.createRadialGradient(cursorSpot.x, cursorSpot.y, 0, cursorSpot.x, cursorSpot.y, radius);
+        halo.addColorStop(0, "rgba(188, 235, 226, .026)");
+        halo.addColorStop(.55, "rgba(133, 207, 201, .010)");
+        halo.addColorStop(1, "rgba(90, 150, 150, 0)");
+        ctx.fillStyle = halo;
+        ctx.beginPath();
+        ctx.arc(cursorSpot.x, cursorSpot.y, radius, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+        return;
+      }
 
       ctx.save();
       traceFlashlightCone(ctx, geometry);
@@ -1515,7 +1552,7 @@ export default function MandelbrotSkipping() {
     function render(now: number) {
       ctx.clearRect(0, 0, width, height);
       const a = anchor();
-      drawFlashlight();
+      drawFlashlight(now);
       drawPrediction(a);
       drawEffects(now);
       drawRock();
@@ -1583,8 +1620,12 @@ export default function MandelbrotSkipping() {
     }
 
     function onPointerMove(event: PointerEvent) {
-      if (event.pointerId !== pointerId) return;
       const point = eventPoint(event);
+      if (event.pointerType !== "touch") {
+        cursorSpot = { x: point.x, y: point.y, inside: true, lastMoved: performance.now() };
+        flashlightDirty = true;
+      }
+      if (event.pointerId !== pointerId) return;
       if (pointerMode === "pan") {
         const dx = point.x - panOrigin.x;
         const dy = point.y - panOrigin.y;
@@ -1611,6 +1652,8 @@ export default function MandelbrotSkipping() {
 
     function release(event: PointerEvent) {
       if (event.pointerId !== pointerId) return;
+      cursorSpot.lastMoved = -Infinity;
+      flashlightDirty = true;
       if (pointerMode === "pan") {
         pointerMode = "none";
         pointerId = -1;
@@ -1662,7 +1705,15 @@ export default function MandelbrotSkipping() {
       pull = { ...a };
       rock.x = a.x;
       rock.y = a.y;
+      cursorSpot.lastMoved = -Infinity;
+      flashlightDirty = true;
       updateHud(true);
+    }
+
+    function onPointerLeave(event: PointerEvent) {
+      if (event.pointerType === "touch" || pointerMode !== "none") return;
+      cursorSpot.inside = false;
+      flashlightDirty = true;
     }
 
     function onWheel(event: WheelEvent) {
@@ -1687,6 +1738,7 @@ export default function MandelbrotSkipping() {
     canvas.addEventListener("pointermove", onPointerMove);
     canvas.addEventListener("pointerup", release);
     canvas.addEventListener("pointercancel", cancelAim);
+    canvas.addEventListener("pointerleave", onPointerLeave);
     canvas.addEventListener("wheel", onWheel, { passive: false });
     window.addEventListener("keydown", onKeyDown);
     resize();
@@ -1699,6 +1751,7 @@ export default function MandelbrotSkipping() {
       canvas.removeEventListener("pointermove", onPointerMove);
       canvas.removeEventListener("pointerup", release);
       canvas.removeEventListener("pointercancel", cancelAim);
+      canvas.removeEventListener("pointerleave", onPointerLeave);
       canvas.removeEventListener("wheel", onWheel);
       window.removeEventListener("keydown", onKeyDown);
       buddhabrotImage.onload = null;
