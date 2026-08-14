@@ -56,18 +56,29 @@ type ViewTransform = {
   halfY: number;
 };
 
+type Tuning = {
+  sourceDots: number;
+  maxDepth: number;
+  acceleration: number;
+};
+
 type OrbitEngine = {
   spawn: (points: Array<{ x: number; y: number }>) => void;
   setView: (view: ViewTransform) => void;
+  setTuning: (tuning: Tuning) => void;
   clear: () => void;
   freeze: () => void;
   destroy: () => void;
 };
 
-const MAX_VISUAL_DEPTH = 2_000_000;
-const SCORE_DEPTH_CAP = 2_000_000;
-const MAX_SOURCES = 16;
 const MAX_SKIPS = 7;
+const MAX_SOURCE_DOTS = 32;
+const MAX_SOURCES = MAX_SKIPS * MAX_SOURCE_DOTS;
+const DEPTH_OPTIONS = [10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000, 2_000_000, 5_000_000, 10_000_000, 20_000_000] as const;
+const SCORE_DEPTH_CAP = DEPTH_OPTIONS[DEPTH_OPTIONS.length - 1];
+const DEFAULT_TUNING: Tuning = { sourceDots: 1, maxDepth: 2_000_000, acceleration: 2 };
+const TUNING_KEY = "mandelbrot-skipping:tuning:v1";
+const SOURCE_RADIUS_PX = 6;
 const SLING_DRAW_PULL_RATIO = 0.30;
 const SLING_THROW_PULL_RATIO = 0.16;
 const POINT_BUDGET = 200_000;
@@ -77,7 +88,6 @@ const CURVE_SEGMENTS = 6;
 const LINE_SEGMENT_BUDGET = 25_000;
 const LINE_SEGMENT_CAPACITY = LINE_SEGMENT_BUDGET + MAX_SOURCES;
 const BASE_STEPS_PER_SOURCE = 4;
-const DEPTH_STEPS_PER_ACCELERATION = 16;
 const COVERAGE_GRID = 32;
 const COVERAGE_WORDS = COVERAGE_GRID * COVERAGE_GRID / 32;
 const FULL_GRID_VARIANCE = (COVERAGE_GRID * COVERAGE_GRID - 1) / 12;
@@ -107,7 +117,7 @@ struct Params {
   viewHalf: vec2f,
   viewport: vec2f,
   convergenceRadius: f32,
-  pad: f32,
+  accelerationCurve: f32,
 }
 struct OrbitPoint { position: vec2f, depth: f32, pad: f32 }
 struct CurveSegment {
@@ -149,7 +159,12 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
   if (source >= params.sourceCount) { return; }
   var state = states[source];
   if (state.alive == 0u || state.step >= params.maxDepth) { return; }
-  let acceleratedBatch = min(params.batch, ${BASE_STEPS_PER_SOURCE}u + state.step / ${DEPTH_STEPS_PER_ACCELERATION}u);
+  let depthProgress = clamp(f32(state.step) / max(f32(params.maxDepth), 1.0), 0.0, 1.0);
+  let acceleration = pow(depthProgress, max(params.accelerationCurve, 0.25));
+  let acceleratedBatch = min(
+    params.batch,
+    max(${BASE_STEPS_PER_SOURCE}u, u32(f32(${BASE_STEPS_PER_SOURCE}u) + acceleration * max(f32(params.batch - ${BASE_STEPS_PER_SOURCE}u), 0.0)))
+  );
   let lineCount = min(acceleratedBatch, params.lineQuota);
   let firstLineStep = acceleratedBatch - lineCount;
   for (var i = 0u; i < acceleratedBatch; i++) {
@@ -396,6 +411,59 @@ function complexToScreen(x: number, y: number, width: number, height: number, vi
   };
 }
 
+function formatCompact(value: number) {
+  if (value >= 1_000_000) return `${value / 1_000_000}M`;
+  if (value >= 1_000) return `${value / 1_000}K`;
+  return String(value);
+}
+
+function sanitizeTuning(value: Partial<Tuning> | null | undefined): Tuning {
+  const sourceDots = Math.max(1, Math.min(MAX_SOURCE_DOTS, Math.round(Number(value?.sourceDots) || DEFAULT_TUNING.sourceDots)));
+  const requestedDepth = Number(value?.maxDepth);
+  const maxDepth = DEPTH_OPTIONS.includes(requestedDepth as typeof DEPTH_OPTIONS[number]) ? requestedDepth : DEFAULT_TUNING.maxDepth;
+  const acceleration = Math.max(0.5, Math.min(4, Math.round((Number(value?.acceleration) || DEFAULT_TUNING.acceleration) * 10) / 10));
+  return { sourceDots, maxDepth, acceleration };
+}
+
+function loadTuning(): Tuning {
+  try { return sanitizeTuning(JSON.parse(localStorage.getItem(TUNING_KEY) || "null")); }
+  catch { return DEFAULT_TUNING; }
+}
+
+function storeTuning(tuning: Tuning) {
+  try { localStorage.setItem(TUNING_KEY, JSON.stringify(tuning)); } catch { /* tuning still works for this session */ }
+}
+
+function impactSources(x: number, y: number, width: number, height: number, view: ViewTransform, count: number, seed: number) {
+  if (count <= 1) {
+    const center = screenToComplex(x, y, width, height, view);
+    return [{ x: Math.fround(center.x), y: Math.fround(center.y) }];
+  }
+  const points: Array<{ x: number; y: number }> = [];
+  const pairCount = Math.floor(count / 2);
+  const rotation = makeRandom(seed)() * TAU;
+  if (count % 2 === 1) {
+    const center = screenToComplex(x, y, width, height, view);
+    points.push({ x: Math.fround(center.x), y: Math.fround(center.y) });
+  }
+  for (let pair = 0; pair < pairCount; pair++) {
+    const radius = SOURCE_RADIUS_PX * Math.sqrt((pair + 1) / pairCount);
+    const angle = rotation + pair * 2.399963229728653;
+    const offsetX = Math.cos(angle) * radius;
+    const offsetY = Math.sin(angle) * radius;
+    for (const direction of [-1, 1]) {
+      const mapped = screenToComplex(x + offsetX * direction, y + offsetY * direction, width, height, view);
+      points.push({ x: Math.fround(mapped.x), y: Math.fround(mapped.y) });
+    }
+  }
+  return points.slice(0, count);
+}
+
+function acceleratedSteps(depth: number, maxDepth: number, budget: number, curve: number) {
+  const progress = Math.max(0, Math.min(1, depth / Math.max(maxDepth, 1)));
+  return Math.min(budget, Math.max(BASE_STEPS_PER_SOURCE, Math.floor(BASE_STEPS_PER_SOURCE + Math.pow(progress, curve) * Math.max(0, budget - BASE_STEPS_PER_SOURCE))));
+}
+
 function loadScores(): ScoreEntry[] {
   try {
     const parsed = JSON.parse(localStorage.getItem(SCORE_KEY) || "null");
@@ -445,6 +513,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
     console.error("WebGPU validation", event.error?.message || event.error);
     fail("Orbit renderer hit a GPU validation error.");
   });
+  device.lost.then(() => { deviceFailed = true; });
   const context = canvas.getContext("webgpu") as any;
   const canvasFormat = gpu.getPreferredCanvasFormat();
   context.configure({ device, format: canvasFormat, alphaMode: "opaque" });
@@ -551,6 +620,8 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
   let view: ViewTransform = { centerX: POND_CENTER.x, centerY: POND_CENTER.y, halfY: VIEW_HALF_Y };
   let previousView: ViewTransform = { ...view };
   let cameraPausedUntil = 0;
+  let maxDepth = DEFAULT_TUNING.maxDepth;
+  let accelerationCurve = DEFAULT_TUNING.acceleration;
 
   const makeTexture = (format: string, usages: number) => device.createTexture({ size: [width, height], format, usage: usages });
 
@@ -619,7 +690,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
     const ints = new Uint32Array(12);
     ints[0] = sourceCount;
     ints[1] = batch;
-    ints[2] = MAX_VISUAL_DEPTH;
+    ints[2] = maxDepth;
     ints[3] = Math.max(1, Math.floor(LINE_SEGMENT_BUDGET / Math.max(sourceCount, 1)));
     const floats = new Float32Array(ints.buffer);
     floats[4] = view.centerX;
@@ -629,6 +700,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
     floats[8] = width;
     floats[9] = height;
     floats[10] = CONVERGENCE_PIXEL_RADIUS;
+    floats[11] = accelerationCurve;
     device.queue.writeBuffer(paramsBuffer, 0, ints);
     device.queue.writeBuffer(styleBuffer, 0, new Float32Array([POINT_ENERGY, 0, 0, 0]));
     device.queue.writeBuffer(indirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
@@ -705,6 +777,10 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
       view = { ...nextView };
       cameraPausedUntil = performance.now() + 100;
     },
+    setTuning(tuning) {
+      maxDepth = tuning.maxDepth;
+      accelerationCurve = tuning.acceleration;
+    },
     clear() {
       paused = false;
       sourceCount = 0;
@@ -754,14 +830,26 @@ export default function MandelbrotSkipping() {
   const viewRef = useRef<ViewTransform>({ centerX: POND_CENTER.x, centerY: POND_CENTER.y, halfY: VIEW_HALF_Y });
   const restartRef = useRef<() => void>(() => {});
   const playerNameRef = useRef("YOU");
+  const tuningRef = useRef<Tuning>({ ...DEFAULT_TUNING });
   const [gpuError, setGpuError] = useState<string | null>(null);
   const [hud, setHud] = useState<Hud>({ phase: "ready", score: 0, skips: 0, deepest: 0, progress: 0, coverage: 0, spread: 0 });
   const [scores, setScores] = useState<ScoreEntry[]>([]);
   const [playerName, setPlayerName] = useState("YOU");
   const [currentResultId, setCurrentResultId] = useState<string | null>(null);
+  const [tuning, setTuning] = useState<Tuning>({ ...DEFAULT_TUNING });
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => setScores(loadScores()));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const saved = loadTuning();
+      tuningRef.current = saved;
+      setTuning(saved);
+      engineRef.current?.setTuning(saved);
+    });
     return () => cancelAnimationFrame(frame);
   }, []);
 
@@ -774,6 +862,7 @@ export default function MandelbrotSkipping() {
       else {
         engineRef.current = engine;
         engine?.setView(viewRef.current);
+        engine?.setTuning(tuningRef.current);
       }
     }).catch(() => setGpuError("Orbit renderer could not start. Throwing remains playable."));
     return () => {
@@ -795,6 +884,14 @@ export default function MandelbrotSkipping() {
       return next;
     });
   }, [currentResultId]);
+
+  const updateTuning = useCallback((patch: Partial<Tuning>) => {
+    const next = sanitizeTuning({ ...tuningRef.current, ...patch });
+    tuningRef.current = next;
+    setTuning(next);
+    storeTuning(next);
+    engineRef.current?.setTuning(next);
+  }, []);
 
   useEffect(() => {
     const canvas = gameCanvasRef.current;
@@ -867,7 +964,7 @@ export default function MandelbrotSkipping() {
         ? orbitScores.reduce((sum, orbit) => sum + orbitShape(orbit).spread, 0) / orbitScores.length
         : 0;
       const resolvedRatio = orbitScores.length ? orbitScores.filter((orbit) => orbit.resolved).length / orbitScores.length : 0;
-      const depthRatio = orbitScores.length ? orbitScores.reduce((sum, orbit) => sum + Math.min(1, orbit.shownDepth / SCORE_DEPTH_CAP), 0) / orbitScores.length : 0;
+      const depthRatio = orbitScores.length ? orbitScores.reduce((sum, orbit) => sum + Math.min(1, orbit.shownDepth / tuningRef.current.maxDepth), 0) / orbitScores.length : 0;
       const progress = resolvedRatio * 0.8 + depthRatio * 0.2;
       setHud({ phase, score, skips: rock.skips, deepest, progress, coverage, spread });
       lastHud = now;
@@ -914,17 +1011,20 @@ export default function MandelbrotSkipping() {
       const index = rock.skips;
       const mapped = screenToComplex(x, y, width, height, viewRef.current);
       const source = { x: Math.fround(mapped.x), y: Math.fround(mapped.y) };
+      const sources = impactSources(x, y, width, height, viewRef.current, tuningRef.current.sourceDots, (shotId << 8) ^ index);
       impacts.push({ cr: source.x, ci: source.y, born: now, index });
       ripples.push({ cr: source.x, ci: source.y, born: now, index });
-      orbitScores.push({
-        zr: 0, zi: 0, tortoiseR: 0, tortoiseI: 0,
-        cr: source.x, ci: source.y, depth: 0, shownDepth: 0,
-        skip: index, invisibleRun: 0,
-        convergenceHits: 0, resolved: false, score: 0,
-        cells: new Uint32Array(COVERAGE_WORDS), distinct: 0,
-        sumX: 0, sumY: 0, sumXX: 0, sumYY: 0, sumXY: 0,
-      });
-      engineRef.current?.spawn([source]);
+      for (const orbitSource of sources) {
+        orbitScores.push({
+          zr: 0, zi: 0, tortoiseR: 0, tortoiseI: 0,
+          cr: orbitSource.x, ci: orbitSource.y, depth: 0, shownDepth: 0,
+          skip: index, invisibleRun: 0,
+          convergenceHits: 0, resolved: false, score: 0,
+          cells: new Uint32Array(COVERAGE_WORDS), distinct: 0,
+          sumX: 0, sumY: 0, sumXX: 0, sumYY: 0, sumXY: 0,
+        });
+      }
+      engineRef.current?.spawn(sources);
       tone(320 + index * 62, 0.1, 0.06);
       if ("vibrate" in navigator) navigator.vibrate?.(12);
       updateHud(true);
@@ -998,8 +1098,8 @@ export default function MandelbrotSkipping() {
       const viewHalfX = view.halfY * width / height;
       for (const orbit of orbitScores) {
         if (orbit.resolved) continue;
-        const perOrbit = Math.min(maxPerOrbit, BASE_STEPS_PER_SOURCE + Math.floor(orbit.depth / DEPTH_STEPS_PER_ACCELERATION));
-        for (let step = 0; step < perOrbit && orbit.depth < SCORE_DEPTH_CAP; step++) {
+        const perOrbit = acceleratedSteps(orbit.depth, tuningRef.current.maxDepth, maxPerOrbit, tuningRef.current.acceleration);
+        for (let step = 0; step < perOrbit && orbit.depth < tuningRef.current.maxDepth; step++) {
           const nextR = Math.fround(Math.fround(orbit.zr * orbit.zr - orbit.zi * orbit.zi) + orbit.cr);
           orbit.zi = Math.fround(Math.fround(2 * orbit.zr * orbit.zi) + orbit.ci);
           orbit.zr = nextR;
@@ -1024,7 +1124,7 @@ export default function MandelbrotSkipping() {
             break;
           }
         }
-        if (orbit.depth >= SCORE_DEPTH_CAP) orbit.resolved = true;
+        if (orbit.depth >= tuningRef.current.maxDepth) orbit.resolved = true;
         if (orbit.resolved) {
           orbit.shownDepth = orbit.depth;
           orbit.score = scoreForOrbit(orbit, orbit.depth);
@@ -1343,9 +1443,11 @@ export default function MandelbrotSkipping() {
 
   const instruction = hud.phase === "ready" ? "Grab the white orb. Pull back and release."
     : hud.phase === "aiming" ? "Aim for deep water · farther pull = faster throw"
-    : hud.phase === "flying" ? "Each splash launches one exact complex orbit"
+    : hud.phase === "flying" ? `Each splash launches ${tuning.sourceDots} complex ${tuning.sourceDots === 1 ? "orbit" : "orbits"}`
     : hud.phase === "resolving" ? `Resolving the pond · ${Math.round(hud.progress * 100)}%`
     : "Press Space or throw again";
+
+  const depthIndex = Math.max(0, DEPTH_OPTIONS.indexOf(tuning.maxDepth as typeof DEPTH_OPTIONS[number]));
 
   const resetAndFocusCanvas = () => {
     restartRef.current();
@@ -1368,6 +1470,31 @@ export default function MandelbrotSkipping() {
           {(hud.phase === "flying" || hud.phase === "resolving") && (
             <button className="rethrowButton" onClick={resetAndFocusCanvas} aria-label="Cancel this throw and rethrow">Rethrow</button>
           )}
+        </section>
+
+        <section className="tuningPanel" aria-label="Orbit tuning">
+          <div className="tuningHeading"><span>Orbit tuning</span><span>Live</span></div>
+          <div className="tuningControl">
+            <span><span>Dots per splash</span><output>{tuning.sourceDots}</output></span>
+            <input type="range" min="1" max={MAX_SOURCE_DOTS} step="1" value={tuning.sourceDots}
+              aria-label="Dots per splash"
+              onChange={(event) => updateTuning({ sourceDots: Number(event.target.value) })} />
+          </div>
+          <div className="tuningControl">
+            <span><span>Orbit limit</span><output>{formatCompact(tuning.maxDepth)}</output></span>
+            <input type="range" min="0" max={DEPTH_OPTIONS.length - 1} step="1" value={depthIndex}
+              aria-label="Orbit iteration limit"
+              aria-valuetext={`${formatNumber(tuning.maxDepth)} iterations`}
+              onChange={(event) => updateTuning({ maxDepth: DEPTH_OPTIONS[Number(event.target.value)] })} />
+          </div>
+          <div className="tuningControl">
+            <span><span>Acceleration curve</span><output>{tuning.acceleration.toFixed(1)}×</output></span>
+            <input type="range" min="0.5" max="4" step="0.1" value={tuning.acceleration}
+              aria-label="Iteration speed acceleration curve"
+              aria-valuetext={`${tuning.acceleration.toFixed(1)} curve`}
+              onChange={(event) => updateTuning({ acceleration: Number(event.target.value) })} />
+          </div>
+          <p className="tuningNote">Higher curve starts slower, then ramps harder. Invisible and converged paths still stop early.</p>
         </section>
 
         {hud.phase === "result" && (
@@ -1395,7 +1522,7 @@ export default function MandelbrotSkipping() {
           ))}
         </div>
         <div className="railHint">{instruction}<br />Drag empty water to move · wheel or +/- to zoom.</div>
-        <div className="railFooter">Saved on this device · score model v2 · 2M orbit cap</div>
+        <div className="railFooter">Saved on this device · score model v2 · {formatCompact(tuning.maxDepth)} orbit cap</div>
       </aside>
     </main>
   );
