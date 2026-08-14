@@ -977,6 +977,7 @@ export default function MandelbrotSkipping() {
     let panView: ViewTransform = { ...viewRef.current };
     let pull = { x: 0, y: 0 };
     let shotId = 0;
+    let shapeOffset = 0;
     let resolveStarted = 0;
     let lastHud = 0;
     let viewChangingUntil = 0;
@@ -1388,6 +1389,7 @@ export default function MandelbrotSkipping() {
       impacts = [];
       ripples = [];
       orbitScores = [];
+      shapeOffset = Math.floor(Math.random() * MAX_SKIPS);
       lastAudibleDepth = 0;
       lastAudibleCoverage = 0;
       lastIterationPulse = 0;
@@ -1406,7 +1408,9 @@ export default function MandelbrotSkipping() {
       const index = rock.skips;
       const mapped = screenToComplex(x, y, width, height, viewRef.current);
       const source = { x: Math.fround(mapped.x), y: Math.fround(mapped.y) };
-      const sources = impactSources(x, y, width, height, viewRef.current, tuningRef.current.sourceDots, index - 1);
+      const sources = impactSources(
+        x, y, width, height, viewRef.current, tuningRef.current.sourceDots, (shapeOffset + index - 1) % MAX_SKIPS,
+      );
       impacts.push({ cr: source.x, ci: source.y, born: now, index });
       ripples.push({ cr: source.x, ci: source.y, born: now, index });
       for (const orbitSource of sources) {
@@ -1600,14 +1604,25 @@ export default function MandelbrotSkipping() {
       const launchPull = minDimension() * SLING_THROW_PULL_RATIO * rawPower;
       const launch = { x: a.x - dx / length * launchPull, y: a.y - dy / length * launchPull };
       const landing = { x: launch.x + vx * airtime, y: launch.y + vy * airtime };
+      const curveLift = minDimension() * (.025 + power * .045);
+      const control = {
+        x: (rock.x + landing.x) * .5,
+        y: (rock.y + landing.y) * .5 - curveLift,
+      };
       ctx.save();
-      ctx.strokeStyle = "rgba(255, 255, 255, .42)";
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([7, 9]);
-      ctx.beginPath(); ctx.moveTo(rock.x, rock.y); ctx.lineTo(landing.x, landing.y); ctx.stroke();
+      const trajectory = ctx.createLinearGradient(rock.x, rock.y, landing.x, landing.y);
+      trajectory.addColorStop(0, "rgba(255, 255, 255, .48)");
+      trajectory.addColorStop(.52, "rgba(255, 255, 255, .30)");
+      trajectory.addColorStop(.82, "rgba(255, 255, 255, .11)");
+      trajectory.addColorStop(1, "rgba(255, 255, 255, 0)");
+      ctx.strokeStyle = trajectory;
+      ctx.lineWidth = 1.4;
+      ctx.setLineDash([6, 9]);
+      ctx.beginPath();
+      ctx.moveTo(rock.x, rock.y);
+      ctx.quadraticCurveTo(control.x, control.y, landing.x, landing.y);
+      ctx.stroke();
       ctx.setLineDash([]);
-      ctx.strokeStyle = "rgba(255, 255, 255, .58)";
-      ctx.beginPath(); ctx.arc(landing.x, landing.y, 8, 0, TAU); ctx.stroke();
       ctx.restore();
     }
 
@@ -1752,7 +1767,7 @@ export default function MandelbrotSkipping() {
       if (phase === "resolving" || phase === "result") return;
       const lift = rock.z * 0.30;
       const radius = 10;
-      const nextShape = rock.skips % MAX_SKIPS;
+      const nextShape = (shapeOffset + rock.skips) % MAX_SKIPS;
       const shapePaths = SACRED_PATH_COUNTS[nextShape];
       const heightT = Math.min(1, rock.z / Math.max(minDimension() * .45, 1));
       const drawX = Math.round(rock.x * dpr) / dpr;
