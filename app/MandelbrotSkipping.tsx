@@ -105,6 +105,7 @@ const POND_CENTER = { x: -0.58, y: 0 };
 const VIEW_HALF_Y = 0.8;
 const SCORE_HALF_X = 1.6;
 const SCORE_HALF_Y = 1.15;
+const BUDDHABROT_BOUNDS = { xMin: -2.2, xMax: 1.2, yMin: -1.5, yMax: 1.5 };
 const MIN_VIEW_HALF_Y = 0.035;
 const MAX_VIEW_HALF_Y = 2.4;
 
@@ -959,6 +960,18 @@ export default function MandelbrotSkipping() {
     let orbitScores: OrbitScore[] = [];
     let audio: AudioContext | null = null;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const flashlightCanvas = document.createElement("canvas");
+    const flashlightContext = flashlightCanvas.getContext("2d");
+    const buddhabrotImage = new Image();
+    let buddhabrotReady = false;
+    let flashlightDirty = true;
+
+    buddhabrotImage.decoding = "async";
+    buddhabrotImage.onload = () => {
+      buddhabrotReady = true;
+      flashlightDirty = true;
+    };
+    buddhabrotImage.src = "/buddhabrot-contours.png";
 
     function anchor() { return { x: width * 0.5, y: height * 0.82 }; }
     function minDimension() { return Math.min(width, height); }
@@ -971,6 +984,9 @@ export default function MandelbrotSkipping() {
       canvas.width = Math.round(width * dpr);
       canvas.height = Math.round(height * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      flashlightCanvas.width = Math.ceil(width);
+      flashlightCanvas.height = Math.ceil(height);
+      flashlightDirty = true;
       if (phase === "ready" || phase === "aiming" || phase === "result") {
         const a = anchor();
         rock.x = a.x;
@@ -1043,6 +1059,7 @@ export default function MandelbrotSkipping() {
       rock = { x: a.x, y: a.y, vx: 0, vy: 0, z: 0, vz: 0, spin: 0, skips: 0, bounceAge: 10 };
       setCurrentResultId(null);
       engineRef.current?.clear();
+      flashlightDirty = true;
       updateHud(true);
     }
     restartRef.current = resetRound;
@@ -1300,9 +1317,103 @@ export default function MandelbrotSkipping() {
       ctx.textBaseline = "alphabetic";
     }
 
+    function flashlightGeometry() {
+      if (phase !== "aiming") return null;
+      const a = anchor();
+      const dx = a.x - pull.x;
+      const dy = a.y - pull.y;
+      const length = Math.hypot(dx, dy);
+      if (length < 8) return null;
+      const directionX = dx / length;
+      const directionY = dy / length;
+      const range = Math.hypot(width, height) * 1.18;
+      const halfAngle = .29;
+      const cosine = Math.cos(halfAngle);
+      const sine = Math.sin(halfAngle);
+      return {
+        apexX: pull.x,
+        apexY: pull.y,
+        directionX,
+        directionY,
+        range,
+        leftX: pull.x + (directionX * cosine - directionY * sine) * range,
+        leftY: pull.y + (directionY * cosine + directionX * sine) * range,
+        rightX: pull.x + (directionX * cosine + directionY * sine) * range,
+        rightY: pull.y + (directionY * cosine - directionX * sine) * range,
+        tipX: pull.x + directionX * range * 1.04,
+        tipY: pull.y + directionY * range * 1.04,
+      };
+    }
+
+    function traceFlashlightCone(target: CanvasRenderingContext2D, geometry: NonNullable<ReturnType<typeof flashlightGeometry>>) {
+      target.beginPath();
+      target.moveTo(geometry.apexX, geometry.apexY);
+      target.lineTo(geometry.leftX, geometry.leftY);
+      target.quadraticCurveTo(geometry.tipX, geometry.tipY, geometry.rightX, geometry.rightY);
+      target.closePath();
+    }
+
+    function drawMappedBuddhabrot(target: CanvasRenderingContext2D) {
+      const topLeft = complexToScreen(BUDDHABROT_BOUNDS.xMin, BUDDHABROT_BOUNDS.yMax, width, height, viewRef.current);
+      const bottomRight = complexToScreen(BUDDHABROT_BOUNDS.xMax, BUDDHABROT_BOUNDS.yMin, width, height, viewRef.current);
+      target.drawImage(buddhabrotImage, topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y);
+    }
+
+    function drawFlashlight() {
+      const geometry = flashlightGeometry();
+      if (!geometry || !buddhabrotReady || !flashlightContext) return;
+      if (flashlightDirty) {
+        flashlightContext.clearRect(0, 0, width, height);
+        flashlightContext.save();
+        flashlightContext.filter = "blur(14px)";
+        const mask = flashlightContext.createLinearGradient(
+          geometry.apexX,
+          geometry.apexY,
+          geometry.apexX + geometry.directionX * geometry.range,
+          geometry.apexY + geometry.directionY * geometry.range,
+        );
+        mask.addColorStop(0, "rgba(255, 255, 255, 0)");
+        mask.addColorStop(.06, "rgba(255, 255, 255, .68)");
+        mask.addColorStop(.48, "rgba(255, 255, 255, .94)");
+        mask.addColorStop(.88, "rgba(255, 255, 255, .34)");
+        mask.addColorStop(1, "rgba(255, 255, 255, 0)");
+        flashlightContext.fillStyle = mask;
+        traceFlashlightCone(flashlightContext, geometry);
+        flashlightContext.fill();
+        flashlightContext.restore();
+        flashlightContext.globalCompositeOperation = "source-in";
+        drawMappedBuddhabrot(flashlightContext);
+        flashlightContext.globalCompositeOperation = "source-over";
+        flashlightDirty = false;
+      }
+
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      ctx.globalAlpha = .24;
+      ctx.drawImage(flashlightCanvas, 0, 0, width, height);
+      ctx.restore();
+
+      ctx.save();
+      traceFlashlightCone(ctx, geometry);
+      ctx.clip();
+      const haze = ctx.createLinearGradient(
+        geometry.apexX,
+        geometry.apexY,
+        geometry.apexX + geometry.directionX * geometry.range,
+        geometry.apexY + geometry.directionY * geometry.range,
+      );
+      haze.addColorStop(0, "rgba(184, 230, 220, .025)");
+      haze.addColorStop(.55, "rgba(130, 205, 198, .012)");
+      haze.addColorStop(1, "rgba(90, 150, 150, 0)");
+      ctx.fillStyle = haze;
+      ctx.fillRect(0, 0, width, height);
+      ctx.restore();
+    }
+
     function render(now: number) {
       ctx.clearRect(0, 0, width, height);
       const a = anchor();
+      drawFlashlight();
       drawPrediction(a);
       drawEffects(now);
       drawRock();
@@ -1330,6 +1441,7 @@ export default function MandelbrotSkipping() {
     function applyView(nextView: ViewTransform) {
       viewRef.current = nextView;
       viewChangingUntil = performance.now() + 100;
+      flashlightDirty = true;
       engineRef.current?.setView(nextView);
     }
 
@@ -1355,6 +1467,7 @@ export default function MandelbrotSkipping() {
       if (phase === "ready" && Math.hypot(point.x - rock.x, point.y - rock.y) <= 48) {
         pointerMode = "aim";
         phase = "aiming";
+        flashlightDirty = true;
         pull = point;
         rock.x = point.x;
         rock.y = point.y;
@@ -1390,6 +1503,7 @@ export default function MandelbrotSkipping() {
       pull = { x: a.x + dx * scale, y: a.y + dy * scale };
       rock.x = pull.x;
       rock.y = pull.y;
+      flashlightDirty = true;
     }
 
     function release(event: PointerEvent) {
@@ -1484,6 +1598,7 @@ export default function MandelbrotSkipping() {
       canvas.removeEventListener("pointercancel", cancelAim);
       canvas.removeEventListener("wheel", onWheel);
       window.removeEventListener("keydown", onKeyDown);
+      buddhabrotImage.onload = null;
       audio?.close();
     };
   }, []);
