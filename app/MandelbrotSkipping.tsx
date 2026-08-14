@@ -55,6 +55,8 @@ const SKIP_SOURCE_RADIUS = 0.021;
 const SLING_DRAW_PULL_RATIO = 0.30;
 const SLING_THROW_PULL_RATIO = 0.16;
 const POINT_BUDGET = 200_000;
+const POINT_ENERGY = 0.05;
+const HIDDEN_INITIAL_STEPS = 1;
 const CURVE_SEGMENTS = 3;
 const LINE_SEGMENT_BUDGET = 50_000;
 const LINE_SEGMENT_CAPACITY = LINE_SEGMENT_BUDGET + MAX_SOURCES;
@@ -125,11 +127,13 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     let depthColor = log2(f32(state.step) + 1.0) / 25.6;
     if (all(abs(clip) <= vec2f(1.0))) {
       state.invisibleRun = 0u;
-      let slot = atomicAdd(&drawArgs.vertexCount, 1u);
-      if (slot < ${POINT_BUDGET}u) {
-        vertices[slot] = OrbitPoint(clip, depthColor, 0.0);
+      if (state.step > ${HIDDEN_INITIAL_STEPS}u) {
+        let slot = atomicAdd(&drawArgs.vertexCount, 1u);
+        if (slot < ${POINT_BUDGET}u) {
+          vertices[slot] = OrbitPoint(clip, depthColor, 0.0);
+        }
       }
-      if (all(abs(fromClip) <= vec2f(1.0)) && state.step % params.lineStride == 0u) {
+      if (state.step > ${HIDDEN_INITIAL_STEPS + 1}u && all(abs(fromClip) <= vec2f(1.0)) && state.step % params.lineStride == 0u) {
         let future = vec2f(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + state.c;
         let futureClip = (future - params.center) / params.viewHalf;
         let incoming = clip - fromClip;
@@ -239,8 +243,8 @@ struct Pond { aspect: f32, time: f32, pad: vec2f }
 @fragment fn pondFs(in: VSOut) -> @location(0) vec4f {
   let vertical = smoothstep(0.0, 1.0, in.uv.y);
   let radial = 1.0 - clamp(length((in.uv - 0.5) * vec2f(pond.aspect, 1.0)), 0.0, 1.0);
-  let deep = vec3f(0.018, 0.075, 0.105);
-  let near = vec3f(0.025, 0.12, 0.15);
+  let deep = vec3f(0.0);
+  let near = vec3f(0.002, 0.003, 0.005);
   let color = mix(deep, near, vertical * 0.55 + radial * 0.22);
   return vec4f(color, 1.0);
 }
@@ -264,8 +268,8 @@ ${fullscreenVertex}
 @group(0) @binding(3) var displaySampler: sampler;
 @fragment fn displayFs(in: VSOut) -> @location(0) vec4f {
   let base = textureSample(pondTexture, displaySampler, in.uv).rgb;
-  let raw = textureSample(trailTexture, displaySampler, in.uv).rgb * 1.9;
-  let glow = vec3f(1.0) - exp(-raw);
+  let raw = textureSample(trailTexture, displaySampler, in.uv).rgb * 3.0;
+  let glow = raw / (vec3f(1.0) + raw);
   let lines = textureSample(lineTexture, displaySampler, in.uv).rgb * 1.35;
   return vec4f(base + glow + lines, 1.0);
 }
@@ -521,7 +525,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
     floats[6] = VIEW_HALF_Y * width / height;
     floats[7] = VIEW_HALF_Y;
     device.queue.writeBuffer(paramsBuffer, 0, ints);
-    device.queue.writeBuffer(styleBuffer, 0, new Float32Array([0.025, 0, 0, 0]));
+    device.queue.writeBuffer(styleBuffer, 0, new Float32Array([POINT_ENERGY, 0, 0, 0]));
     device.queue.writeBuffer(indirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
     device.queue.writeBuffer(lineIndirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
     const destination = textures[1 - textureIndex];
