@@ -999,6 +999,9 @@ export default function MandelbrotSkipping() {
     let lastIterationPulse = 0;
     let lastAudibleDepth = 0;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const gridCanvas = document.createElement("canvas");
+    const gridContext = gridCanvas.getContext("2d");
+    let gridDirty = true;
     const flashlightCanvas = document.createElement("canvas");
     const flashlightContext = flashlightCanvas.getContext("2d");
     const buddhabrotImage = new Image();
@@ -1023,6 +1026,10 @@ export default function MandelbrotSkipping() {
       canvas.width = Math.round(width * dpr);
       canvas.height = Math.round(height * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      gridCanvas.width = Math.round(width * dpr);
+      gridCanvas.height = Math.round(height * dpr);
+      gridContext?.setTransform(dpr, 0, 0, dpr, 0, 0);
+      gridDirty = true;
       flashlightCanvas.width = Math.ceil(width);
       flashlightCanvas.height = Math.ceil(height);
       flashlightDirty = true;
@@ -1459,6 +1466,143 @@ export default function MandelbrotSkipping() {
       ctx.restore();
     }
 
+    function scientificStep(target: number) {
+      const exponent = Math.floor(Math.log10(Math.max(target, Number.EPSILON)));
+      const magnitude = 10 ** exponent;
+      const fraction = target / magnitude;
+      const nice = fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10;
+      return nice * magnitude;
+    }
+
+    function coordinateLabel(value: number, step: number) {
+      if (Math.abs(value) < step * .001) return "0";
+      if (Math.abs(value) >= 10_000 || Math.abs(value) < .001) return value.toExponential(1);
+      const decimals = Math.max(0, Math.min(6, -Math.floor(Math.log10(step))));
+      const fixed = value.toFixed(decimals);
+      return decimals ? fixed.replace(/\.?0+$/, "") : fixed;
+    }
+
+    function rebuildScientificGrid() {
+      if (!gridContext) return;
+      gridContext.clearRect(0, 0, width, height);
+      const view = viewRef.current;
+      const halfX = view.halfY * width / Math.max(height, 1);
+      const xMin = view.centerX - halfX;
+      const xMax = view.centerX + halfX;
+      const yMin = view.centerY - view.halfY;
+      const yMax = view.centerY + view.halfY;
+      const major = scientificStep(view.halfY * 2 / Math.max(height / 92, 1));
+      const minor = major / 5;
+      const snap = (position: number) => Math.round(position * dpr) / dpr;
+      const isMajor = (value: number) => Math.abs(value / major - Math.round(value / major)) < 1e-6;
+      const isAxis = (value: number) => Math.abs(value) < minor * 1e-4;
+
+      const traceVerticals = (majorLines: boolean) => {
+        gridContext.beginPath();
+        const first = Math.ceil(xMin / minor);
+        const last = Math.floor(xMax / minor);
+        for (let index = first; index <= last; index++) {
+          const value = index * minor;
+          if (isAxis(value) || isMajor(value) !== majorLines) continue;
+          const x = snap(complexToScreen(value, 0, width, height, view).x);
+          gridContext.moveTo(x, 0);
+          gridContext.lineTo(x, height);
+        }
+        gridContext.stroke();
+      };
+      const traceHorizontals = (majorLines: boolean) => {
+        gridContext.beginPath();
+        const first = Math.ceil(yMin / minor);
+        const last = Math.floor(yMax / minor);
+        for (let index = first; index <= last; index++) {
+          const value = index * minor;
+          if (isAxis(value) || isMajor(value) !== majorLines) continue;
+          const y = snap(complexToScreen(0, value, width, height, view).y);
+          gridContext.moveTo(0, y);
+          gridContext.lineTo(width, y);
+        }
+        gridContext.stroke();
+      };
+
+      gridContext.lineWidth = 1 / dpr;
+      gridContext.strokeStyle = "rgba(104, 196, 216, .026)";
+      traceVerticals(false);
+      traceHorizontals(false);
+      gridContext.strokeStyle = "rgba(119, 211, 228, .065)";
+      traceVerticals(true);
+      traceHorizontals(true);
+
+      const zero = complexToScreen(0, 0, width, height, view);
+      const realAxisVisible = zero.y >= 0 && zero.y <= height;
+      const imaginaryAxisVisible = zero.x >= 0 && zero.x <= width;
+      gridContext.strokeStyle = "rgba(151, 231, 240, .18)";
+      gridContext.lineWidth = 1 / dpr;
+      gridContext.beginPath();
+      if (realAxisVisible) {
+        const y = snap(zero.y);
+        gridContext.moveTo(0, y);
+        gridContext.lineTo(width, y);
+      }
+      if (imaginaryAxisVisible) {
+        const x = snap(zero.x);
+        gridContext.moveTo(x, 0);
+        gridContext.lineTo(x, height);
+      }
+      gridContext.stroke();
+
+      gridContext.fillStyle = "rgba(171, 230, 238, .32)";
+      gridContext.strokeStyle = "rgba(151, 231, 240, .14)";
+      gridContext.font = "8px ui-monospace, SFMono-Regular, Menlo, monospace";
+      gridContext.textBaseline = "top";
+      gridContext.textAlign = "center";
+      const labelY = realAxisVisible ? Math.min(height - 11, zero.y + 4) : height - 11;
+      for (let index = Math.ceil(xMin / major); index <= Math.floor(xMax / major); index++) {
+        const value = index * major;
+        if (isAxis(value)) continue;
+        const x = snap(complexToScreen(value, 0, width, height, view).x);
+        if (realAxisVisible) {
+          gridContext.beginPath();
+          gridContext.moveTo(x, zero.y - 3);
+          gridContext.lineTo(x, zero.y + 3);
+          gridContext.stroke();
+        }
+        if (x > 18 && x < width - 18) gridContext.fillText(coordinateLabel(value, major), x, labelY);
+      }
+      gridContext.textBaseline = "middle";
+      gridContext.textAlign = "right";
+      const labelX = imaginaryAxisVisible ? Math.max(28, zero.x - 5) : 28;
+      for (let index = Math.ceil(yMin / major); index <= Math.floor(yMax / major); index++) {
+        const value = index * major;
+        if (isAxis(value)) continue;
+        const y = snap(complexToScreen(0, value, width, height, view).y);
+        if (imaginaryAxisVisible) {
+          gridContext.beginPath();
+          gridContext.moveTo(zero.x - 3, y);
+          gridContext.lineTo(zero.x + 3, y);
+          gridContext.stroke();
+        }
+        if (y > 9 && y < height - 9) gridContext.fillText(coordinateLabel(value, major), labelX, y);
+      }
+      gridContext.fillStyle = "rgba(180, 239, 245, .42)";
+      gridContext.font = "italic 9px ui-monospace, SFMono-Regular, Menlo, monospace";
+      if (realAxisVisible) {
+        gridContext.textAlign = "right";
+        gridContext.textBaseline = "bottom";
+        gridContext.fillText("Re(c)", width - 7, Math.max(11, zero.y - 5));
+      }
+      if (imaginaryAxisVisible) {
+        gridContext.textAlign = "left";
+        gridContext.textBaseline = "top";
+        gridContext.fillText("Im(c)", Math.min(width - 34, zero.x + 6), 6);
+      }
+      gridDirty = false;
+    }
+
+    function drawScientificGrid() {
+      if (gridDirty) rebuildScientificGrid();
+      ctx.drawImage(gridCanvas, 0, 0, width, height);
+    }
+
     function drawRock() {
       if (phase === "resolving" || phase === "result") return;
       const lift = rock.z * 0.30;
@@ -1632,6 +1776,7 @@ export default function MandelbrotSkipping() {
     function render(now: number) {
       ctx.clearRect(0, 0, width, height);
       const a = anchor();
+      drawScientificGrid();
       drawFlashlight();
       drawPrediction(a);
       drawEffects(now);
@@ -1661,6 +1806,7 @@ export default function MandelbrotSkipping() {
     function applyView(nextView: ViewTransform) {
       viewRef.current = nextView;
       viewChangingUntil = performance.now() + 100;
+      gridDirty = true;
       flashlightDirty = true;
       engineRef.current?.setView(nextView);
     }
