@@ -31,6 +31,7 @@ type OrbitScore = {
   depth: number;
   shownDepth: number;
   skip: number;
+  weight: number;
   invisibleRun: number;
   resolved: boolean;
   score: number;
@@ -46,6 +47,12 @@ const MAX_VISUAL_DEPTH = 50_000_000;
 const SCORE_DEPTH_CAP = 2_000_000;
 const SOURCES_PER_SKIP = 100;
 const MAX_SOURCES = 800;
+const MAX_SKIPS = 7;
+const MIN_SOURCES_PER_SKIP = 24;
+const SOURCE_FALLOFF_PER_SKIP = 0.78;
+const SKIP_SOURCE_RADIUS = 0.021;
+const SLING_DRAW_PULL_RATIO = 0.30;
+const SLING_THROW_PULL_RATIO = 0.16;
 const POINT_BUDGET = 200_000;
 const CURVE_SEGMENTS = 3;
 const LINE_SEGMENT_BUDGET = 50_000;
@@ -271,6 +278,16 @@ function scoreForDepth(depth: number, skip: number) {
   const capped = Math.min(depth, SCORE_DEPTH_CAP);
   const base = Math.round(capped * 0.12 + Math.sqrt(capped) * 22);
   return Math.round(base * (1 + (skip - 1) * 0.12));
+}
+
+function sourceCountForSkip(skip: number) {
+  return Math.max(MIN_SOURCES_PER_SKIP, Math.round(SOURCES_PER_SKIP * SOURCE_FALLOFF_PER_SKIP ** Math.max(0, skip - 1)));
+}
+
+function totalSourcesForSkips(skips: number) {
+  let total = 0;
+  for (let skip = 1; skip <= skips; skip++) total += sourceCountForSkip(skip);
+  return total;
 }
 
 function makeRandom(seed: number) {
@@ -708,7 +725,7 @@ export default function MandelbrotSkipping() {
       const now = performance.now();
       if (!force && now - lastHud < 33) return;
       const deepest = orbitScores.reduce((best, orbit) => Math.max(best, orbit.shownDepth), 0);
-      const score = orbitScores.reduce((sum, orbit) => sum + scoreForDepth(orbit.shownDepth, orbit.skip), 0);
+      const score = orbitScores.reduce((sum, orbit) => sum + scoreForDepth(orbit.shownDepth, orbit.skip) * orbit.weight, 0);
       const resolvedRatio = orbitScores.length ? orbitScores.filter((orbit) => orbit.resolved).length / orbitScores.length : 0;
       const depthRatio = orbitScores.length ? orbitScores.reduce((sum, orbit) => sum + Math.min(1, orbit.shownDepth / SCORE_DEPTH_CAP), 0) / orbitScores.length : 0;
       const progress = resolvedRatio * 0.8 + depthRatio * 0.2;
@@ -737,24 +754,30 @@ export default function MandelbrotSkipping() {
       impacts.push({ x, y, born: now, index });
       ripples.push({ x, y, born: now, index });
       const primary = screenToComplex(x, y, width, height);
-      const radius = 0.032;
+      const radius = SKIP_SOURCE_RADIUS;
+      const sourceCount = Math.min(sourceCountForSkip(index), MAX_SOURCES - orbitScores.length);
+      if (sourceCount <= 0) return;
+      const sourceWeight = SOURCES_PER_SKIP / sourceCount;
+      const outerCount = Math.round((sourceCount - 1) * 0.36);
+      const flowerCount = Math.round((sourceCount - 1) * 0.36);
+      const innerCount = sourceCount - 1 - outerCount - flowerCount;
       const sources = [{ ...primary }];
-      for (let point = 0; point < 36; point++) {
-        const angle = point / 36 * TAU;
+      for (let point = 0; point < outerCount; point++) {
+        const angle = point / outerCount * TAU;
         sources.push({ x: primary.x + Math.cos(angle) * radius, y: primary.y + Math.sin(angle) * radius });
       }
-      for (let point = 0; point < 36; point++) {
-        const angle = point / 36 * TAU;
+      for (let point = 0; point < flowerCount; point++) {
+        const angle = point / flowerCount * TAU;
         const flowerRadius = radius * (0.48 + 0.16 * Math.cos(angle * 6));
         sources.push({ x: primary.x + Math.cos(angle) * flowerRadius, y: primary.y + Math.sin(angle) * flowerRadius });
       }
-      for (let point = 0; point < 27; point++) {
-        const angle = point / 27 * TAU;
+      for (let point = 0; point < innerCount; point++) {
+        const angle = point / innerCount * TAU;
         const innerRadius = radius * 0.22;
         sources.push({ x: primary.x + Math.cos(angle) * innerRadius, y: primary.y + Math.sin(angle) * innerRadius });
       }
       for (const source of sources) {
-        orbitScores.push({ zr: 0, zi: 0, cr: source.x, ci: source.y, depth: 0, shownDepth: 0, skip: index, invisibleRun: 0, resolved: false, score: 0 });
+        orbitScores.push({ zr: 0, zi: 0, cr: source.x, ci: source.y, depth: 0, shownDepth: 0, skip: index, weight: sourceWeight, invisibleRun: 0, resolved: false, score: 0 });
       }
       engineRef.current?.spawn(sources);
       tone(320 + index * 62, 0.1, 0.06);
@@ -775,7 +798,7 @@ export default function MandelbrotSkipping() {
       orbitScores.forEach((orbit) => {
         if (!orbit.resolved) {
           orbit.resolved = true;
-          orbit.score = scoreForDepth(orbit.depth, orbit.skip);
+          orbit.score = scoreForDepth(orbit.depth, orbit.skip) * orbit.weight;
         }
         orbit.shownDepth = orbit.depth;
       });
@@ -831,7 +854,7 @@ export default function MandelbrotSkipping() {
           }
         }
         if (orbit.depth >= SCORE_DEPTH_CAP) orbit.resolved = true;
-        if (orbit.resolved) orbit.score = scoreForDepth(orbit.depth, orbit.skip);
+        if (orbit.resolved) orbit.score = scoreForDepth(orbit.depth, orbit.skip) * orbit.weight;
       }
       easeShownDepths();
       const allResolved = orbitScores.every((orbit) => orbit.resolved);
@@ -869,7 +892,7 @@ export default function MandelbrotSkipping() {
         rock.vy = rock.vx * sin + rock.vy * cos;
         rock.vx = vx;
         const speed = Math.hypot(rock.vx, rock.vy);
-        if (rock.skips >= 7 || rock.vz < minDimension() * 0.045 || speed < minDimension() * 0.08 ||
+        if (rock.skips >= MAX_SKIPS || rock.vz < minDimension() * 0.045 || speed < minDimension() * 0.08 ||
           rock.x < -50 || rock.x > width + 50 || rock.y < -50 || rock.y > height + 50) {
           startResolving(now);
         }
@@ -882,15 +905,18 @@ export default function MandelbrotSkipping() {
       const dy = a.y - pull.y;
       const length = Math.hypot(dx, dy);
       if (length < 4) return;
-      const maxPull = minDimension() * 0.16;
-      const power = Math.min(1, length / maxPull);
+      const maxPull = minDimension() * SLING_DRAW_PULL_RATIO;
+      const rawPower = Math.min(1, length / maxPull);
+      const power = rawPower * rawPower * (3 - 2 * rawPower);
       const speed = minDimension() * (0.32 + 0.56 * power);
       const vx = dx / length * speed;
       const vy = dy / length * speed;
       const vz = minDimension() * (0.38 + 0.20 * power);
       const gravity = minDimension() * 1.65;
       const airtime = 2 * vz / gravity;
-      const landing = { x: a.x + vx * airtime, y: a.y + vy * airtime };
+      const launchPull = minDimension() * SLING_THROW_PULL_RATIO * rawPower;
+      const launch = { x: a.x - dx / length * launchPull, y: a.y - dy / length * launchPull };
+      const landing = { x: launch.x + vx * airtime, y: launch.y + vy * airtime };
       ctx.save();
       ctx.strokeStyle = "rgba(255, 255, 255, .42)";
       ctx.lineWidth = 1.5;
@@ -931,7 +957,7 @@ export default function MandelbrotSkipping() {
           const rt = Math.max(0, t - ring * .11);
           ctx.strokeStyle = `rgba(151, 241, 255, ${Math.max(0, .55 - rt * .55)})`;
           ctx.lineWidth = 1;
-          ctx.beginPath(); ctx.arc(ripple.x, ripple.y, 8 + rt * 58, 0, TAU); ctx.stroke();
+          ctx.beginPath(); ctx.arc(ripple.x, ripple.y, 5 + rt * 34, 0, TAU); ctx.stroke();
         }
       }
       ctx.textAlign = "center";
@@ -992,7 +1018,7 @@ export default function MandelbrotSkipping() {
       const dx = point.x - a.x;
       const dy = point.y - a.y;
       const length = Math.hypot(dx, dy);
-      const maxPull = minDimension() * .16;
+      const maxPull = minDimension() * SLING_DRAW_PULL_RATIO;
       const scale = length > maxPull ? maxPull / length : 1;
       pull = { x: a.x + dx * scale, y: a.y + dy * scale };
       rock.x = pull.x;
@@ -1014,10 +1040,13 @@ export default function MandelbrotSkipping() {
         updateHud(true);
         return;
       }
-      const maxPull = minDimension() * .16;
+      const maxPull = minDimension() * SLING_DRAW_PULL_RATIO;
       const rawPower = Math.min(1, length / maxPull);
       const power = rawPower * rawPower * (3 - 2 * rawPower);
       const speed = minDimension() * (.32 + .56 * power);
+      const launchPull = minDimension() * SLING_THROW_PULL_RATIO * rawPower;
+      rock.x = a.x - dx / length * launchPull;
+      rock.y = a.y - dy / length * launchPull;
       rock.vx = dx / length * speed;
       rock.vy = dy / length * speed;
       rock.vz = minDimension() * (.38 + .20 * power);
@@ -1092,7 +1121,7 @@ export default function MandelbrotSkipping() {
         {hud.phase === "result" && (
           <section className="railResult" aria-label="Throw result">
             <div className="resultEyebrow">{scores[0]?.id === currentResultId ? "New local best" : "Throw complete"}</div>
-            <div className="resultStats">{hud.skips * SOURCES_PER_SKIP} orbit seeds reached {formatNumber(hud.deepest)} depth.</div>
+            <div className="resultStats">{totalSourcesForSkips(hud.skips)} orbit seeds reached {formatNumber(hud.deepest)} depth.</div>
             <div className="nameRow">
               <input className="nameInput" aria-label="High score name" value={playerName} maxLength={12} onChange={(event) => renameCurrent(event.target.value)} />
               <button className="throwButton" onClick={() => restartRef.current()}>Throw again</button>
