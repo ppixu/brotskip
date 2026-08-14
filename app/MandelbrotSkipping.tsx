@@ -55,7 +55,7 @@ const SKIP_SOURCE_RADIUS = 0.021;
 const SLING_DRAW_PULL_RATIO = 0.30;
 const SLING_THROW_PULL_RATIO = 0.16;
 const POINT_BUDGET = 200_000;
-const POINT_ENERGY = 0.05;
+const POINT_ENERGY = 0.1;
 const HIDDEN_INITIAL_STEPS = 1;
 const CURVE_SEGMENTS = 3;
 const LINE_SEGMENT_BUDGET = 50_000;
@@ -115,14 +115,14 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
   if (state.alive == 0u || state.step >= params.maxDepth) { return; }
   let acceleratedBatch = min(params.batch, 1u + state.step / ${DEPTH_STEPS_PER_ACCELERATION}u);
   for (var i = 0u; i < acceleratedBatch; i++) {
-    let from = state.z;
+    let previousZ = state.z;
     let z = vec2f(
       state.z.x * state.z.x - state.z.y * state.z.y,
       2.0 * state.z.x * state.z.y
     ) + state.c;
     state.z = z;
     state.step += 1u;
-    let fromClip = (from - params.center) / params.viewHalf;
+    let previousClip = (previousZ - params.center) / params.viewHalf;
     let clip = (z - params.center) / params.viewHalf;
     let depthColor = log2(f32(state.step) + 1.0) / 25.6;
     if (all(abs(clip) <= vec2f(1.0))) {
@@ -133,23 +133,23 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
           vertices[slot] = OrbitPoint(clip, depthColor, 0.0);
         }
       }
-      if (state.step > ${HIDDEN_INITIAL_STEPS + 1}u && all(abs(fromClip) <= vec2f(1.0)) && state.step % params.lineStride == 0u) {
+      if (state.step > ${HIDDEN_INITIAL_STEPS + 1}u && all(abs(previousClip) <= vec2f(1.0)) && state.step % params.lineStride == 0u) {
         let future = vec2f(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + state.c;
         let futureClip = (future - params.center) / params.viewHalf;
-        let incoming = clip - fromClip;
+        let incoming = clip - previousClip;
         let outgoing = futureClip - clip;
         let incomingLength = length(incoming);
         let outgoingLength = length(outgoing);
         let safeOutgoing = outgoing / max(outgoingLength, 0.00001);
         let curvedOutgoing = safeOutgoing * min(outgoingLength, incomingLength * 1.5);
-        let control1 = fromClip + incoming / 3.0;
+        let control1 = previousClip + incoming / 3.0;
         let control2 = clip - curvedOutgoing / 3.0;
         if (incomingLength <= 0.5) {
           let lineVertex = atomicAdd(&lineDrawArgs.vertexCount, ${CURVE_SEGMENTS * 2}u);
           let lineSlot = lineVertex / ${CURVE_SEGMENTS * 2}u;
           if (lineSlot < ${LINE_SEGMENT_CAPACITY}u) {
             lineSegments[lineSlot] = CurveSegment(
-              fromClip, control1, control2, clip,
+              previousClip, control1, control2, clip,
               f32(i + 1u) / f32(acceleratedBatch), depthColor, vec2f(0.0)
             );
           }
@@ -269,7 +269,8 @@ ${fullscreenVertex}
 @fragment fn displayFs(in: VSOut) -> @location(0) vec4f {
   let base = textureSample(pondTexture, displaySampler, in.uv).rgb;
   let raw = textureSample(trailTexture, displaySampler, in.uv).rgb * 3.0;
-  let glow = raw / (vec3f(1.0) + raw);
+  let mapped = raw / (vec3f(1.0) + raw);
+  let glow = pow(clamp(mapped, vec3f(0.0), vec3f(1.0)), vec3f(0.72));
   let lines = textureSample(lineTexture, displaySampler, in.uv).rgb * 1.35;
   return vec4f(base + glow + lines, 1.0);
 }
@@ -345,6 +346,10 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
     return null;
   }
   const device = await adapter.requestDevice();
+  device.addEventListener("uncapturederror", (event: any) => {
+    console.error("WebGPU validation", event.error?.message || event.error);
+    fail("Orbit renderer hit a GPU validation error.");
+  });
   const context = canvas.getContext("webgpu") as any;
   const canvasFormat = gpu.getPreferredCanvasFormat();
   context.configure({ device, format: canvasFormat, alphaMode: "opaque" });
@@ -453,7 +458,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
 
   function resize() {
     const rect = canvas.getBoundingClientRect();
-    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    const pixelRatio = 1;
     const nextWidth = Math.max(1, Math.round(rect.width * pixelRatio));
     const nextHeight = Math.max(1, Math.round(rect.height * pixelRatio));
     if (nextWidth === width && nextHeight === height) return;
@@ -509,7 +514,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
   observer.observe(canvas);
   resize();
   device.queue.writeBuffer(fadeBuffer, 0, new Float32Array([1, 0, 0, 0]));
-  device.queue.writeBuffer(lineFadeBuffer, 0, new Float32Array([0.58, 0, 0, 0]));
+  device.queue.writeBuffer(lineFadeBuffer, 0, new Float32Array([0.82, 0, 0, 0]));
 
   function draw() {
     if (disposed || !textures.length) return;
@@ -584,7 +589,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
         uintStates[offset + 5] = 1;
       });
       if (nextSource + points.length > MAX_SOURCES) nextSource = 0;
-      device.queue.writeBuffer(stateBuffer, nextSource * 32, states);
+      device.queue.writeBuffer(stateBuffer, nextSource * 32, states.buffer, states.byteOffset, states.byteLength);
       nextSource = (nextSource + points.length) % MAX_SOURCES;
       sourceCount = Math.min(MAX_SOURCES, sourceCount + points.length);
     },
