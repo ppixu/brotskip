@@ -959,6 +959,16 @@ export default function MandelbrotSkipping() {
     let ripples: Array<{ cr: number; ci: number; born: number; index: number }> = [];
     let orbitScores: OrbitScore[] = [];
     let audio: AudioContext | null = null;
+    let iterationSynth: {
+      carrier: OscillatorNode;
+      overtone: OscillatorNode;
+      noise: AudioBufferSourceNode;
+      noiseGain: GainNode;
+      filter: BiquadFilterNode;
+      gain: GainNode;
+      pan: StereoPannerNode;
+    } | null = null;
+    let lastSonification = 0;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const flashlightCanvas = document.createElement("canvas");
     const flashlightContext = flashlightCanvas.getContext("2d");
@@ -995,19 +1005,109 @@ export default function MandelbrotSkipping() {
       }
     }
 
+    function ensureAudio() {
+      audio ||= new AudioContext();
+      if (audio.state === "suspended") void audio.resume();
+      return audio;
+    }
+
     function tone(frequency: number, duration = 0.08, volume = 0.05) {
       try {
-        audio ||= new AudioContext();
-        const oscillator = audio.createOscillator();
-        const gain = audio.createGain();
+        const context = ensureAudio();
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
         oscillator.type = "triangle";
         oscillator.frequency.value = frequency;
-        gain.gain.setValueAtTime(volume, audio.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + duration);
-        oscillator.connect(gain).connect(audio.destination);
+        gain.gain.setValueAtTime(volume, context.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + duration);
+        oscillator.connect(gain).connect(context.destination);
         oscillator.start();
-        oscillator.stop(audio.currentTime + duration);
+        oscillator.stop(context.currentTime + duration);
       } catch { /* audio is optional */ }
+    }
+
+    function ensureIterationSynth() {
+      if (iterationSynth) return iterationSynth;
+      const context = ensureAudio();
+      const carrier = context.createOscillator();
+      const overtone = context.createOscillator();
+      const carrierGain = context.createGain();
+      const overtoneGain = context.createGain();
+      const filter = context.createBiquadFilter();
+      const pan = context.createStereoPanner();
+      const gain = context.createGain();
+      const compressor = context.createDynamicsCompressor();
+      const noiseGain = context.createGain();
+      const noise = context.createBufferSource();
+      const noiseBuffer = context.createBuffer(1, Math.round(context.sampleRate * .75), context.sampleRate);
+      const noiseData = noiseBuffer.getChannelData(0);
+      let noiseState = 0x51f15e;
+      for (let index = 0; index < noiseData.length; index++) {
+        noiseState ^= noiseState << 13;
+        noiseState ^= noiseState >>> 17;
+        noiseState ^= noiseState << 5;
+        noiseData[index] = ((noiseState >>> 0) / 2147483648 - 1) * .55;
+      }
+      noise.buffer = noiseBuffer;
+      noise.loop = true;
+      carrier.type = "sine";
+      overtone.type = "triangle";
+      carrierGain.gain.value = .72;
+      overtoneGain.gain.value = .18;
+      noiseGain.gain.value = .0001;
+      filter.type = "lowpass";
+      filter.frequency.value = 420;
+      filter.Q.value = 2.2;
+      gain.gain.value = .0001;
+      compressor.threshold.value = -30;
+      compressor.knee.value = 18;
+      compressor.ratio.value = 5;
+      carrier.connect(carrierGain).connect(filter);
+      overtone.connect(overtoneGain).connect(filter);
+      noise.connect(noiseGain).connect(filter);
+      filter.connect(pan).connect(gain).connect(compressor).connect(context.destination);
+      carrier.start();
+      overtone.start();
+      noise.start();
+      iterationSynth = { carrier, overtone, noise, noiseGain, filter, gain, pan };
+      return iterationSynth;
+    }
+
+    function updateIterationSound(now: number) {
+      if (!audio) return;
+      const shouldPlay = (phase === "flying" || phase === "resolving") && orbitScores.length > 0;
+      if (!shouldPlay) {
+        if (iterationSynth) iterationSynth.gain.gain.setTargetAtTime(.0001, audio.currentTime, .08);
+        return;
+      }
+      if (now - lastSonification < 42) return;
+      lastSonification = now;
+      const synth = ensureIterationSynth();
+      const context = audio;
+      const activeCount = orbitScores.reduce((count, orbit) => count + (orbit.resolved ? 0 : 1), 0);
+      const activeRatio = activeCount / orbitScores.length;
+      const deepest = orbitScores.reduce((best, orbit) => Math.max(best, orbit.shownDepth), 0);
+      const depthBand = Math.log2(deepest + 1);
+      const spread = orbitScores.reduce((sum, orbit) => sum + orbitShape(orbit).spread, 0) / orbitScores.length;
+      const coverage = orbitScores.reduce((sum, orbit) => sum + orbit.distinct, 0);
+      const instability = orbitScores.reduce((sum, orbit) => sum + Math.min(1, Math.hypot(orbit.zr, orbit.zi) / 2), 0) / orbitScores.length;
+      const averageReal = orbitScores.reduce((sum, orbit) => sum + orbit.zr, 0) / orbitScores.length;
+      const glyphDensity = Math.min(1, orbitScores.length / Math.max(1, rock.skips * MAX_SOURCE_DOTS));
+      const pitchSteps = rock.skips * 1.7 + depthBand * .34 + spread * 5.5;
+      const frequency = Math.min(420, 52 * Math.pow(2, pitchSteps / 12));
+      const overtoneRatio = 1.48 + instability * .54;
+      const cutoff = Math.min(4800, 260 + spread * 2900 + depthBand * 48 + instability * 520);
+      const level = Math.min(.021, .0035 + activeRatio * .006 + spread * .006 + glyphDensity * .0035);
+      const grain = Math.min(.005, .00025 + spread * .0028 + Math.min(1, coverage / 220) * .0018);
+      const panning = Math.max(-.65, Math.min(.65, (averageReal - viewRef.current.centerX) / Math.max(viewRef.current.halfY, .001) * .35));
+      const at = context.currentTime;
+      synth.carrier.frequency.setTargetAtTime(frequency, at, .055);
+      synth.overtone.frequency.setTargetAtTime(frequency * overtoneRatio, at, .07);
+      synth.filter.frequency.setTargetAtTime(cutoff, at, .08);
+      synth.filter.Q.setTargetAtTime(1.4 + (1 - spread) * 5.2, at, .09);
+      synth.noiseGain.gain.setTargetAtTime(grain, at, .07);
+      synth.pan.pan.setTargetAtTime(panning, at, .08);
+      synth.gain.gain.setTargetAtTime(level * (phase === "resolving" ? .76 : 1), at, .09);
     }
 
     function updateHud(force = false) {
@@ -1429,6 +1529,7 @@ export default function MandelbrotSkipping() {
         accumulator -= fixed;
       }
       advanceOrbits(now, elapsed);
+      updateIterationSound(now);
       render(now);
       frame = requestAnimationFrame(loop);
     }
