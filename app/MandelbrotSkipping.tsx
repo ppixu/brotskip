@@ -31,6 +31,7 @@ type OrbitScore = {
   depth: number;
   shownDepth: number;
   skip: number;
+  invisibleRun: number;
   resolved: boolean;
   score: number;
 };
@@ -45,7 +46,9 @@ const MAX_VISUAL_DEPTH = 50_000_000;
 const SCORE_DEPTH_CAP = 2_000_000;
 const SOURCES_PER_SKIP = 100;
 const MAX_SOURCES = 800;
-const POINT_BUDGET = 100_000;
+const POINT_BUDGET = 200_000;
+const DEPTH_STEPS_PER_ACCELERATION = 32;
+const INVISIBLE_STEP_LIMIT = 48;
 const SCORE_KEY = "mandelbrot-skipping:scores:v1";
 const TAU = Math.PI * 2;
 const POND_CENTER = { x: -0.58, y: 0 };
@@ -66,7 +69,8 @@ struct OrbitState {
   c: vec2f,
   step: u32,
   alive: u32,
-  pad: vec2u,
+  invisibleRun: u32,
+  pad: u32,
 }
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read_write> vertices: array<OrbitPoint>;
@@ -85,7 +89,8 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
   if (source >= params.sourceCount) { return; }
   var state = states[source];
   if (state.alive == 0u || state.step >= params.maxDepth) { return; }
-  for (var i = 0u; i < params.batch; i++) {
+  let acceleratedBatch = min(params.batch, 1u + state.step / ${DEPTH_STEPS_PER_ACCELERATION}u);
+  for (var i = 0u; i < acceleratedBatch; i++) {
     let z = vec2f(
       state.z.x * state.z.x - state.z.y * state.z.y,
       2.0 * state.z.x * state.z.y
@@ -94,12 +99,15 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     state.step += 1u;
     let clip = (z - params.center) / params.viewHalf;
     if (all(abs(clip) <= vec2f(1.0))) {
+      state.invisibleRun = 0u;
       let slot = atomicAdd(&drawArgs.vertexCount, 1u);
       if (slot < ${POINT_BUDGET}u) {
         vertices[slot] = OrbitPoint(clip, log2(f32(state.step) + 1.0) / 25.6, 0.0);
       }
+    } else {
+      state.invisibleRun += 1u;
     }
-    if (dot(z, z) > 4.0 || state.step >= params.maxDepth) {
+    if (dot(z, z) > 4.0 || state.step >= params.maxDepth || state.invisibleRun >= ${INVISIBLE_STEP_LIMIT}u) {
       state.alive = 0u;
       break;
     }
@@ -601,7 +609,7 @@ export default function MandelbrotSkipping() {
         sources.push({ x: primary.x + Math.cos(angle) * innerRadius, y: primary.y + Math.sin(angle) * innerRadius });
       }
       for (const source of sources) {
-        orbitScores.push({ zr: 0, zi: 0, cr: source.x, ci: source.y, depth: 0, shownDepth: 0, skip: index, resolved: false, score: 0 });
+        orbitScores.push({ zr: 0, zi: 0, cr: source.x, ci: source.y, depth: 0, shownDepth: 0, skip: index, invisibleRun: 0, resolved: false, score: 0 });
       }
       engineRef.current?.spawn(sources);
       tone(320 + index * 62, 0.1, 0.06);
@@ -659,15 +667,20 @@ export default function MandelbrotSkipping() {
         else updateHud();
         return;
       }
-      const perOrbit = Math.max(1, Math.floor(POINT_BUDGET / Math.max(orbitScores.length, 1)));
+      const maxPerOrbit = Math.max(1, Math.floor(POINT_BUDGET / Math.max(orbitScores.length, 1)));
+      const viewHalfX = VIEW_HALF_Y * width / height;
       for (const orbit of orbitScores) {
         if (orbit.resolved) continue;
+        const perOrbit = Math.min(maxPerOrbit, 1 + Math.floor(orbit.depth / DEPTH_STEPS_PER_ACCELERATION));
         for (let step = 0; step < perOrbit && orbit.depth < SCORE_DEPTH_CAP; step++) {
           const nextR = orbit.zr * orbit.zr - orbit.zi * orbit.zi + orbit.cr;
           orbit.zi = 2 * orbit.zr * orbit.zi + orbit.ci;
           orbit.zr = nextR;
           orbit.depth += 1;
-          if (orbit.zr * orbit.zr + orbit.zi * orbit.zi > 4) {
+          const visible = Math.abs((orbit.zr - POND_CENTER.x) / viewHalfX) <= 1
+            && Math.abs((orbit.zi - POND_CENTER.y) / VIEW_HALF_Y) <= 1;
+          orbit.invisibleRun = visible ? 0 : orbit.invisibleRun + 1;
+          if (orbit.zr * orbit.zr + orbit.zi * orbit.zi > 4 || orbit.invisibleRun >= INVISIBLE_STEP_LIMIT) {
             orbit.resolved = true;
             break;
           }
