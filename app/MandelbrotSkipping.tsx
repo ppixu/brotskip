@@ -29,6 +29,8 @@ type OrbitScore = {
   cr: number;
   ci: number;
   depth: number;
+  shownDepth: number;
+  skip: number;
   resolved: boolean;
   score: number;
 };
@@ -126,28 +128,12 @@ ${fullscreenVertex}
 struct Pond { aspect: f32, time: f32, pad: vec2f }
 @group(0) @binding(0) var<uniform> pond: Pond;
 @fragment fn pondFs(in: VSOut) -> @location(0) vec4f {
-  let center = vec2f(-0.58, 0.0);
-  let halfView = vec2f(1.60 * pond.aspect, 1.20);
-  let c = center + (in.uv * 2.0 - 1.0) * halfView;
-  var z = vec2f(0.0);
-  var escaped = 0.0;
-  var depth = 0.0;
-  for (var i = 0; i < 112; i++) {
-    z = vec2f(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c;
-    if (dot(z, z) > 16.0) {
-      escaped = 1.0;
-      depth = f32(i) / 112.0;
-      break;
-    }
-  }
-  let shore = vec3f(0.018, 0.045, 0.076);
-  let deep = vec3f(0.018, 0.19, 0.25);
-  let rim = vec3f(0.08, 0.72, 0.82);
-  let wave = sin((in.uv.x * 1.5 + in.uv.y) * 90.0) * 0.014;
-  let water = mix(deep, rim, pow(1.0 - depth, 4.5)) + wave;
-  let inside = mix(water, vec3f(0.015, 0.10, 0.15), 1.0 - escaped);
-  let vignette = 1.0 - 0.34 * dot(in.uv - 0.5, in.uv - 0.5);
-  return vec4f(mix(inside, shore, smoothstep(0.80, 1.18, length(in.uv - 0.5))) * vignette, 1.0);
+  let vertical = smoothstep(0.0, 1.0, in.uv.y);
+  let radial = 1.0 - clamp(length((in.uv - 0.5) * vec2f(0.72 / clamp(pond.aspect, 0.7, 2.4), 1.0)), 0.0, 1.0);
+  let deep = vec3f(0.018, 0.075, 0.105);
+  let near = vec3f(0.025, 0.12, 0.15);
+  let color = mix(deep, near, vertical * 0.55 + radial * 0.22);
+  return vec4f(color, 1.0);
 }
 `;
 
@@ -549,10 +535,12 @@ export default function MandelbrotSkipping() {
 
     function updateHud(force = false) {
       const now = performance.now();
-      if (!force && now - lastHud < 90) return;
-      const deepest = orbitScores.reduce((best, orbit) => Math.max(best, orbit.depth), 0);
-      const score = orbitScores.reduce((sum, orbit, index) => sum + (orbit.resolved ? orbit.score : scoreForDepth(orbit.depth, index + 1)), 0);
-      const progress = orbitScores.length ? orbitScores.reduce((sum, orbit) => sum + Math.min(1, orbit.depth / SCORE_DEPTH_CAP), 0) / orbitScores.length : 0;
+      if (!force && now - lastHud < 33) return;
+      const deepest = orbitScores.reduce((best, orbit) => Math.max(best, orbit.shownDepth), 0);
+      const score = orbitScores.reduce((sum, orbit) => sum + scoreForDepth(orbit.shownDepth, orbit.skip), 0);
+      const resolvedRatio = orbitScores.length ? orbitScores.filter((orbit) => orbit.resolved).length / orbitScores.length : 0;
+      const depthRatio = orbitScores.length ? orbitScores.reduce((sum, orbit) => sum + Math.min(1, orbit.shownDepth / SCORE_DEPTH_CAP), 0) / orbitScores.length : 0;
+      const progress = resolvedRatio * 0.8 + depthRatio * 0.2;
       setHud({ phase, score, skips: rock.skips, deepest, progress });
       lastHud = now;
     }
@@ -578,7 +566,6 @@ export default function MandelbrotSkipping() {
       impacts.push({ x, y, born: now, index });
       ripples.push({ x, y, born: now, index });
       const primary = screenToComplex(x, y, width, height);
-      orbitScores.push({ zr: 0, zi: 0, cr: primary.x, ci: primary.y, depth: 0, resolved: false, score: 0 });
       const random = makeRandom((shotId * 73856093) ^ (index * 19349663));
       const aspect = width / height;
       const diskX = 0.018 * aspect;
@@ -589,6 +576,9 @@ export default function MandelbrotSkipping() {
         const radius = Math.sqrt(random());
         return { x: primary.x + Math.cos(angle) * radius * diskX, y: primary.y + Math.sin(angle) * radius * diskY };
       });
+      for (const source of sources) {
+        orbitScores.push({ zr: 0, zi: 0, cr: source.x, ci: source.y, depth: 0, shownDepth: 0, skip: index, resolved: false, score: 0 });
+      }
       engineRef.current?.spawn(sources);
       tone(320 + index * 62, 0.1, 0.06);
       if ("vibrate" in navigator) navigator.vibrate?.(12);
@@ -605,15 +595,15 @@ export default function MandelbrotSkipping() {
     function finishRound() {
       if (phase === "result") return;
       phase = "result";
-      orbitScores.forEach((orbit, index) => {
+      orbitScores.forEach((orbit) => {
         if (!orbit.resolved) {
           orbit.resolved = true;
-          orbit.score = scoreForDepth(orbit.depth, index + 1);
+          orbit.score = scoreForDepth(orbit.depth, orbit.skip);
         }
+        orbit.shownDepth = orbit.depth;
       });
       const baseScore = orbitScores.reduce((sum, orbit) => sum + orbit.score, 0);
-      const skipBonus = Math.max(0, rock.skips - 3) * 500;
-      const total = baseScore + skipBonus;
+      const total = baseScore;
       const deepest = orbitScores.reduce((best, orbit) => Math.max(best, orbit.depth), 0);
       const id = `${Date.now()}-${shotId}`;
       setCurrentResultId(id);
@@ -629,15 +619,24 @@ export default function MandelbrotSkipping() {
       tone(720, 0.18, 0.07);
     }
 
-    function advanceOrbits(now: number) {
+    function advanceOrbits(now: number, elapsed: number) {
+      const ease = 1 - Math.exp(-elapsed / 0.16);
+      const easeShownDepths = () => {
+        for (const orbit of orbitScores) {
+          const gap = orbit.depth - orbit.shownDepth;
+          orbit.shownDepth = gap < 16 ? orbit.depth : Math.min(orbit.depth, orbit.shownDepth + Math.max(1, gap * ease));
+        }
+      };
       const active = orbitScores.filter((orbit) => !orbit.resolved);
       if (!active.length) {
-        if (phase === "resolving" && now - resolveStarted > 500) finishRound();
+        easeShownDepths();
+        const caughtUp = orbitScores.every((orbit) => orbit.depth - orbit.shownDepth < 16);
+        if (phase === "resolving" && now - resolveStarted > 250 && caughtUp) finishRound();
+        else updateHud();
         return;
       }
-      const perOrbit = Math.max(500, Math.floor(100_000 / active.length));
-      for (let index = 0; index < orbitScores.length; index++) {
-        const orbit = orbitScores[index];
+      const perOrbit = Math.max(1, Math.floor(POINT_BUDGET / Math.max(orbitScores.length, 1)));
+      for (const orbit of orbitScores) {
         if (orbit.resolved) continue;
         for (let step = 0; step < perOrbit && orbit.depth < SCORE_DEPTH_CAP; step++) {
           const nextR = orbit.zr * orbit.zr - orbit.zi * orbit.zi + orbit.cr;
@@ -650,9 +649,12 @@ export default function MandelbrotSkipping() {
           }
         }
         if (orbit.depth >= SCORE_DEPTH_CAP) orbit.resolved = true;
-        if (orbit.resolved) orbit.score = scoreForDepth(orbit.depth, index + 1);
+        if (orbit.resolved) orbit.score = scoreForDepth(orbit.depth, orbit.skip);
       }
-      if (phase === "resolving" && (orbitScores.every((orbit) => orbit.resolved) || now - resolveStarted > 7000)) finishRound();
+      easeShownDepths();
+      const allResolved = orbitScores.every((orbit) => orbit.resolved);
+      const caughtUp = orbitScores.every((orbit) => orbit.depth - orbit.shownDepth < 16);
+      if (phase === "resolving" && ((allResolved && caughtUp && now - resolveStarted > 250) || now - resolveStarted > 9000)) finishRound();
       else updateHud();
     }
 
@@ -688,26 +690,6 @@ export default function MandelbrotSkipping() {
       }
     }
 
-    function drawSling(a: { x: number; y: number }) {
-      const scale = Math.max(0.75, Math.min(1.2, minDimension() / 650));
-      const left = { x: a.x - 30 * scale, y: a.y + 20 * scale };
-      const right = { x: a.x + 30 * scale, y: a.y + 20 * scale };
-      ctx.lineCap = "round";
-      ctx.lineWidth = 10 * scale;
-      ctx.strokeStyle = "#743b1d";
-      ctx.beginPath(); ctx.moveTo(a.x - 34 * scale, a.y + 54 * scale); ctx.lineTo(left.x, left.y); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(a.x + 34 * scale, a.y + 54 * scale); ctx.lineTo(right.x, right.y); ctx.stroke();
-      ctx.lineWidth = 3 * scale;
-      ctx.strokeStyle = "#d7823e";
-      ctx.beginPath(); ctx.moveTo(a.x - 34 * scale, a.y + 54 * scale); ctx.lineTo(left.x, left.y); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(a.x + 34 * scale, a.y + 54 * scale); ctx.lineTo(right.x, right.y); ctx.stroke();
-      if (phase === "aiming") {
-        ctx.lineWidth = 5 * scale;
-        ctx.strokeStyle = "#351b11";
-        ctx.beginPath(); ctx.moveTo(left.x, left.y); ctx.lineTo(rock.x, rock.y); ctx.lineTo(right.x, right.y); ctx.stroke();
-      }
-    }
-
     function drawPrediction(a: { x: number; y: number }) {
       if (phase !== "aiming") return;
       const dx = a.x - pull.x;
@@ -722,16 +704,16 @@ export default function MandelbrotSkipping() {
       const vz = minDimension() * (0.38 + 0.20 * power);
       const gravity = minDimension() * 1.65;
       const airtime = 2 * vz / gravity;
-      ctx.fillStyle = "rgba(255, 230, 109, .78)";
-      for (let i = 1; i <= 12; i++) {
-        const t = airtime * i / 12;
-        const fade = 1 - i / 15;
-        ctx.globalAlpha = fade;
-        ctx.beginPath();
-        ctx.arc(a.x + vx * t, a.y + vy * t, Math.max(1.5, 3.5 - i * .13), 0, TAU);
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
+      const landing = { x: a.x + vx * airtime, y: a.y + vy * airtime };
+      ctx.save();
+      ctx.strokeStyle = "rgba(255, 255, 255, .42)";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([7, 9]);
+      ctx.beginPath(); ctx.moveTo(rock.x, rock.y); ctx.lineTo(landing.x, landing.y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.strokeStyle = "rgba(255, 255, 255, .58)";
+      ctx.beginPath(); ctx.arc(landing.x, landing.y, 8, 0, TAU); ctx.stroke();
+      ctx.restore();
     }
 
     function drawRock() {
@@ -749,18 +731,15 @@ export default function MandelbrotSkipping() {
       ctx.translate(rock.x, rock.y - lift);
       ctx.rotate(rock.spin);
       const gradient = ctx.createRadialGradient(-5, -7, 1, 0, 0, radius);
-      gradient.addColorStop(0, "#ffd29c");
-      gradient.addColorStop(.3, "#ff9f43");
-      gradient.addColorStop(1, "#a84916");
+      gradient.addColorStop(0, "#ffffff");
+      gradient.addColorStop(.68, "#f5fbff");
+      gradient.addColorStop(1, "#afc7d3");
       ctx.fillStyle = gradient;
-      ctx.strokeStyle = "#4b2515";
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = "rgba(4, 18, 29, .82)";
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.ellipse(0, 0, radius * 1.08, radius * .78, .15, 0, TAU);
+      ctx.arc(0, 0, radius, 0, TAU);
       ctx.fill(); ctx.stroke();
-      ctx.fillStyle = "rgba(70, 29, 12, .38)";
-      ctx.beginPath(); ctx.arc(4, 2, 3.3, 0, TAU); ctx.fill();
-      ctx.beginPath(); ctx.arc(-6, 5, 2.2, 0, TAU); ctx.fill();
       ctx.restore();
     }
 
@@ -787,12 +766,6 @@ export default function MandelbrotSkipping() {
         ctx.beginPath(); ctx.arc(impact.x, impact.y, 10, 0, TAU); ctx.fill();
         ctx.fillStyle = "#081624";
         ctx.fillText(String(impact.index), impact.x, impact.y + 4);
-        const orbit = orbitScores[impact.index - 1];
-        if (orbit) {
-          ctx.fillStyle = "rgba(217, 249, 255, .82)";
-          ctx.font = "800 9px Arial";
-          ctx.fillText(`${formatNumber(orbit.depth)} deep`, impact.x, impact.y - 16);
-        }
       }
       ctx.textAlign = "start";
     }
@@ -801,7 +774,6 @@ export default function MandelbrotSkipping() {
       ctx.clearRect(0, 0, width, height);
       const a = anchor();
       drawPrediction(a);
-      drawSling(a);
       drawEffects(now);
       drawRock();
     }
@@ -815,7 +787,7 @@ export default function MandelbrotSkipping() {
         simulate(fixed, now);
         accumulator -= fixed;
       }
-      advanceOrbits(now);
+      advanceOrbits(now, elapsed);
       render(now);
       frame = requestAnimationFrame(loop);
     }
@@ -921,7 +893,7 @@ export default function MandelbrotSkipping() {
     };
   }, []);
 
-  const instruction = hud.phase === "ready" ? "Grab the stone. Pull back. Release to skip."
+  const instruction = hud.phase === "ready" ? "Grab the white orb. Pull back and release."
     : hud.phase === "aiming" ? "Aim for deep water · farther pull = faster throw"
     : hud.phase === "flying" ? "Each splash launches 100 complex orbits"
     : hud.phase === "resolving" ? `Resolving the pond · ${Math.round(hud.progress * 100)}%`
@@ -931,46 +903,33 @@ export default function MandelbrotSkipping() {
     <main className="gameShell">
       <section className="playfield" aria-label="Mandelbrot rock skipping game">
         <canvas ref={gpuCanvasRef} className="gpuCanvas" aria-hidden="true" />
-        <div className="waterGrain" aria-hidden="true" />
-        <canvas ref={gameCanvasRef} className="gameCanvas" aria-label="Drag the orange stone backward and release it across the Mandelbrot pond" />
+        <canvas ref={gameCanvasRef} className="gameCanvas" aria-label="Drag the white orb backward and release it across the water" />
+      </section>
 
-        <header className="hud">
-          <div className="brandBlock">
-            <span className="kicker">Complex-water arcade</span>
-            <h1 className="gameTitle">Mandelbrot<br />Skipping</h1>
-          </div>
-          <div className="hudStats" aria-live="polite">
-            <div className="hudPill"><span className="hudLabel">Score</span><span className="hudValue">{formatNumber(hud.score)}</span></div>
-            <div className="hudPill"><span className="hudLabel">Deepest</span><span className="hudValue">{hud.deepest ? formatNumber(hud.deepest) : "—"}</span></div>
-            <div className="hudPill"><span className="hudLabel">Skips</span><span className="hudValue">{hud.skips}</span></div>
-          </div>
-        </header>
-
-        <div className="instruction">{instruction}</div>
-        {gpuError && <div className="gpuNote" role="status">{gpuError}</div>}
+      <aside className={`scoreRail ${hud.phase === "result" ? "hasResult" : ""}`} aria-label="Score and local high scores">
+        <section className="liveScore" aria-live="polite">
+          <span className="liveLabel">{hud.phase === "result" ? "Final score" : "Live score"}</span>
+          <strong className="liveNumber">{formatNumber(hud.score)}</strong>
+          <span className="liveMeta">{hud.skips} skips · {hud.deepest ? formatNumber(hud.deepest) : "0"} deep</span>
+          <span className="liveProgress"><i style={{ width: `${Math.max(2, hud.progress * 100)}%` }} /></span>
+        </section>
 
         {hud.phase === "result" && (
-          <section className="resultCard" aria-label="Throw result">
+          <section className="railResult" aria-label="Throw result">
             <div className="resultEyebrow">{scores[0]?.id === currentResultId ? "New local best" : "Throw complete"}</div>
-            <div className="resultScore">{formatNumber(hud.score)}</div>
-            <div className="resultGrid">
-              <div className="resultStat"><span className="hudLabel">Skips</span><strong>{hud.skips}</strong></div>
-              <div className="resultStat"><span className="hudLabel">Deepest orbit</span><strong>{formatNumber(hud.deepest)}</strong></div>
-              <div className="resultStat"><span className="hudLabel">Orbit seeds</span><strong>{hud.skips * SOURCES_PER_SKIP}</strong></div>
-            </div>
+            <div className="resultStats">{hud.skips * SOURCES_PER_SKIP} orbit seeds reached {formatNumber(hud.deepest)} depth.</div>
             <div className="nameRow">
               <input className="nameInput" aria-label="High score name" value={playerName} maxLength={12} onChange={(event) => renameCurrent(event.target.value)} />
               <button className="throwButton" onClick={() => restartRef.current()}>Throw again</button>
             </div>
           </section>
         )}
-      </section>
 
-      <aside className="scoreRail" aria-label="Local high scores">
         <h2 className="railTitle">Local legends</h2>
-        <p className="railSub">Deep escaping orbits score more. Later skips earn a larger multiplier.</p>
+        <p className="railSub">Deeper orbits score more. Later skips earn a larger multiplier.</p>
+        {gpuError && <p className="gpuNote" role="status">{gpuError}</p>}
         <div className="scoreList">
-          {scores.length === 0 && <div className="emptyScores">No stones thrown yet.<br />The pond is waiting.</div>}
+          {scores.length === 0 && <div className="emptyScores">No throws yet.</div>}
           {scores.map((entry, index) => (
             <div className={`scoreEntry ${entry.id === currentResultId ? "current" : ""}`} key={entry.id}>
               <span className="rank">{String(index + 1).padStart(2, "0")}</span>
@@ -979,6 +938,7 @@ export default function MandelbrotSkipping() {
             </div>
           ))}
         </div>
+        <div className="railHint">{instruction}</div>
         <div className="railFooter">Saved on this device · 2M scoring cap · 50M visual depth</div>
       </aside>
     </main>
