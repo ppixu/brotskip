@@ -12,6 +12,8 @@ type Hud = {
   skips: number;
   deepest: number;
   progress: number;
+  coverage: number;
+  spread: number;
 };
 
 type ScoreEntry = {
@@ -20,6 +22,8 @@ type ScoreEntry = {
   score: number;
   deepest: number;
   skips: number;
+  coverage: number;
+  spread: number;
   createdAt: string;
 };
 
@@ -33,9 +37,15 @@ type OrbitScore = {
   depth: number;
   shownDepth: number;
   skip: number;
-  weight: number;
   invisibleRun: number;
   convergenceHits: number;
+  cells: Uint32Array;
+  distinct: number;
+  sumX: number;
+  sumY: number;
+  sumXX: number;
+  sumYY: number;
+  sumXY: number;
   resolved: boolean;
   score: number;
 };
@@ -56,7 +66,6 @@ type OrbitEngine = {
 
 const MAX_VISUAL_DEPTH = 2_000_000;
 const SCORE_DEPTH_CAP = 2_000_000;
-const SCORE_WEIGHT_PER_SKIP = 100;
 const MAX_SOURCES = 16;
 const MAX_SKIPS = 7;
 const SLING_DRAW_PULL_RATIO = 0.30;
@@ -64,19 +73,27 @@ const SLING_THROW_PULL_RATIO = 0.16;
 const POINT_BUDGET = 200_000;
 const POINT_ENERGY = 0.1;
 const HIDDEN_INITIAL_STEPS = 1;
-const CURVE_SEGMENTS = 3;
-const LINE_SEGMENT_BUDGET = 50_000;
+const CURVE_SEGMENTS = 6;
+const LINE_SEGMENT_BUDGET = 25_000;
 const LINE_SEGMENT_CAPACITY = LINE_SEGMENT_BUDGET + MAX_SOURCES;
-const DEPTH_STEPS_PER_ACCELERATION = 32;
+const BASE_STEPS_PER_SOURCE = 4;
+const DEPTH_STEPS_PER_ACCELERATION = 16;
+const COVERAGE_GRID = 32;
+const COVERAGE_WORDS = COVERAGE_GRID * COVERAGE_GRID / 32;
+const FULL_GRID_VARIANCE = (COVERAGE_GRID * COVERAGE_GRID - 1) / 12;
+const SCORE_SAMPLE_STRIDE = 4;
 const INVISIBLE_STEP_LIMIT = 24;
 const CONVERGENCE_MIN_DEPTH = 96;
 const CONVERGENCE_SAMPLE_STRIDE = 1;
 const CONVERGENCE_HITS = 2;
 const CONVERGENCE_PIXEL_RADIUS = 0.72;
-const SCORE_KEY = "mandelbrot-skipping:scores:v1";
+const SCORE_KEY = "mandelbrot-skipping:scores:v2";
+const LEGACY_SCORE_KEY = "mandelbrot-skipping:scores:v1";
 const TAU = Math.PI * 2;
 const POND_CENTER = { x: -0.58, y: 0 };
 const VIEW_HALF_Y = 0.8;
+const SCORE_HALF_X = 1.6;
+const SCORE_HALF_Y = 1.15;
 const MIN_VIEW_HALF_Y = 0.035;
 const MAX_VIEW_HALF_Y = 2.4;
 
@@ -85,7 +102,7 @@ struct Params {
   sourceCount: u32,
   batch: u32,
   maxDepth: u32,
-  lineStride: u32,
+  lineQuota: u32,
   center: vec2f,
   viewHalf: vec2f,
   viewport: vec2f,
@@ -98,9 +115,10 @@ struct CurveSegment {
   control1: vec2f,
   control2: vec2f,
   end: vec2f,
-  freshness: f32,
+  freshnessStart: f32,
+  freshnessEnd: f32,
   depth: f32,
-  pad: vec2f,
+  pad: f32,
 }
 struct OrbitState {
   z: vec2f,
@@ -131,7 +149,9 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
   if (source >= params.sourceCount) { return; }
   var state = states[source];
   if (state.alive == 0u || state.step >= params.maxDepth) { return; }
-  let acceleratedBatch = min(params.batch, 1u + state.step / ${DEPTH_STEPS_PER_ACCELERATION}u);
+  let acceleratedBatch = min(params.batch, ${BASE_STEPS_PER_SOURCE}u + state.step / ${DEPTH_STEPS_PER_ACCELERATION}u);
+  let lineCount = min(acceleratedBatch, params.lineQuota);
+  let firstLineStep = acceleratedBatch - lineCount;
   for (var i = 0u; i < acceleratedBatch; i++) {
     let previousZ = state.z;
     let z = vec2f(
@@ -157,7 +177,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
           vertices[slot] = OrbitPoint(clip, depthColor, 0.0);
         }
       }
-      if (state.step > ${HIDDEN_INITIAL_STEPS + 1}u && all(abs(previousClip) <= vec2f(1.0)) && state.step % params.lineStride == 0u) {
+      if (state.step > ${HIDDEN_INITIAL_STEPS + 1}u && all(abs(previousClip) <= vec2f(1.0)) && i >= firstLineStep) {
         let future = vec2f(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + state.c;
         let futureClip = (future - params.center) / params.viewHalf;
         let incoming = clip - previousClip;
@@ -174,7 +194,9 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
           if (lineSlot < ${LINE_SEGMENT_CAPACITY}u) {
             lineSegments[lineSlot] = CurveSegment(
               previousClip, control1, control2, clip,
-              f32(i + 1u) / f32(acceleratedBatch), depthColor, vec2f(0.0)
+              f32(i - firstLineStep) / f32(max(lineCount, 1u)),
+              f32(i - firstLineStep + 1u) / f32(max(lineCount, 1u)),
+              depthColor, 0.0
             );
           }
         }
@@ -222,9 +244,10 @@ struct CurveSegment {
   control1: vec2f,
   control2: vec2f,
   end: vec2f,
-  freshness: f32,
+  freshnessStart: f32,
+  freshnessEnd: f32,
   depth: f32,
-  pad: vec2f,
+  pad: f32,
 }
 @group(0) @binding(0) var<storage, read> segments: array<CurveSegment>;
 struct VSOut {
@@ -250,7 +273,8 @@ fn bezier(curve: CurveSegment, t: f32) -> vec2f {
   var out: VSOut;
   out.position = vec4f(bezier(curve, t), 0.0, 1.0);
   out.color = mix(vec3f(0.08, 0.66, 0.86), vec3f(0.78, 1.0, 0.70), depth);
-  out.alpha = 0.46 * pow(curve.freshness, 0.78) * mix(0.14, 1.0, t);
+  let directionalFreshness = mix(curve.freshnessStart, curve.freshnessEnd, t);
+  out.alpha = 0.34 * pow(directionalFreshness, 0.65);
   return out;
 }
 @fragment fn fs(in: VSOut) -> @location(0) vec4f {
@@ -325,10 +349,26 @@ function formatNumber(value: number) {
   return Math.round(value).toLocaleString();
 }
 
-function scoreForDepth(depth: number, skip: number) {
+function orbitShape(orbit: OrbitScore) {
+  const n = orbit.distinct;
+  if (!n) return { area: 0, coverage: 0, spread: 0 };
+  const meanX = orbit.sumX / n;
+  const meanY = orbit.sumY / n;
+  const varianceX = Math.max(0, orbit.sumXX / n - meanX * meanX);
+  const varianceY = Math.max(0, orbit.sumYY / n - meanY * meanY);
+  const covariance = orbit.sumXY / n - meanX * meanY;
+  const area = Math.min(1, Math.sqrt(Math.max(0, varianceX * varianceY - covariance * covariance)) / FULL_GRID_VARIANCE);
+  const coverage = Math.min(1, Math.log2(1 + n) / Math.log2(1 + COVERAGE_GRID * COVERAGE_GRID));
+  return { area, coverage, spread: Math.sqrt(area) };
+}
+
+function scoreForOrbit(orbit: OrbitScore, depth: number) {
   const capped = Math.min(depth, SCORE_DEPTH_CAP);
-  const base = Math.round(capped * 0.12 + Math.sqrt(capped) * 22);
-  return Math.round(base * (1 + (skip - 1) * 0.12));
+  const shape = orbitShape(orbit);
+  const depthScore = capped * 0.03 + Math.sqrt(capped) * 75;
+  const coverageScore = 80_000 * shape.coverage;
+  const areaScore = 120_000 * shape.spread * Math.min(1, orbit.distinct / 24);
+  return Math.round((depthScore + coverageScore + areaScore) * (1 + (orbit.skip - 1) * 0.12));
 }
 
 function makeRandom(seed: number) {
@@ -360,21 +400,32 @@ function complexToScreen(x: number, y: number, width: number, height: number, vi
 function loadScores(): ScoreEntry[] {
   try {
     const parsed = JSON.parse(localStorage.getItem(SCORE_KEY) || "null");
-    if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.entries)) return [];
-    return parsed.entries.filter((entry: unknown): entry is ScoreEntry => {
-      if (!entry || typeof entry !== "object") return false;
+    const normalize = (entries: unknown[], legacy = false) => entries.flatMap((entry: unknown): ScoreEntry[] => {
+      if (!entry || typeof entry !== "object") return [];
       const item = entry as Partial<ScoreEntry>;
-      return typeof item.id === "string" && typeof item.name === "string" && item.name.length <= 12 &&
+      const valid = typeof item.id === "string" && typeof item.name === "string" && item.name.length <= 12 &&
         Number.isFinite(item.score) && Number.isFinite(item.deepest) && Number.isFinite(item.skips) &&
         typeof item.createdAt === "string";
+      if (!valid) return [];
+      return [{
+        id: item.id!, name: item.name!, score: legacy ? Math.round(item.score! / 100) : item.score!,
+        deepest: item.deepest!, skips: item.skips!, coverage: Number.isFinite(item.coverage) ? item.coverage! : 0,
+        spread: Number.isFinite(item.spread) ? item.spread! : 0, createdAt: item.createdAt!,
+      }];
     }).slice(0, 10);
+    if (parsed?.version === 2 && Array.isArray(parsed.entries)) return normalize(parsed.entries);
+    const legacy = JSON.parse(localStorage.getItem(LEGACY_SCORE_KEY) || "null");
+    if (legacy?.version !== 1 || !Array.isArray(legacy.entries)) return [];
+    const migrated = normalize(legacy.entries, true);
+    storeScores(migrated);
+    return migrated;
   } catch {
     return [];
   }
 }
 
 function storeScores(entries: ScoreEntry[]) {
-  try { localStorage.setItem(SCORE_KEY, JSON.stringify({ version: 1, entries })); } catch { /* local play still works */ }
+  try { localStorage.setItem(SCORE_KEY, JSON.stringify({ version: 2, entries })); } catch { /* local play still works */ }
 }
 
 async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: string) => void): Promise<OrbitEngine | null> {
@@ -568,7 +619,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
     ints[0] = sourceCount;
     ints[1] = batch;
     ints[2] = MAX_VISUAL_DEPTH;
-    ints[3] = Math.max(1, Math.ceil(sourceCount * batch / LINE_SEGMENT_BUDGET));
+    ints[3] = Math.max(1, Math.floor(LINE_SEGMENT_BUDGET / Math.max(sourceCount, 1)));
     const floats = new Float32Array(ints.buffer);
     floats[4] = view.centerX;
     floats[5] = view.centerY;
@@ -586,7 +637,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
     const offsetX = (view.centerX - previousView.centerX) / (2 * oldHalfX);
     const offsetY = -(view.centerY - previousView.centerY) / (2 * previousView.halfY);
     device.queue.writeBuffer(fadeBuffer, 0, new Float32Array([1, 0, 0, 0, viewScale, viewScale, offsetX, offsetY]));
-    device.queue.writeBuffer(lineFadeBuffer, 0, new Float32Array([0.82, 0, 0, 0, viewScale, viewScale, offsetX, offsetY]));
+    device.queue.writeBuffer(lineFadeBuffer, 0, new Float32Array([0.92, 0, 0, 0, viewScale, viewScale, offsetX, offsetY]));
     const destination = textures[1 - textureIndex];
     const lineDestination = lineTextures[1 - textureIndex];
     const encoder = device.createCommandEncoder();
@@ -703,7 +754,7 @@ export default function MandelbrotSkipping() {
   const restartRef = useRef<() => void>(() => {});
   const playerNameRef = useRef("YOU");
   const [gpuError, setGpuError] = useState<string | null>(null);
-  const [hud, setHud] = useState<Hud>({ phase: "ready", score: 0, skips: 0, deepest: 0, progress: 0 });
+  const [hud, setHud] = useState<Hud>({ phase: "ready", score: 0, skips: 0, deepest: 0, progress: 0, coverage: 0, spread: 0 });
   const [scores, setScores] = useState<ScoreEntry[]>([]);
   const [playerName, setPlayerName] = useState("YOU");
   const [currentResultId, setCurrentResultId] = useState<string | null>(null);
@@ -809,12 +860,36 @@ export default function MandelbrotSkipping() {
       const now = performance.now();
       if (!force && now - lastHud < 33) return;
       const deepest = orbitScores.reduce((best, orbit) => Math.max(best, orbit.shownDepth), 0);
-      const score = orbitScores.reduce((sum, orbit) => sum + scoreForDepth(orbit.shownDepth, orbit.skip) * orbit.weight, 0);
+      const score = orbitScores.reduce((sum, orbit) => sum + scoreForOrbit(orbit, orbit.shownDepth), 0);
+      const coverage = orbitScores.reduce((sum, orbit) => sum + orbit.distinct, 0);
+      const spread = orbitScores.length
+        ? orbitScores.reduce((sum, orbit) => sum + orbitShape(orbit).spread, 0) / orbitScores.length
+        : 0;
       const resolvedRatio = orbitScores.length ? orbitScores.filter((orbit) => orbit.resolved).length / orbitScores.length : 0;
       const depthRatio = orbitScores.length ? orbitScores.reduce((sum, orbit) => sum + Math.min(1, orbit.shownDepth / SCORE_DEPTH_CAP), 0) / orbitScores.length : 0;
       const progress = resolvedRatio * 0.8 + depthRatio * 0.2;
-      setHud({ phase, score, skips: rock.skips, deepest, progress });
+      setHud({ phase, score, skips: rock.skips, deepest, progress, coverage, spread });
       lastHud = now;
+    }
+
+    function recordOrbitCell(orbit: OrbitScore) {
+      if (orbit.depth <= HIDDEN_INITIAL_STEPS || orbit.depth % SCORE_SAMPLE_STRIDE !== 0) return;
+      const ux = (orbit.zr - POND_CENTER.x) / SCORE_HALF_X * 0.5 + 0.5;
+      const uy = (orbit.zi - POND_CENTER.y) / SCORE_HALF_Y * 0.5 + 0.5;
+      if (ux < 0 || ux >= 1 || uy < 0 || uy >= 1) return;
+      const gx = Math.min(COVERAGE_GRID - 1, Math.floor(ux * COVERAGE_GRID));
+      const gy = Math.min(COVERAGE_GRID - 1, Math.floor(uy * COVERAGE_GRID));
+      const cell = gy * COVERAGE_GRID + gx;
+      const word = cell >>> 5;
+      const mask = 1 << (cell & 31);
+      if ((orbit.cells[word] & mask) !== 0) return;
+      orbit.cells[word] |= mask;
+      orbit.distinct += 1;
+      orbit.sumX += gx;
+      orbit.sumY += gy;
+      orbit.sumXX += gx * gx;
+      orbit.sumYY += gy * gy;
+      orbit.sumXY += gx * gy;
     }
 
     function resetRound() {
@@ -843,8 +918,10 @@ export default function MandelbrotSkipping() {
       orbitScores.push({
         zr: 0, zi: 0, tortoiseR: 0, tortoiseI: 0,
         cr: source.x, ci: source.y, depth: 0, shownDepth: 0,
-        skip: index, weight: SCORE_WEIGHT_PER_SKIP, invisibleRun: 0,
+        skip: index, invisibleRun: 0,
         convergenceHits: 0, resolved: false, score: 0,
+        cells: new Uint32Array(COVERAGE_WORDS), distinct: 0,
+        sumX: 0, sumY: 0, sumXX: 0, sumYY: 0, sumXY: 0,
       });
       engineRef.current?.spawn([source]);
       tone(320 + index * 62, 0.1, 0.06);
@@ -866,16 +943,23 @@ export default function MandelbrotSkipping() {
       orbitScores.forEach((orbit) => {
         if (!orbit.resolved) {
           orbit.resolved = true;
-          orbit.score = scoreForDepth(orbit.depth, orbit.skip) * orbit.weight;
+          orbit.score = scoreForOrbit(orbit, orbit.depth);
         }
         orbit.shownDepth = orbit.depth;
       });
       const baseScore = orbitScores.reduce((sum, orbit) => sum + orbit.score, 0);
       const total = baseScore;
       const deepest = orbitScores.reduce((best, orbit) => Math.max(best, orbit.depth), 0);
+      const coverage = orbitScores.reduce((sum, orbit) => sum + orbit.distinct, 0);
+      const spread = orbitScores.length
+        ? orbitScores.reduce((sum, orbit) => sum + orbitShape(orbit).spread, 0) / orbitScores.length
+        : 0;
       const id = `${Date.now()}-${shotId}`;
       setCurrentResultId(id);
-      const entry: ScoreEntry = { id, name: playerNameRef.current || "YOU", score: total, deepest, skips: rock.skips, createdAt: new Date().toISOString() };
+      const entry: ScoreEntry = {
+        id, name: playerNameRef.current || "YOU", score: total, deepest, skips: rock.skips,
+        coverage, spread, createdAt: new Date().toISOString(),
+      };
       setScores((previous) => {
         const next = [...previous, entry]
           .sort((a, b) => b.score - a.score || b.deepest - a.deepest || a.createdAt.localeCompare(b.createdAt))
@@ -883,7 +967,7 @@ export default function MandelbrotSkipping() {
         storeScores(next);
         return next;
       });
-      setHud({ phase, score: total, skips: rock.skips, deepest, progress: 1 });
+      setHud({ phase, score: total, skips: rock.skips, deepest, progress: 1, coverage, spread });
       tone(720, 0.18, 0.07);
     }
 
@@ -913,12 +997,13 @@ export default function MandelbrotSkipping() {
       const viewHalfX = view.halfY * width / height;
       for (const orbit of orbitScores) {
         if (orbit.resolved) continue;
-        const perOrbit = Math.min(maxPerOrbit, 1 + Math.floor(orbit.depth / DEPTH_STEPS_PER_ACCELERATION));
+        const perOrbit = Math.min(maxPerOrbit, BASE_STEPS_PER_SOURCE + Math.floor(orbit.depth / DEPTH_STEPS_PER_ACCELERATION));
         for (let step = 0; step < perOrbit && orbit.depth < SCORE_DEPTH_CAP; step++) {
           const nextR = Math.fround(Math.fround(orbit.zr * orbit.zr - orbit.zi * orbit.zi) + orbit.cr);
           orbit.zi = Math.fround(Math.fround(2 * orbit.zr * orbit.zi) + orbit.ci);
           orbit.zr = nextR;
           orbit.depth += 1;
+          recordOrbitCell(orbit);
           if (orbit.depth % 2 === 0) {
             const tortoiseR = Math.fround(Math.fround(orbit.tortoiseR * orbit.tortoiseR - orbit.tortoiseI * orbit.tortoiseI) + orbit.cr);
             orbit.tortoiseI = Math.fround(Math.fround(2 * orbit.tortoiseR * orbit.tortoiseI) + orbit.ci);
@@ -930,7 +1015,8 @@ export default function MandelbrotSkipping() {
           if (orbit.depth >= CONVERGENCE_MIN_DEPTH && orbit.depth % CONVERGENCE_SAMPLE_STRIDE === 0) {
             const dxPx = (orbit.zr - orbit.tortoiseR) / viewHalfX * width * 0.5;
             const dyPx = (orbit.zi - orbit.tortoiseI) / view.halfY * height * 0.5;
-            orbit.convergenceHits = Math.hypot(dxPx, dyPx) <= CONVERGENCE_PIXEL_RADIUS ? orbit.convergenceHits + 1 : 0;
+            orbit.convergenceHits = dxPx * dxPx + dyPx * dyPx <= CONVERGENCE_PIXEL_RADIUS * CONVERGENCE_PIXEL_RADIUS
+              ? orbit.convergenceHits + 1 : 0;
           }
           if (orbit.zr * orbit.zr + orbit.zi * orbit.zi > 4 || orbit.invisibleRun >= INVISIBLE_STEP_LIMIT || orbit.convergenceHits >= CONVERGENCE_HITS) {
             orbit.resolved = true;
@@ -940,7 +1026,7 @@ export default function MandelbrotSkipping() {
         if (orbit.depth >= SCORE_DEPTH_CAP) orbit.resolved = true;
         if (orbit.resolved) {
           orbit.shownDepth = orbit.depth;
-          orbit.score = scoreForDepth(orbit.depth, orbit.skip) * orbit.weight;
+          orbit.score = scoreForOrbit(orbit, orbit.depth);
         }
       }
       easeShownDepths();
@@ -1276,7 +1362,7 @@ export default function MandelbrotSkipping() {
         <section className="liveScore" aria-live="polite">
           <span className="liveLabel">{hud.phase === "result" ? "Final score" : "Live score"}</span>
           <strong className="liveNumber">{formatNumber(hud.score)}</strong>
-          <span className="liveMeta">{hud.skips} skips · {hud.deepest ? formatNumber(hud.deepest) : "0"} deep</span>
+          <span className="liveMeta">{hud.skips} skips · {hud.deepest ? formatNumber(hud.deepest) : "0"} deep · {hud.coverage} cells · {Math.round(hud.spread * 100)}% spread</span>
           <span className="liveProgress"><i style={{ width: `${Math.max(2, hud.progress * 100)}%` }} /></span>
           {(hud.phase === "flying" || hud.phase === "resolving") && (
             <button className="rethrowButton" onClick={resetAndFocusCanvas} aria-label="Cancel this throw and rethrow">Rethrow</button>
@@ -1286,7 +1372,7 @@ export default function MandelbrotSkipping() {
         {hud.phase === "result" && (
           <section className="railResult" aria-label="Throw result">
             <div className="resultEyebrow">{scores[0]?.id === currentResultId ? "New local best" : "Throw complete"}</div>
-            <div className="resultStats">{hud.skips} exact orbit seeds reached {formatNumber(hud.deepest)} depth.</div>
+            <div className="resultStats">{hud.skips} exact paths · {formatNumber(hud.deepest)} deep · {hud.coverage} distinct cells · {Math.round(hud.spread * 100)}% spread.</div>
             <div className="nameRow">
               <input className="nameInput" aria-label="High score name" value={playerName} maxLength={12} onChange={(event) => renameCurrent(event.target.value)} />
               <button className="throwButton" onClick={resetAndFocusCanvas}>Throw again</button>
@@ -1295,20 +1381,20 @@ export default function MandelbrotSkipping() {
         )}
 
         <h2 className="railTitle">Local legends</h2>
-        <p className="railSub">Deeper orbits score more. Later skips earn a larger multiplier.</p>
+        <p className="railSub">Depth, distinct points, and spatial spread all score. Later skips multiply the result.</p>
         {gpuError && <p className="gpuNote" role="status">{gpuError}</p>}
         <div className="scoreList">
           {scores.length === 0 && <div className="emptyScores">No throws yet.</div>}
           {scores.map((entry, index) => (
             <div className={`scoreEntry ${entry.id === currentResultId ? "current" : ""}`} key={entry.id}>
               <span className="rank">{String(index + 1).padStart(2, "0")}</span>
-              <span><span className="scoreName">{entry.name}</span><span className="scoreMeta">{entry.skips} skips · {formatNumber(entry.deepest)} deep</span></span>
+              <span><span className="scoreName">{entry.name}</span><span className="scoreMeta">{entry.skips} skips · {formatNumber(entry.deepest)} deep · {entry.coverage} cells · {Math.round(entry.spread * 100)}% spread</span></span>
               <span className="scoreNumber">{formatNumber(entry.score)}</span>
             </div>
           ))}
         </div>
         <div className="railHint">{instruction}<br />Drag empty water to move · wheel or +/- to zoom.</div>
-        <div className="railFooter">Saved on this device · 2M orbit cap · sub-pixel cycle stop</div>
+        <div className="railFooter">Saved on this device · score model v2 · 2M orbit cap</div>
       </aside>
     </main>
   );
