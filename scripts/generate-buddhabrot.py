@@ -74,26 +74,31 @@ def main() -> None:
     high = np.percentile(occupied, 99.9)
     normalized = np.clip((light - low) / max(high - low, 1e-9), 0, 1)
     smooth = np.asarray(
-        Image.fromarray((normalized * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(2.0)),
+        Image.fromarray((normalized * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(2.4)),
         dtype=np.float64,
     ) / 255
     gradient_y, gradient_x = np.gradient(smooth)
     edges = np.hypot(gradient_x, gradient_y)
     edge_scale = max(np.percentile(edges[edges > 0], 99.4), 1e-9)
-    edges = np.clip(edges / edge_scale, 0, 1) * normalized ** 0.9
-    contour_phase = smooth * 9.0
-    contours = np.exp(-((contour_phase - np.rint(contour_phase)) / 0.105) ** 2) * normalized ** 1.12
-    core = normalized ** 1.48
-    alpha = np.clip(core * 0.72 + contours * 0.44 + edges * 0.82, 0, 1)
+    edges = np.clip(edges / edge_scale, 0, 1) * normalized ** 0.82
+    edges = np.asarray(
+        Image.fromarray((edges * 255).astype(np.uint8)).filter(ImageFilter.MaxFilter(3)),
+        dtype=np.float64,
+    ) / 255
+    contour_phase = smooth * 8.0
+    contours = np.exp(-((contour_phase - np.rint(contour_phase)) / 0.145) ** 2) * normalized ** 0.96
+    core = normalized ** 1.62
+    detail = np.clip(contours * 0.82 + edges, 0, 1)
+    alpha = np.clip(core * 0.48 + contours * 0.86 + edges * 1.08, 0, 1)
     alpha[normalized < 0.045] = 0
 
     rgba = np.zeros((HEIGHT, WIDTH, 4), dtype=np.uint8)
-    rgba[..., 0] = (70 + normalized * 80).astype(np.uint8)
-    rgba[..., 1] = (122 + normalized * 105).astype(np.uint8)
-    rgba[..., 2] = (128 + normalized * 112).astype(np.uint8)
+    rgba[..., 0] = np.clip(42 + normalized * 54 + detail * 148, 0, 255).astype(np.uint8)
+    rgba[..., 1] = np.clip(82 + normalized * 72 + detail * 126, 0, 255).astype(np.uint8)
+    rgba[..., 2] = np.clip(92 + normalized * 82 + detail * 120, 0, 255).astype(np.uint8)
     rgba[..., 3] = (alpha * 255).astype(np.uint8)
 
-    output = Path(__file__).resolve().parents[1] / "public" / "buddhabrot-contours-v2.png"
+    output = Path(__file__).resolve().parents[1] / "public" / "buddhabrot-contours-v3.png"
     output.parent.mkdir(parents=True, exist_ok=True)
     Image.fromarray(rgba).save(output, optimize=True)
     print(output)
