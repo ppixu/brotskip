@@ -49,6 +49,7 @@ const POINT_BUDGET = 100_000;
 const SCORE_KEY = "mandelbrot-skipping:scores:v1";
 const TAU = Math.PI * 2;
 const POND_CENTER = { x: -0.58, y: 0 };
+const VIEW_HALF_Y = 0.8;
 
 const computeShader = /* wgsl */ `
 struct Params {
@@ -70,18 +71,21 @@ struct OrbitState {
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read_write> vertices: array<OrbitPoint>;
 @group(0) @binding(2) var<storage, read_write> states: array<OrbitState>;
+struct DrawArgs {
+  vertexCount: atomic<u32>,
+  instanceCount: u32,
+  firstVertex: u32,
+  firstInstance: u32,
+}
+@group(0) @binding(3) var<storage, read_write> drawArgs: DrawArgs;
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) id: vec3u) {
   let source = id.x;
   if (source >= params.sourceCount) { return; }
   var state = states[source];
+  if (state.alive == 0u || state.step >= params.maxDepth) { return; }
   for (var i = 0u; i < params.batch; i++) {
-    let slot = source * params.batch + i;
-    if (state.alive == 0u || state.step >= params.maxDepth) {
-      vertices[slot] = OrbitPoint(vec2f(4.0), 0.0, 0.0);
-      continue;
-    }
     let z = vec2f(
       state.z.x * state.z.x - state.z.y * state.z.y,
       2.0 * state.z.x * state.z.y
@@ -89,8 +93,16 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     state.z = z;
     state.step += 1u;
     let clip = (z - params.center) / params.viewHalf;
-    vertices[slot] = OrbitPoint(clip, log2(f32(state.step) + 1.0) / 25.6, 0.0);
-    if (dot(z, z) > 4.0) { state.alive = 0u; }
+    if (all(abs(clip) <= vec2f(1.0))) {
+      let slot = atomicAdd(&drawArgs.vertexCount, 1u);
+      if (slot < ${POINT_BUDGET}u) {
+        vertices[slot] = OrbitPoint(clip, log2(f32(state.step) + 1.0) / 25.6, 0.0);
+      }
+    }
+    if (dot(z, z) > 4.0 || state.step >= params.maxDepth) {
+      state.alive = 0u;
+      break;
+    }
   }
   states[source] = state;
 }
@@ -104,7 +116,7 @@ struct VSOut { @builtin(position) position: vec4f, @location(0) color: vec3f }
   var out: VSOut;
   out.position = vec4f(position, 0.0, 1.0);
   let t = clamp(depth, 0.0, 1.0);
-  out.color = mix(vec3f(0.10, 0.78, 0.92), vec3f(0.92, 1.0, 0.82), t) + style.pulse;
+  out.color = mix(vec3f(0.10, 0.78, 0.92), vec3f(0.92, 1.0, 0.82), t);
   return out;
 }
 @fragment fn fs(in: VSOut) -> @location(0) vec4f {
@@ -129,7 +141,7 @@ struct Pond { aspect: f32, time: f32, pad: vec2f }
 @group(0) @binding(0) var<uniform> pond: Pond;
 @fragment fn pondFs(in: VSOut) -> @location(0) vec4f {
   let vertical = smoothstep(0.0, 1.0, in.uv.y);
-  let radial = 1.0 - clamp(length((in.uv - 0.5) * vec2f(0.72 / clamp(pond.aspect, 0.7, 2.4), 1.0)), 0.0, 1.0);
+  let radial = 1.0 - clamp(length((in.uv - 0.5) * vec2f(pond.aspect, 1.0)), 0.0, 1.0);
   let deep = vec3f(0.018, 0.075, 0.105);
   let near = vec3f(0.025, 0.12, 0.15);
   let color = mix(deep, near, vertical * 0.55 + radial * 0.22);
@@ -165,7 +177,8 @@ function formatNumber(value: number) {
 }
 
 function scoreForDepth(depth: number, skip: number) {
-  const base = Math.round(1000 * Math.log10(1 + Math.min(depth, SCORE_DEPTH_CAP)));
+  const capped = Math.min(depth, SCORE_DEPTH_CAP);
+  const base = Math.round(capped * 0.12 + Math.sqrt(capped) * 22);
   return Math.round(base * (1 + (skip - 1) * 0.12));
 }
 
@@ -182,8 +195,8 @@ function makeRandom(seed: number) {
 function screenToComplex(x: number, y: number, width: number, height: number) {
   const aspect = width / Math.max(height, 1);
   return {
-    x: POND_CENTER.x + (x / width * 2 - 1) * 1.6 * aspect,
-    y: POND_CENTER.y + (1 - y / height * 2) * 1.2,
+    x: POND_CENTER.x + (x / width * 2 - 1) * VIEW_HALF_Y * aspect,
+    y: POND_CENTER.y + (1 - y / height * 2) * VIEW_HALF_Y,
   };
 }
 
@@ -226,6 +239,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
   const textureUsage = (globalThis as any).GPUTextureUsage;
   const vertexBuffer = device.createBuffer({ size: POINT_BUDGET * 16, usage: usage.STORAGE | usage.VERTEX });
   const stateBuffer = device.createBuffer({ size: MAX_SOURCES * 32, usage: usage.STORAGE | usage.COPY_DST });
+  const indirectBuffer = device.createBuffer({ size: 16, usage: usage.STORAGE | usage.COPY_DST | usage.INDIRECT });
   const paramsBuffer = device.createBuffer({ size: 32, usage: usage.UNIFORM | usage.COPY_DST });
   const styleBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
   const pondBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
@@ -250,8 +264,8 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
     fragment: { module: pointModule, entryPoint: "fs", targets: [{
       format: "rgba16float",
       blend: {
-        color: { srcFactor: "one", dstFactor: "one", operation: "add" },
-        alpha: { srcFactor: "one", dstFactor: "one", operation: "add" },
+        color: { srcFactor: "one", dstFactor: "one", operation: "max" },
+        alpha: { srcFactor: "one", dstFactor: "one", operation: "max" },
       },
     }] },
     primitive: { topology: "point-list" },
@@ -275,6 +289,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
     { binding: 0, resource: { buffer: paramsBuffer } },
     { binding: 1, resource: { buffer: vertexBuffer } },
     { binding: 2, resource: { buffer: stateBuffer } },
+    { binding: 3, resource: { buffer: indirectBuffer } },
   ] });
   const pointBind = device.createBindGroup({ layout: pointPipeline.getBindGroupLayout(0), entries: [
     { binding: 0, resource: { buffer: styleBuffer } },
@@ -296,8 +311,9 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
 
   function resize() {
     const rect = canvas.getBoundingClientRect();
-    const nextWidth = Math.max(1, Math.round(rect.width));
-    const nextHeight = Math.max(1, Math.round(rect.height));
+    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    const nextWidth = Math.max(1, Math.round(rect.width * pixelRatio));
+    const nextHeight = Math.max(1, Math.round(rect.height * pixelRatio));
     if (nextWidth === width && nextHeight === height) return;
     width = nextWidth;
     height = nextHeight;
@@ -338,9 +354,9 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
   const observer = new ResizeObserver(resize);
   observer.observe(canvas);
   resize();
-  device.queue.writeBuffer(fadeBuffer, 0, new Float32Array([0.992, 0, 0, 0]));
+  device.queue.writeBuffer(fadeBuffer, 0, new Float32Array([1, 0, 0, 0]));
 
-  function draw(now: number) {
+  function draw() {
     if (disposed || !textures.length) return;
     const batch = Math.max(1, Math.floor(POINT_BUDGET / Math.max(sourceCount, 1)));
     const ints = new Uint32Array(8);
@@ -350,10 +366,11 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
     const floats = new Float32Array(ints.buffer);
     floats[4] = POND_CENTER.x;
     floats[5] = POND_CENTER.y;
-    floats[6] = 1.6 * width / height;
-    floats[7] = 1.2;
+    floats[6] = VIEW_HALF_Y * width / height;
+    floats[7] = VIEW_HALF_Y;
     device.queue.writeBuffer(paramsBuffer, 0, ints);
-    device.queue.writeBuffer(styleBuffer, 0, new Float32Array([0.17, Math.sin(now * 0.002) * 0.018, 0, 0]));
+    device.queue.writeBuffer(styleBuffer, 0, new Float32Array([0.62, 0, 0, 0]));
+    device.queue.writeBuffer(indirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
     const destination = textures[1 - textureIndex];
     const encoder = device.createCommandEncoder();
     if (sourceCount > 0) {
@@ -373,7 +390,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
       orbit.setPipeline(pointPipeline);
       orbit.setBindGroup(0, pointBind);
       orbit.setVertexBuffer(0, vertexBuffer);
-      orbit.draw(sourceCount * batch);
+      orbit.drawIndirect(indirectBuffer, 0);
       orbit.end();
     }
     const display = encoder.beginRenderPass({ colorAttachments: [{ view: context.getCurrentTexture().createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } }] });
@@ -422,6 +439,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
       pondTexture?.destroy();
       vertexBuffer.destroy();
       stateBuffer.destroy();
+      indirectBuffer.destroy();
       paramsBuffer.destroy();
       styleBuffer.destroy();
       pondBuffer.destroy();
@@ -566,16 +584,22 @@ export default function MandelbrotSkipping() {
       impacts.push({ x, y, born: now, index });
       ripples.push({ x, y, born: now, index });
       const primary = screenToComplex(x, y, width, height);
-      const random = makeRandom((shotId * 73856093) ^ (index * 19349663));
-      const aspect = width / height;
-      const diskX = 0.018 * aspect;
-      const diskY = 0.018;
-      const sources = Array.from({ length: SOURCES_PER_SKIP }, (_, source) => {
-        if (source === 0) return primary;
-        const angle = random() * TAU;
-        const radius = Math.sqrt(random());
-        return { x: primary.x + Math.cos(angle) * radius * diskX, y: primary.y + Math.sin(angle) * radius * diskY };
-      });
+      const radius = 0.032;
+      const sources = [{ ...primary }];
+      for (let point = 0; point < 36; point++) {
+        const angle = point / 36 * TAU;
+        sources.push({ x: primary.x + Math.cos(angle) * radius, y: primary.y + Math.sin(angle) * radius });
+      }
+      for (let point = 0; point < 36; point++) {
+        const angle = point / 36 * TAU;
+        const flowerRadius = radius * (0.48 + 0.16 * Math.cos(angle * 6));
+        sources.push({ x: primary.x + Math.cos(angle) * flowerRadius, y: primary.y + Math.sin(angle) * flowerRadius });
+      }
+      for (let point = 0; point < 27; point++) {
+        const angle = point / 27 * TAU;
+        const innerRadius = radius * 0.22;
+        sources.push({ x: primary.x + Math.cos(angle) * innerRadius, y: primary.y + Math.sin(angle) * innerRadius });
+      }
       for (const source of sources) {
         orbitScores.push({ zr: 0, zi: 0, cr: source.x, ci: source.y, depth: 0, shownDepth: 0, skip: index, resolved: false, score: 0 });
       }
@@ -671,6 +695,10 @@ export default function MandelbrotSkipping() {
       rock.spin += Math.hypot(rock.vx, rock.vy) * dt * 0.016;
       if (rock.z <= 0 && rock.vz < 0) {
         rock.z = 0;
+        if (rock.x < 24 || rock.x > width - 24 || rock.y < 24 || rock.y > height - 24) {
+          startResolving(now);
+          return;
+        }
         rock.skips += 1;
         spawnImpact(rock.x, rock.y, now);
         rock.vz = Math.abs(rock.vz) * 0.56;
@@ -719,26 +747,20 @@ export default function MandelbrotSkipping() {
     function drawRock() {
       if (phase === "resolving" || phase === "result") return;
       const lift = rock.z * 0.30;
-      const radius = 15 * (1 + Math.min(0.08, rock.z / Math.max(minDimension(), 1) * .2));
-      const shadowScale = Math.max(.42, 1 - rock.z / Math.max(minDimension() * .75, 1));
+      const radius = 13;
+      const heightT = Math.min(1, rock.z / Math.max(minDimension() * .45, 1));
+      const drawX = Math.round(rock.x * dpr) / dpr;
+      const drawY = Math.round((rock.y - lift) * dpr) / dpr;
       ctx.save();
-      ctx.translate(rock.x, rock.y);
-      ctx.scale(shadowScale, shadowScale * .5);
-      ctx.fillStyle = `rgba(0, 4, 9, ${0.34 * shadowScale})`;
-      ctx.beginPath(); ctx.arc(0, 0, 18, 0, TAU); ctx.fill();
+      ctx.fillStyle = `rgba(0, 4, 9, ${0.30 * (1 - heightT * 0.72)})`;
+      ctx.beginPath(); ctx.ellipse(drawX, rock.y, 14, 5, 0, 0, TAU); ctx.fill();
       ctx.restore();
       ctx.save();
-      ctx.translate(rock.x, rock.y - lift);
-      ctx.rotate(rock.spin);
-      const gradient = ctx.createRadialGradient(-5, -7, 1, 0, 0, radius);
-      gradient.addColorStop(0, "#ffffff");
-      gradient.addColorStop(.68, "#f5fbff");
-      gradient.addColorStop(1, "#afc7d3");
-      ctx.fillStyle = gradient;
-      ctx.strokeStyle = "rgba(4, 18, 29, .82)";
-      ctx.lineWidth = 1.5;
+      ctx.fillStyle = "#ffffff";
+      ctx.strokeStyle = "#06111a";
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(0, 0, radius, 0, TAU);
+      ctx.arc(drawX, drawY, radius, 0, TAU);
       ctx.fill(); ctx.stroke();
       ctx.restore();
     }
@@ -749,23 +771,18 @@ export default function MandelbrotSkipping() {
         const t = (now - ripple.born) / 1000;
         for (let ring = 0; ring < 2; ring++) {
           const rt = Math.max(0, t - ring * .11);
-          ctx.strokeStyle = `rgba(151, 241, 255, ${Math.max(0, .75 - rt)})`;
-          ctx.lineWidth = 2 - rt;
+          ctx.strokeStyle = `rgba(151, 241, 255, ${Math.max(0, .55 - rt * .55)})`;
+          ctx.lineWidth = 1;
           ctx.beginPath(); ctx.arc(ripple.x, ripple.y, 8 + rt * 58, 0, TAU); ctx.stroke();
-        }
-        if (t < .09) {
-          ctx.fillStyle = `rgba(255, 239, 152, ${1 - t / .09})`;
-          ctx.beginPath(); ctx.arc(ripple.x, ripple.y, 22 * (1 - t / .12), 0, TAU); ctx.fill();
         }
       }
       ctx.textAlign = "center";
-      ctx.font = "900 11px Arial";
+      ctx.font = "600 7px ui-monospace, monospace";
       for (const impact of impacts) {
         const age = now - impact.born;
-        ctx.fillStyle = age < 650 ? "#ffe66d" : "rgba(181, 245, 255, .78)";
-        ctx.beginPath(); ctx.arc(impact.x, impact.y, 10, 0, TAU); ctx.fill();
-        ctx.fillStyle = "#081624";
-        ctx.fillText(String(impact.index), impact.x, impact.y + 4);
+        const alpha = Math.max(0.16, 0.72 - age / 7000);
+        ctx.fillStyle = `rgba(210, 247, 255, ${alpha})`;
+        ctx.fillText(String(impact.index), impact.x, impact.y + 2);
       }
       ctx.textAlign = "start";
     }
