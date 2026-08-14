@@ -962,6 +962,8 @@ export default function MandelbrotSkipping() {
     let iterationSynth: {
       carrier: OscillatorNode;
       overtone: OscillatorNode;
+      pulse: OscillatorNode;
+      pulseGain: GainNode;
       noise: AudioBufferSourceNode;
       noiseGain: GainNode;
       filter: BiquadFilterNode;
@@ -969,6 +971,8 @@ export default function MandelbrotSkipping() {
       pan: StereoPannerNode;
     } | null = null;
     let lastSonification = 0;
+    let lastIterationPulse = 0;
+    let lastAudibleDepth = 0;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const flashlightCanvas = document.createElement("canvas");
     const flashlightContext = flashlightCanvas.getContext("2d");
@@ -983,7 +987,7 @@ export default function MandelbrotSkipping() {
       buddhabrotReady = true;
       flashlightDirty = true;
     };
-    buddhabrotImage.src = "/buddhabrot-contours-v3.png";
+    buddhabrotImage.src = "/buddhabrot-density.png";
 
     function anchor() { return { x: width * 0.5, y: height * 0.82 }; }
     function minDimension() { return Math.min(width, height); }
@@ -1033,8 +1037,10 @@ export default function MandelbrotSkipping() {
       const context = ensureAudio();
       const carrier = context.createOscillator();
       const overtone = context.createOscillator();
+      const pulse = context.createOscillator();
       const carrierGain = context.createGain();
       const overtoneGain = context.createGain();
+      const pulseGain = context.createGain();
       const filter = context.createBiquadFilter();
       const pan = context.createStereoPanner();
       const gain = context.createGain();
@@ -1054,8 +1060,10 @@ export default function MandelbrotSkipping() {
       noise.loop = true;
       carrier.type = "sine";
       overtone.type = "triangle";
-      carrierGain.gain.value = .72;
-      overtoneGain.gain.value = .18;
+      pulse.type = "sine";
+      carrierGain.gain.value = .78;
+      overtoneGain.gain.value = .24;
+      pulseGain.gain.value = .0001;
       noiseGain.gain.value = .0001;
       filter.type = "lowpass";
       filter.frequency.value = 420;
@@ -1066,12 +1074,14 @@ export default function MandelbrotSkipping() {
       compressor.ratio.value = 5;
       carrier.connect(carrierGain).connect(filter);
       overtone.connect(overtoneGain).connect(filter);
+      pulse.connect(pulseGain).connect(filter);
       noise.connect(noiseGain).connect(filter);
       filter.connect(pan).connect(gain).connect(compressor).connect(context.destination);
       carrier.start();
       overtone.start();
+      pulse.start();
       noise.start();
-      iterationSynth = { carrier, overtone, noise, noiseGain, filter, gain, pan };
+      iterationSynth = { carrier, overtone, pulse, pulseGain, noise, noiseGain, filter, gain, pan };
       return iterationSynth;
     }
 
@@ -1096,20 +1106,36 @@ export default function MandelbrotSkipping() {
       const averageReal = orbitScores.reduce((sum, orbit) => sum + orbit.zr, 0) / orbitScores.length;
       const glyphDensity = Math.min(1, orbitScores.length / Math.max(1, rock.skips * MAX_SOURCE_DOTS));
       const pitchSteps = rock.skips * 1.7 + depthBand * .34 + spread * 5.5;
-      const frequency = Math.min(420, 52 * Math.pow(2, pitchSteps / 12));
+      const frequency = Math.min(720, 74 * Math.pow(2, pitchSteps / 12));
       const overtoneRatio = 1.48 + instability * .54;
       const cutoff = Math.min(4800, 260 + spread * 2900 + depthBand * 48 + instability * 520);
-      const level = Math.min(.021, .0035 + activeRatio * .006 + spread * .006 + glyphDensity * .0035);
-      const grain = Math.min(.005, .00025 + spread * .0028 + Math.min(1, coverage / 220) * .0018);
+      const level = Math.min(.045, .010 + activeRatio * .014 + spread * .011 + glyphDensity * .006);
+      const grain = Math.min(.009, .0007 + spread * .0048 + Math.min(1, coverage / 220) * .0035);
       const panning = Math.max(-.65, Math.min(.65, (averageReal - viewRef.current.centerX) / Math.max(viewRef.current.halfY, .001) * .35));
       const at = context.currentTime;
       synth.carrier.frequency.setTargetAtTime(frequency, at, .055);
       synth.overtone.frequency.setTargetAtTime(frequency * overtoneRatio, at, .07);
+      synth.pulse.frequency.setTargetAtTime(frequency * (2.01 + spread * .48), at, .025);
       synth.filter.frequency.setTargetAtTime(cutoff, at, .08);
       synth.filter.Q.setTargetAtTime(1.4 + (1 - spread) * 5.2, at, .09);
       synth.noiseGain.gain.setTargetAtTime(grain, at, .07);
       synth.pan.pan.setTargetAtTime(panning, at, .08);
       synth.gain.gain.setTargetAtTime(level * (phase === "resolving" ? .76 : 1), at, .09);
+
+      // Deeper work makes audible grains. The rhythm accelerates with depth,
+      // while spatially larger orbits make each grain brighter and longer.
+      const depthMotion = deepest - lastAudibleDepth;
+      const pulseInterval = Math.max(58, 260 - Math.min(190, depthBand * 15));
+      if (depthMotion > 0 && now - lastIterationPulse >= pulseInterval) {
+        const pulseLevel = Math.min(.72, .22 + spread * .32 + activeRatio * .18);
+        const pulseLength = .045 + spread * .055;
+        synth.pulseGain.gain.cancelScheduledValues(at);
+        synth.pulseGain.gain.setValueAtTime(.0001, at);
+        synth.pulseGain.gain.exponentialRampToValueAtTime(pulseLevel, at + .008);
+        synth.pulseGain.gain.exponentialRampToValueAtTime(.0001, at + pulseLength);
+        lastIterationPulse = now;
+        lastAudibleDepth = deepest;
+      }
     }
 
     function updateHud(force = false) {
@@ -1156,6 +1182,8 @@ export default function MandelbrotSkipping() {
       impacts = [];
       ripples = [];
       orbitScores = [];
+      lastAudibleDepth = 0;
+      lastIterationPulse = 0;
       const a = anchor();
       pull = { ...a };
       rock = { x: a.x, y: a.y, vx: 0, vy: 0, z: 0, vz: 0, spin: 0, skips: 0, bounceAge: 10 };
@@ -1458,7 +1486,10 @@ export default function MandelbrotSkipping() {
     function drawMappedBuddhabrot(target: CanvasRenderingContext2D) {
       const topLeft = complexToScreen(BUDDHABROT_BOUNDS.xMin, BUDDHABROT_BOUNDS.yMax, width, height, viewRef.current);
       const bottomRight = complexToScreen(BUDDHABROT_BOUNDS.xMax, BUDDHABROT_BOUNDS.yMin, width, height, viewRef.current);
+      target.save();
+      target.imageSmoothingEnabled = false;
       target.drawImage(buddhabrotImage, topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y);
+      target.restore();
     }
 
     function drawFlashlight(now: number) {
@@ -1510,7 +1541,8 @@ export default function MandelbrotSkipping() {
       ctx.save();
       ctx.globalCompositeOperation = "screen";
       const spotFade = spotAge < 180 ? 1 : Math.max(0, 1 - (spotAge - 180) / 720);
-      ctx.globalAlpha = geometry ? .30 : .38 * spotFade * spotFade;
+      ctx.imageSmoothingEnabled = false;
+      ctx.globalAlpha = geometry ? .38 : .48 * spotFade * spotFade;
       ctx.drawImage(flashlightCanvas, 0, 0, width, height);
       ctx.restore();
 
