@@ -39,6 +39,8 @@ type OrbitScore = {
   skip: number;
   invisibleRun: number;
   convergenceHits: number;
+  stepDistance: number;
+  distanceContraction: number;
   cells: Uint32Array;
   distinct: number;
   sumX: number;
@@ -1243,6 +1245,22 @@ export default function MandelbrotSkipping() {
       const coverageMotion = Math.max(0, coverage - lastAudibleCoverage);
       const growth = Math.min(1, Math.log2(coverageMotion + 1) / 4.5);
       lastAudibleCoverage = coverage;
+      const travelSamples = orbitScores
+        .filter((orbit) => Number.isFinite(orbit.stepDistance) && orbit.stepDistance > 0)
+        .map((orbit) => ({
+          proximity: Math.max(0, Math.min(1, (-Math.log2(Math.max(orbit.stepDistance, 1e-12)) - .25) / 15)),
+          contraction: Math.max(0, Math.min(1, orbit.distanceContraction / 1.5)),
+        }));
+      const upperQuantile = (values: number[]) => {
+        if (!values.length) return 0;
+        values.sort((a, b) => a - b);
+        return values[Math.min(values.length - 1, Math.floor(values.length * .8))];
+      };
+      // The upper quantile lets a visible tightening family pull the pitch up
+      // without one numerical outlier hijacking the complete chord.
+      const distanceProximity = upperQuantile(travelSamples.map((sample) => sample.proximity));
+      const contractionSignal = upperQuantile(travelSamples.map((sample) => sample.contraction));
+      const distancePitchRatio = 2 ** ((distanceProximity * 14 + contractionSignal * 3) / 12);
 
       // Landing position selects a stable musical palette. Live topology then
       // moves independent voices through it instead of collapsing to one mean.
@@ -1260,10 +1278,13 @@ export default function MandelbrotSkipping() {
       const topologyDegree = depthBand * .20 + dominant.spread * 3.7 + dominant.elongation * 2.8
         + (dominant.orientation / Math.PI + .5) * 2.4 + dominant.centroidY * 1.6;
       const chordWidth = 1 + Math.round(dispersion * 4 + featureVariance * 3);
-      const frequency = Math.min(560, frequencyForDegree(topologyDegree));
-      const overtoneFrequency = Math.min(1400, frequencyForDegree(topologyDegree + 2 + Math.round(symmetry * 2)));
-      const sidebandFrequency = Math.min(1800, frequencyForDegree(topologyDegree + chordWidth + 3));
-      const cutoff = Math.min(6800, 150 + area * 2700 + density * 1500 + depthBand * 48 + chaos * 1500);
+      const frequency = Math.min(900, frequencyForDegree(topologyDegree) * distancePitchRatio);
+      const overtoneFrequency = Math.min(1900,
+        frequencyForDegree(topologyDegree + 2 + Math.round(symmetry * 2)) * distancePitchRatio);
+      const sidebandFrequency = Math.min(2400,
+        frequencyForDegree(topologyDegree + chordWidth + 3) * distancePitchRatio);
+      const cutoff = Math.min(7600,
+        150 + area * 2700 + density * 1500 + depthBand * 48 + chaos * 1500 + distanceProximity * 1800);
       const level = Math.min(.040, .007 + activeRatio * .010 + spread * .007 + coverageRatio * .006 + glyphDensity * .003 + growth * .004);
       const panning = Math.max(-.76, Math.min(.76,
         centroidX * .52 + Math.sin(now * .001 * (.22 + dispersion * 1.7) + orientation) * dispersion * .34,
@@ -1277,8 +1298,9 @@ export default function MandelbrotSkipping() {
       synth.overtoneGain.gain.setTargetAtTime(.035 + density * .25 + orientationCoherence * .08, at, .10);
       synth.sidebandGain.gain.setTargetAtTime(.008 + dominant.elongation * .13 + chaos * .075, at, .10);
       synth.subGain.gain.setTargetAtTime(.025 + area * .16 + symmetry * .035, at, .12);
-      synth.modulator.frequency.setTargetAtTime(.18 + density * 3.6 + dispersion * 4.2 + activeRatio, at, .12);
-      synth.modGain.gain.setTargetAtTime(2 + chaos * 74 + featureVariance * 46, at, .11);
+      synth.modulator.frequency.setTargetAtTime(
+        .18 + density * 3.6 + dispersion * 4.2 + activeRatio + contractionSignal * 2.4, at, .12);
+      synth.modGain.gain.setTargetAtTime(2 + chaos * 74 + featureVariance * 46 + contractionSignal * 18, at, .11);
       synth.filter.frequency.setTargetAtTime(cutoff, at, .08);
       synth.filter.Q.setTargetAtTime(.8 + dominant.elongation * 7.2 + symmetry * 2.6, at, .09);
       synth.drive.gain.setTargetAtTime(.62 + chaos * 1.25 + density * .42, at, .10);
@@ -1296,7 +1318,8 @@ export default function MandelbrotSkipping() {
       // A topology-derived pulse sequencer adds pitched FM strikes and modal
       // noise bursts. Different landing palettes create different motifs.
       const depthMotion = deepest - lastAudibleDepth;
-      const pulseInterval = Math.max(48, 310 - Math.min(155, depthBand * 11) - growth * 88 - chaos * 42);
+      const pulseInterval = Math.max(42,
+        310 - Math.min(155, depthBand * 11) - growth * 88 - chaos * 42 - distanceProximity * 72);
       if (depthMotion > 0 && now - lastIterationPulse >= pulseInterval) {
         const patternStep = 1 + (paletteSeed + Math.round(dominant.elongation * 5)) % Math.max(2, scale.length - 1);
         const motifDegree = topologyDegree + (pulseCounter * patternStep) % scale.length + (pulseCounter % 4 === 3 ? chordWidth : 0);
@@ -1304,7 +1327,8 @@ export default function MandelbrotSkipping() {
         const accent = pulseCounter % accentCycle === 0 ? 1 : .54 + symmetry * .22;
         const pulseLevel = Math.min(.82, (.18 + area * .18 + density * .18 + growth * .24 + chaos * .10) * accent);
         const pulseLength = .028 + area * .075 + symmetry * .045 + dispersion * .035;
-        synth.pulse.frequency.setValueAtTime(Math.min(2200, frequencyForDegree(motifDegree + scale.length)), at);
+        synth.pulse.frequency.setValueAtTime(
+          Math.min(2600, frequencyForDegree(motifDegree + scale.length) * distancePitchRatio), at);
         synth.pulseGain.gain.cancelScheduledValues(at);
         synth.pulseGain.gain.setValueAtTime(.0001, at);
         synth.pulseGain.gain.exponentialRampToValueAtTime(pulseLevel, at + .008);
@@ -1390,7 +1414,7 @@ export default function MandelbrotSkipping() {
           zr: 0, zi: 0, tortoiseR: 0, tortoiseI: 0,
           cr: orbitSource.x, ci: orbitSource.y, depth: 0, shownDepth: 0,
           skip: index, invisibleRun: 0,
-          convergenceHits: 0, resolved: false, score: 0,
+          convergenceHits: 0, stepDistance: 0, distanceContraction: 0, resolved: false, score: 0,
           cells: new Uint32Array(COVERAGE_WORDS), distinct: 0,
           sumX: 0, sumY: 0, sumXX: 0, sumYY: 0, sumXY: 0,
         });
@@ -1471,8 +1495,20 @@ export default function MandelbrotSkipping() {
         if (orbit.resolved) continue;
         const perOrbit = acceleratedSteps(orbit.depth, tuningRef.current.maxDepth, maxPerOrbit, tuningRef.current.acceleration);
         for (let step = 0; step < perOrbit && orbit.depth < tuningRef.current.maxDepth; step++) {
-          const nextR = Math.fround(Math.fround(orbit.zr * orbit.zr - orbit.zi * orbit.zi) + orbit.cr);
-          orbit.zi = Math.fround(Math.fround(2 * orbit.zr * orbit.zi) + orbit.ci);
+          const previousR = orbit.zr;
+          const previousI = orbit.zi;
+          const nextR = Math.fround(Math.fround(previousR * previousR - previousI * previousI) + orbit.cr);
+          const nextI = Math.fround(Math.fround(2 * previousR * previousI) + orbit.ci);
+          const distance = Math.hypot(nextR - previousR, nextI - previousI);
+          if (Number.isFinite(distance)) {
+            const previousDistance = orbit.stepDistance || distance;
+            const contraction = Math.max(-4, Math.min(4,
+              Math.log2(Math.max(previousDistance, 1e-12) / Math.max(distance, 1e-12)),
+            ));
+            orbit.distanceContraction = orbit.distanceContraction * .82 + contraction * .18;
+            orbit.stepDistance = previousDistance * .82 + distance * .18;
+          }
+          orbit.zi = nextI;
           orbit.zr = nextR;
           orbit.depth += 1;
           recordOrbitCell(orbit);
