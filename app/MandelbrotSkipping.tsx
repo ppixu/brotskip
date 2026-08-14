@@ -914,11 +914,12 @@ export default function MandelbrotSkipping() {
     let resolveStarted = 0;
     let lastHud = 0;
     let viewChangingUntil = 0;
-    let rock = { x: 0, y: 0, vx: 0, vy: 0, z: 0, vz: 0, spin: 0, skips: 0 };
+    let rock = { x: 0, y: 0, vx: 0, vy: 0, z: 0, vz: 0, spin: 0, skips: 0, bounceAge: 10 };
     let impacts: Array<{ cr: number; ci: number; born: number; index: number }> = [];
     let ripples: Array<{ cr: number; ci: number; born: number; index: number }> = [];
     let orbitScores: OrbitScore[] = [];
     let audio: AudioContext | null = null;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     function anchor() { return { x: width * 0.5, y: height * 0.82 }; }
     function minDimension() { return Math.min(width, height); }
@@ -1000,7 +1001,7 @@ export default function MandelbrotSkipping() {
       orbitScores = [];
       const a = anchor();
       pull = { ...a };
-      rock = { x: a.x, y: a.y, vx: 0, vy: 0, z: 0, vz: 0, spin: 0, skips: 0 };
+      rock = { x: a.x, y: a.y, vx: 0, vy: 0, z: 0, vz: 0, spin: 0, skips: 0, bounceAge: 10 };
       setCurrentResultId(null);
       engineRef.current?.clear();
       updateHud(true);
@@ -1148,6 +1149,7 @@ export default function MandelbrotSkipping() {
       rock.vx *= drag;
       rock.vy *= drag;
       rock.spin += Math.hypot(rock.vx, rock.vy) * dt * 0.016;
+      rock.bounceAge += dt;
       if (rock.z <= 0 && rock.vz < 0) {
         rock.z = 0;
         if (rock.x < 24 || rock.x > width - 24 || rock.y < 24 || rock.y > height - 24) {
@@ -1155,6 +1157,7 @@ export default function MandelbrotSkipping() {
           return;
         }
         rock.skips += 1;
+        rock.bounceAge = 0;
         spawnImpact(rock.x, rock.y, now);
         rock.vz = Math.abs(rock.vz) * 0.56;
         rock.vx *= 0.79;
@@ -1209,16 +1212,21 @@ export default function MandelbrotSkipping() {
       const heightT = Math.min(1, rock.z / Math.max(minDimension() * .45, 1));
       const drawX = Math.round(rock.x * dpr) / dpr;
       const drawY = Math.round((rock.y - lift) * dpr) / dpr;
+      const bounce = reduceMotion ? 0 : Math.exp(-rock.bounceAge * 8.5) * Math.cos(rock.bounceAge * 29);
+      const scaleX = 1 + bounce * .11;
+      const scaleY = 1 - bounce * .09;
       ctx.save();
       ctx.fillStyle = `rgba(0, 4, 9, ${0.30 * (1 - heightT * 0.72)})`;
-      ctx.beginPath(); ctx.ellipse(drawX, rock.y, 14, 5, 0, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(drawX, rock.y, 14 * (1 + Math.max(0, bounce) * .08), 5, 0, 0, TAU); ctx.fill();
       ctx.restore();
       ctx.save();
+      ctx.translate(drawX, drawY);
+      ctx.scale(scaleX, scaleY);
       ctx.fillStyle = "#ffffff";
       ctx.strokeStyle = "#06111a";
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(drawX, drawY, radius, 0, TAU);
+      ctx.arc(0, 0, radius, 0, TAU);
       ctx.fill(); ctx.stroke();
       ctx.restore();
     }
