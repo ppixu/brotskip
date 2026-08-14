@@ -359,7 +359,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
     fragment: { module: pointModule, entryPoint: "fs", targets: [{
       format: "rgba16float",
       blend: {
-        color: { srcFactor: "one", dstFactor: "one", operation: "max" },
+        color: { srcFactor: "one", dstFactor: "one", operation: "add" },
         alpha: { srcFactor: "one", dstFactor: "one", operation: "max" },
       },
     }] },
@@ -502,7 +502,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
     floats[6] = VIEW_HALF_Y * width / height;
     floats[7] = VIEW_HALF_Y;
     device.queue.writeBuffer(paramsBuffer, 0, ints);
-    device.queue.writeBuffer(styleBuffer, 0, new Float32Array([0.62, 0, 0, 0]));
+    device.queue.writeBuffer(styleBuffer, 0, new Float32Array([0.025, 0, 0, 0]));
     device.queue.writeBuffer(indirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
     device.queue.writeBuffer(lineIndirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
     const destination = textures[1 - textureIndex];
