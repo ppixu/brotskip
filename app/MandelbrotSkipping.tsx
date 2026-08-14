@@ -322,10 +322,9 @@ struct FadeTransform {
 @group(0) @binding(2) var<uniform> fade: FadeTransform;
 @fragment fn fadeFs(in: VSOut) -> @location(0) vec4f {
   let sourceUv = (in.uv - 0.5) * fade.uvScale + 0.5 + fade.uvOffset;
-  if (any(sourceUv < vec2f(0.0)) || any(sourceUv > vec2f(1.0))) {
-    return vec4f(0.0);
-  }
-  return textureSample(previous, trailSampler, sourceUv) * fade.retention;
+  let sampled = textureSample(previous, trailSampler, clamp(sourceUv, vec2f(0.0), vec2f(1.0)));
+  let inside = all(sourceUv >= vec2f(0.0)) && all(sourceUv <= vec2f(1.0));
+  return select(vec4f(0.0), sampled * fade.retention, inside);
 }
 `;
 
@@ -440,7 +439,9 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
     return null;
   }
   const device = await adapter.requestDevice();
+  let deviceFailed = false;
   device.addEventListener("uncapturederror", (event: any) => {
+    deviceFailed = true;
     console.error("WebGPU validation", event.error?.message || event.error);
     fail("Orbit renderer hit a GPU validation error.");
   });
@@ -613,7 +614,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
   resize();
 
   function draw() {
-    if (disposed || !textures.length) return;
+    if (disposed || deviceFailed || !textures.length) return;
     const batch = Math.max(1, Math.floor(POINT_BUDGET / Math.max(sourceCount, 1)));
     const ints = new Uint32Array(12);
     ints[0] = sourceCount;
