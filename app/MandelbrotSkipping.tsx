@@ -72,6 +72,7 @@ type OrbitEngine = {
 };
 
 const MAX_SKIPS = 7;
+const SACRED_PATH_COUNTS = [2, 2, 2, 4, 2, 3, 7] as const;
 const MIN_SOURCE_DOTS = 6;
 const MAX_SOURCE_DOTS = 32;
 const MAX_SOURCES = MAX_SKIPS * MAX_SOURCE_DOTS;
@@ -503,8 +504,7 @@ function sacredShapeOffset(shape: number, path: number, t: number) {
 
 function impactSources(x: number, y: number, width: number, height: number, view: ViewTransform, count: number, shape: number) {
   const points: Array<{ x: number; y: number }> = [];
-  const pathCounts = [2, 2, 2, 4, 2, 3, 7];
-  const paths = pathCounts[shape % pathCounts.length];
+  const paths = SACRED_PATH_COUNTS[shape % SACRED_PATH_COUNTS.length];
   for (let index = 0; index < count; index++) {
     const path = index % paths;
     const pathIndex = Math.floor(index / paths);
@@ -1462,7 +1462,9 @@ export default function MandelbrotSkipping() {
     function drawRock() {
       if (phase === "resolving" || phase === "result") return;
       const lift = rock.z * 0.30;
-      const radius = 13;
+      const radius = 10;
+      const nextShape = rock.skips % MAX_SKIPS;
+      const shapePaths = SACRED_PATH_COUNTS[nextShape];
       const heightT = Math.min(1, rock.z / Math.max(minDimension() * .45, 1));
       const drawX = Math.round(rock.x * dpr) / dpr;
       const drawY = Math.round((rock.y - lift) * dpr) / dpr;
@@ -1471,17 +1473,34 @@ export default function MandelbrotSkipping() {
       const scaleY = 1 - bounce * .09;
       ctx.save();
       ctx.fillStyle = `rgba(0, 4, 9, ${0.30 * (1 - heightT * 0.72)})`;
-      ctx.beginPath(); ctx.ellipse(drawX, rock.y, 14 * (1 + Math.max(0, bounce) * .08), 5, 0, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(drawX, rock.y, 10.5 * (1 + Math.max(0, bounce) * .08), 3.5, 0, 0, TAU); ctx.fill();
       ctx.restore();
       ctx.save();
       ctx.translate(drawX, drawY);
       ctx.scale(scaleX, scaleY);
+      ctx.rotate(rock.spin * .18);
+      ctx.strokeStyle = "rgba(255, 255, 255, .34)";
+      ctx.lineWidth = 1;
+      for (let path = 0; path < shapePaths; path++) {
+        ctx.beginPath();
+        for (let sample = 0; sample <= 32; sample++) {
+          const offset = sacredShapeOffset(nextShape, path, sample / 32);
+          if (sample === 0) ctx.moveTo(offset.x * radius, offset.y * radius);
+          else ctx.lineTo(offset.x * radius, offset.y * radius);
+        }
+        ctx.stroke();
+      }
       ctx.fillStyle = "#ffffff";
-      ctx.strokeStyle = "#06111a";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(0, 0, radius, 0, TAU);
-      ctx.fill(); ctx.stroke();
+      const previewDots = Math.max(MIN_SOURCE_DOTS, Math.min(18, tuningRef.current.sourceDots));
+      for (let index = 0; index < previewDots; index++) {
+        const path = index % shapePaths;
+        const pathIndex = Math.floor(index / shapePaths);
+        const samplesOnPath = Math.ceil((previewDots - path) / shapePaths);
+        const offset = sacredShapeOffset(nextShape, path, pathIndex / Math.max(samplesOnPath, 1));
+        ctx.beginPath();
+        ctx.arc(offset.x * radius, offset.y * radius, 1.15, 0, TAU);
+        ctx.fill();
+      }
       ctx.restore();
     }
 
