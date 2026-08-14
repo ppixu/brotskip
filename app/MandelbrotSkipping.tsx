@@ -109,6 +109,13 @@ const SCORE_HALF_Y = 1.15;
 const BUDDHABROT_BOUNDS = { xMin: -2.2, xMax: 1.2, yMin: -1.5, yMax: 1.5 };
 const MIN_VIEW_HALF_Y = 0.035;
 const MAX_VIEW_HALF_Y = 2.4;
+const SONIC_SCALES = [
+  [0, 2, 3, 5, 7, 9, 10], // dorian
+  [0, 1, 4, 6, 7, 10], // crystalline synthetic
+  [0, 2, 4, 6, 8, 10], // whole tone
+  [0, 3, 5, 7, 10], // minor pentatonic
+  [0, 1, 5, 7, 8], // in-sen
+] as const;
 
 const computeShader = /* wgsl */ `
 struct Params {
@@ -979,15 +986,23 @@ export default function MandelbrotSkipping() {
     let iterationSynth: {
       carrier: OscillatorNode;
       overtone: OscillatorNode;
+      sideband: OscillatorNode;
+      sub: OscillatorNode;
       modulator: OscillatorNode;
       pulse: OscillatorNode;
       carrierGain: GainNode;
       overtoneGain: GainNode;
+      sidebandGain: GainNode;
+      subGain: GainNode;
       modGain: GainNode;
       pulseGain: GainNode;
       noise: AudioBufferSourceNode;
       noiseGain: GainNode;
+      noiseBurstGain: GainNode;
+      noiseFilter: BiquadFilterNode;
+      resonatorGain: GainNode;
       filter: BiquadFilterNode;
+      drive: GainNode;
       delay: DelayNode;
       feedback: GainNode;
       wet: GainNode;
@@ -998,6 +1013,8 @@ export default function MandelbrotSkipping() {
     let lastSonification = 0;
     let lastIterationPulse = 0;
     let lastAudibleDepth = 0;
+    let lastAudibleCoverage = 0;
+    let pulseCounter = 0;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const gridCanvas = document.createElement("canvas");
     const gridContext = gridCanvas.getContext("2d");
@@ -1067,13 +1084,19 @@ export default function MandelbrotSkipping() {
       const context = ensureAudio();
       const carrier = context.createOscillator();
       const overtone = context.createOscillator();
+      const sideband = context.createOscillator();
+      const sub = context.createOscillator();
       const modulator = context.createOscillator();
       const pulse = context.createOscillator();
       const carrierGain = context.createGain();
       const overtoneGain = context.createGain();
+      const sidebandGain = context.createGain();
+      const subGain = context.createGain();
       const modGain = context.createGain();
       const pulseGain = context.createGain();
       const filter = context.createBiquadFilter();
+      const drive = context.createGain();
+      const shaper = context.createWaveShaper();
       const delay = context.createDelay(.4);
       const feedback = context.createGain();
       const wet = context.createGain();
@@ -1082,6 +1105,9 @@ export default function MandelbrotSkipping() {
       const gain = context.createGain();
       const compressor = context.createDynamicsCompressor();
       const noiseGain = context.createGain();
+      const noiseBurstGain = context.createGain();
+      const noiseFilter = context.createBiquadFilter();
+      const resonatorGain = context.createGain();
       const noise = context.createBufferSource();
       const noiseBuffer = context.createBuffer(1, Math.round(context.sampleRate * .75), context.sampleRate);
       const noiseData = noiseBuffer.getChannelData(0);
@@ -1096,19 +1122,36 @@ export default function MandelbrotSkipping() {
       noise.loop = true;
       carrier.type = "sine";
       overtone.type = "triangle";
+      sideband.type = "sawtooth";
+      sub.type = "sine";
       modulator.type = "sine";
       pulse.type = "sine";
-      carrierGain.gain.value = .78;
-      overtoneGain.gain.value = .24;
+      carrierGain.gain.value = .42;
+      overtoneGain.gain.value = .16;
+      sidebandGain.gain.value = .02;
+      subGain.gain.value = .08;
       modulator.frequency.value = 1.5;
       modGain.gain.value = 12;
       pulseGain.gain.value = .0001;
       noiseGain.gain.value = .0001;
+      noiseBurstGain.gain.value = .0001;
+      noiseFilter.type = "bandpass";
+      noiseFilter.frequency.value = 900;
+      noiseFilter.Q.value = 5;
+      resonatorGain.gain.value = .2;
       filter.type = "lowpass";
       filter.frequency.value = 420;
       filter.Q.value = 2.2;
+      drive.gain.value = 1;
+      const saturationCurve = new Float32Array(1024);
+      for (let index = 0; index < saturationCurve.length; index++) {
+        const x = index / (saturationCurve.length - 1) * 2 - 1;
+        saturationCurve[index] = Math.tanh(x * 2.35) / Math.tanh(2.35);
+      }
+      shaper.curve = saturationCurve;
+      shaper.oversample = "2x";
       gain.gain.value = .0001;
-      compressor.threshold.value = -30;
+      compressor.threshold.value = -27;
       compressor.knee.value = 18;
       compressor.ratio.value = 5;
       delay.delayTime.value = .08;
@@ -1118,23 +1161,34 @@ export default function MandelbrotSkipping() {
       modulator.connect(modGain);
       modGain.connect(carrier.detune);
       modGain.connect(overtone.detune);
+      modGain.connect(sideband.detune);
       carrier.connect(carrierGain).connect(filter);
       overtone.connect(overtoneGain).connect(filter);
+      sideband.connect(sidebandGain).connect(filter);
+      sub.connect(subGain).connect(filter);
       pulse.connect(pulseGain).connect(filter);
-      noise.connect(noiseGain).connect(filter);
-      filter.connect(dry).connect(pan);
-      filter.connect(delay);
+      noise.connect(noiseGain).connect(noiseFilter);
+      noise.connect(noiseBurstGain).connect(noiseFilter);
+      noiseFilter.connect(resonatorGain).connect(pan);
+      resonatorGain.connect(delay);
+      filter.connect(drive).connect(shaper);
+      shaper.connect(dry).connect(pan);
+      shaper.connect(delay);
       delay.connect(feedback).connect(delay);
       delay.connect(wet).connect(pan);
       pan.connect(gain).connect(compressor).connect(context.destination);
       carrier.start();
       overtone.start();
+      sideband.start();
+      sub.start();
       modulator.start();
       pulse.start();
       noise.start();
       iterationSynth = {
-        carrier, overtone, modulator, pulse, carrierGain, overtoneGain, modGain, pulseGain,
-        noise, noiseGain, filter, delay, feedback, wet, dry, gain, pan,
+        carrier, overtone, sideband, sub, modulator, pulse,
+        carrierGain, overtoneGain, sidebandGain, subGain, modGain, pulseGain,
+        noise, noiseGain, noiseBurstGain, noiseFilter, resonatorGain,
+        filter, drive, delay, feedback, wet, dry, gain, pan,
       };
       return iterationSynth;
     }
@@ -1157,59 +1211,112 @@ export default function MandelbrotSkipping() {
       const shapes = orbitScores.map(orbitShape);
       const averageShape = (key: "area" | "spread" | "elongation" | "density" | "centroidX" | "centroidY") =>
         shapes.reduce((sum, shape) => sum + shape[key], 0) / shapes.length;
+      const shapeVariance = (key: "spread" | "elongation" | "density", mean: number) =>
+        shapes.reduce((sum, shape) => sum + (shape[key] - mean) ** 2, 0) / shapes.length;
       const area = averageShape("area");
       const spread = averageShape("spread");
       const elongation = averageShape("elongation");
       const density = averageShape("density");
       const centroidX = averageShape("centroidX");
       const centroidY = averageShape("centroidY");
+      const dispersion = Math.min(1, Math.sqrt(shapes.reduce((sum, shape) =>
+        sum + (shape.centroidX - centroidX) ** 2 + (shape.centroidY - centroidY) ** 2, 0) / shapes.length * .5));
+      const featureVariance = Math.min(1, Math.sqrt(
+        shapeVariance("spread", spread) + shapeVariance("elongation", elongation) + shapeVariance("density", density),
+      ));
       const orientationSin = shapes.reduce((sum, shape) => sum + Math.sin(shape.orientation * 2), 0) / shapes.length;
       const orientationCos = shapes.reduce((sum, shape) => sum + Math.cos(shape.orientation * 2), 0) / shapes.length;
       const orientation = .5 * Math.atan2(orientationSin, orientationCos);
-      const orientationTone = (Math.sin(orientation * 2) + 1) * .5;
+      const orientationCoherence = Math.min(1, Math.hypot(orientationSin, orientationCos));
       const coverage = orbitScores.reduce((sum, orbit) => sum + orbit.distinct, 0);
       const coverageRatio = Math.min(1, coverage / Math.max(1, orbitScores.length * 96));
       const instability = orbitScores.reduce((sum, orbit) => sum + Math.min(1, Math.hypot(orbit.zr, orbit.zi) / 2), 0) / orbitScores.length;
       const glyphDensity = Math.min(1, orbitScores.length / Math.max(1, rock.skips * MAX_SOURCE_DOTS));
-      const pitchSteps = rock.skips * 1.65 + depthBand * .38 + spread * 4.2
-        + elongation * 3.6 + orientationTone * 2.5 + centroidY * 2.2;
-      const frequency = Math.min(720, 74 * Math.pow(2, pitchSteps / 12));
-      const overtoneRatio = 1.42 + density * .38 + instability * .31 + elongation * .16;
-      const cutoff = Math.min(6200, 180 + area * 2600 + density * 1700 + depthBand * 54 + instability * 680);
-      const level = Math.min(.048, .009 + activeRatio * .013 + spread * .010 + coverageRatio * .008 + glyphDensity * .004);
-      const grain = Math.min(.012, .0004 + (1 - density) * .004 + instability * .0045 + elongation * .0025);
-      const panning = Math.max(-.72, Math.min(.72, centroidX * .58 + Math.sin(orientation) * .14));
+      const dominantIndex = orbitScores.reduce((best, orbit, index) => {
+        const weight = orbit.distinct * (.35 + shapes[index].spread) * (.6 + shapes[index].density);
+        const bestWeight = orbitScores[best].distinct * (.35 + shapes[best].spread) * (.6 + shapes[best].density);
+        return weight > bestWeight ? index : best;
+      }, 0);
+      const dominant = shapes[dominantIndex];
+      const symmetry = Math.min(1, (1 - dominant.elongation) * .58 + orientationCoherence * .42);
+      const chaos = Math.min(1, featureVariance * 1.7 + (1 - density) * .24 + instability * .28);
+      const coverageMotion = Math.max(0, coverage - lastAudibleCoverage);
+      const growth = Math.min(1, Math.log2(coverageMotion + 1) / 4.5);
+      lastAudibleCoverage = coverage;
+
+      // Landing position selects a stable musical palette. Live topology then
+      // moves independent voices through it instead of collapsing to one mean.
+      const origin = orbitScores[0];
+      const paletteSeed = Math.abs(Math.round((origin.cr + 2.2) * 137 + (origin.ci + 1.5) * 211));
+      const scale = SONIC_SCALES[paletteSeed % SONIC_SCALES.length];
+      const rootMidi = 34 + (paletteSeed * 7) % 12;
+      const frequencyForDegree = (degree: number) => {
+        const rounded = Math.round(degree);
+        const wrapped = ((rounded % scale.length) + scale.length) % scale.length;
+        const octave = Math.floor(rounded / scale.length);
+        const midi = rootMidi + scale[wrapped] + octave * 12;
+        return 440 * 2 ** ((midi - 69) / 12);
+      };
+      const topologyDegree = depthBand * .20 + dominant.spread * 3.7 + dominant.elongation * 2.8
+        + (dominant.orientation / Math.PI + .5) * 2.4 + dominant.centroidY * 1.6;
+      const chordWidth = 1 + Math.round(dispersion * 4 + featureVariance * 3);
+      const frequency = Math.min(560, frequencyForDegree(topologyDegree));
+      const overtoneFrequency = Math.min(1400, frequencyForDegree(topologyDegree + 2 + Math.round(symmetry * 2)));
+      const sidebandFrequency = Math.min(1800, frequencyForDegree(topologyDegree + chordWidth + 3));
+      const cutoff = Math.min(6800, 150 + area * 2700 + density * 1500 + depthBand * 48 + chaos * 1500);
+      const level = Math.min(.040, .007 + activeRatio * .010 + spread * .007 + coverageRatio * .006 + glyphDensity * .003 + growth * .004);
+      const panning = Math.max(-.76, Math.min(.76,
+        centroidX * .52 + Math.sin(now * .001 * (.22 + dispersion * 1.7) + orientation) * dispersion * .34,
+      ));
       const at = context.currentTime;
       synth.carrier.frequency.setTargetAtTime(frequency, at, .055);
-      synth.overtone.frequency.setTargetAtTime(frequency * overtoneRatio, at, .07);
-      synth.pulse.frequency.setTargetAtTime(frequency * (1.48 + density * .72 + orientationTone * .31), at, .025);
-      synth.carrierGain.gain.setTargetAtTime(.56 + (1 - density) * .22, at, .10);
-      synth.overtoneGain.gain.setTargetAtTime(.08 + density * .24 + area * .13, at, .10);
-      synth.modulator.frequency.setTargetAtTime(.35 + density * 4.8 + elongation * 3.2 + activeRatio * 1.4, at, .12);
-      synth.modGain.gain.setTargetAtTime(5 + elongation * 48 + instability * 28, at, .11);
+      synth.overtone.frequency.setTargetAtTime(overtoneFrequency, at, .075);
+      synth.sideband.frequency.setTargetAtTime(sidebandFrequency, at, .085);
+      synth.sub.frequency.setTargetAtTime(Math.max(28, frequency * .5), at, .10);
+      synth.carrierGain.gain.setTargetAtTime(.16 + symmetry * .36, at, .10);
+      synth.overtoneGain.gain.setTargetAtTime(.035 + density * .25 + orientationCoherence * .08, at, .10);
+      synth.sidebandGain.gain.setTargetAtTime(.008 + dominant.elongation * .13 + chaos * .075, at, .10);
+      synth.subGain.gain.setTargetAtTime(.025 + area * .16 + symmetry * .035, at, .12);
+      synth.modulator.frequency.setTargetAtTime(.18 + density * 3.6 + dispersion * 4.2 + activeRatio, at, .12);
+      synth.modGain.gain.setTargetAtTime(2 + chaos * 74 + featureVariance * 46, at, .11);
       synth.filter.frequency.setTargetAtTime(cutoff, at, .08);
-      synth.filter.Q.setTargetAtTime(1.1 + elongation * 7.5 + density * 2.2, at, .09);
-      synth.noiseGain.gain.setTargetAtTime(grain, at, .07);
-      synth.delay.delayTime.setTargetAtTime(.028 + area * .13 + Math.abs(Math.sin(orientation)) * .035, at, .12);
-      synth.feedback.gain.setTargetAtTime(.05 + elongation * .24 + spread * .08, at, .14);
-      synth.wet.gain.setTargetAtTime(.035 + spread * .14 + orientationTone * .035, at, .14);
-      synth.dry.gain.setTargetAtTime(.92 - density * .12, at, .14);
+      synth.filter.Q.setTargetAtTime(.8 + dominant.elongation * 7.2 + symmetry * 2.6, at, .09);
+      synth.drive.gain.setTargetAtTime(.62 + chaos * 1.25 + density * .42, at, .10);
+      synth.noiseGain.gain.setTargetAtTime(.00015 + chaos * .010 + growth * .004, at, .07);
+      synth.noiseFilter.frequency.setTargetAtTime(Math.min(7200, frequency * (2.2 + density * 5.4 + dispersion * 2.5)), at, .08);
+      synth.noiseFilter.Q.setTargetAtTime(1.5 + density * 10 + orientationCoherence * 5, at, .09);
+      synth.resonatorGain.gain.setTargetAtTime(.10 + chaos * .28 + growth * .24, at, .09);
+      synth.delay.delayTime.setTargetAtTime(.024 + area * .12 + dispersion * .12, at, .12);
+      synth.feedback.gain.setTargetAtTime(.04 + dominant.elongation * .18 + dispersion * .18, at, .14);
+      synth.wet.gain.setTargetAtTime(.025 + spread * .10 + dispersion * .13, at, .14);
+      synth.dry.gain.setTargetAtTime(.90 - chaos * .14, at, .14);
       synth.pan.pan.setTargetAtTime(panning, at, .08);
       synth.gain.gain.setTargetAtTime(level * (phase === "resolving" ? .76 : 1), at, .09);
 
-      // Deeper work makes audible grains. The rhythm accelerates with depth,
-      // while spatially larger orbits make each grain brighter and longer.
+      // A topology-derived pulse sequencer adds pitched FM strikes and modal
+      // noise bursts. Different landing palettes create different motifs.
       const depthMotion = deepest - lastAudibleDepth;
-      const pulseInterval = Math.max(52, 275 - Math.min(175, depthBand * 13) - density * 42 - coverageRatio * 28);
+      const pulseInterval = Math.max(48, 310 - Math.min(155, depthBand * 11) - growth * 88 - chaos * 42);
       if (depthMotion > 0 && now - lastIterationPulse >= pulseInterval) {
-        const pulseLevel = Math.min(.78, .18 + area * .22 + density * .22 + activeRatio * .16 + elongation * .11);
-        const pulseLength = .035 + area * .07 + (1 - density) * .035;
+        const patternStep = 1 + (paletteSeed + Math.round(dominant.elongation * 5)) % Math.max(2, scale.length - 1);
+        const motifDegree = topologyDegree + (pulseCounter * patternStep) % scale.length + (pulseCounter % 4 === 3 ? chordWidth : 0);
+        const accentCycle = 3 + paletteSeed % 5;
+        const accent = pulseCounter % accentCycle === 0 ? 1 : .54 + symmetry * .22;
+        const pulseLevel = Math.min(.82, (.18 + area * .18 + density * .18 + growth * .24 + chaos * .10) * accent);
+        const pulseLength = .028 + area * .075 + symmetry * .045 + dispersion * .035;
+        synth.pulse.frequency.setValueAtTime(Math.min(2200, frequencyForDegree(motifDegree + scale.length)), at);
         synth.pulseGain.gain.cancelScheduledValues(at);
         synth.pulseGain.gain.setValueAtTime(.0001, at);
         synth.pulseGain.gain.exponentialRampToValueAtTime(pulseLevel, at + .008);
         synth.pulseGain.gain.exponentialRampToValueAtTime(.0001, at + pulseLength);
+        const burstLevel = Math.min(.48, (.035 + chaos * .24 + growth * .18) * accent);
+        synth.noiseBurstGain.gain.cancelScheduledValues(at);
+        synth.noiseBurstGain.gain.setValueAtTime(.0001, at);
+        synth.noiseBurstGain.gain.exponentialRampToValueAtTime(Math.max(.0002, burstLevel), at + .004);
+        synth.noiseBurstGain.gain.exponentialRampToValueAtTime(.0001, at + .025 + dispersion * .06);
         lastIterationPulse = now;
         lastAudibleDepth = deepest;
+        pulseCounter += 1;
       }
     }
 
@@ -1258,7 +1365,9 @@ export default function MandelbrotSkipping() {
       ripples = [];
       orbitScores = [];
       lastAudibleDepth = 0;
+      lastAudibleCoverage = 0;
       lastIterationPulse = 0;
+      pulseCounter = 0;
       const a = anchor();
       pull = { ...a };
       rock = { x: a.x, y: a.y, vx: 0, vy: 0, z: 0, vz: 0, spin: 0, skips: 0, bounceAge: 10 };
