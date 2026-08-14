@@ -1504,10 +1504,6 @@ export default function MandelbrotSkipping() {
         const point = complexToScreen(impact.cr, impact.ci, width, height, viewRef.current);
         const age = now - impact.born;
         const alpha = Math.max(0.46, 0.82 - age / 9000);
-        ctx.fillStyle = "rgba(2, 10, 16, .62)";
-        ctx.strokeStyle = "rgba(128, 232, 250, .22)";
-        ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(point.x, point.y, 9, 0, TAU); ctx.fill(); ctx.stroke();
         ctx.fillStyle = `rgba(220, 250, 255, ${alpha})`;
         ctx.fillText(String(impact.index), point.x, point.y + .5);
       }
