@@ -367,15 +367,32 @@ function formatNumber(value: number) {
 
 function orbitShape(orbit: OrbitScore) {
   const n = orbit.distinct;
-  if (!n) return { area: 0, coverage: 0, spread: 0 };
+  if (!n) return { area: 0, coverage: 0, spread: 0, elongation: 0, orientation: 0, density: 0, centroidX: 0, centroidY: 0 };
   const meanX = orbit.sumX / n;
   const meanY = orbit.sumY / n;
   const varianceX = Math.max(0, orbit.sumXX / n - meanX * meanX);
   const varianceY = Math.max(0, orbit.sumYY / n - meanY * meanY);
   const covariance = orbit.sumXY / n - meanX * meanY;
-  const area = Math.min(1, Math.sqrt(Math.max(0, varianceX * varianceY - covariance * covariance)) / FULL_GRID_VARIANCE);
+  const determinant = Math.max(0, varianceX * varianceY - covariance * covariance);
+  const discriminant = Math.sqrt((varianceX - varianceY) ** 2 + 4 * covariance * covariance);
+  const major = Math.max(0, (varianceX + varianceY + discriminant) * .5);
+  const minor = Math.max(0, (varianceX + varianceY - discriminant) * .5);
+  const area = Math.min(1, Math.sqrt(determinant) / FULL_GRID_VARIANCE);
   const coverage = Math.min(1, Math.log2(1 + n) / Math.log2(1 + COVERAGE_GRID * COVERAGE_GRID));
-  return { area, coverage, spread: Math.sqrt(area) };
+  const elongation = major > .001 ? Math.min(1, 1 - Math.sqrt(minor / major)) : 0;
+  const orientation = .5 * Math.atan2(2 * covariance, varianceX - varianceY);
+  const estimatedCells = Math.max(1, Math.min(COVERAGE_GRID * COVERAGE_GRID, 4 * Math.PI * Math.sqrt(determinant)));
+  const density = Math.min(1, n / estimatedCells);
+  return {
+    area,
+    coverage,
+    spread: Math.sqrt(area),
+    elongation,
+    orientation,
+    density,
+    centroidX: meanX / (COVERAGE_GRID - 1) * 2 - 1,
+    centroidY: meanY / (COVERAGE_GRID - 1) * 2 - 1,
+  };
 }
 
 function scoreForOrbit(orbit: OrbitScore, depth: number) {
@@ -962,11 +979,19 @@ export default function MandelbrotSkipping() {
     let iterationSynth: {
       carrier: OscillatorNode;
       overtone: OscillatorNode;
+      modulator: OscillatorNode;
       pulse: OscillatorNode;
+      carrierGain: GainNode;
+      overtoneGain: GainNode;
+      modGain: GainNode;
       pulseGain: GainNode;
       noise: AudioBufferSourceNode;
       noiseGain: GainNode;
       filter: BiquadFilterNode;
+      delay: DelayNode;
+      feedback: GainNode;
+      wet: GainNode;
+      dry: GainNode;
       gain: GainNode;
       pan: StereoPannerNode;
     } | null = null;
@@ -979,8 +1004,6 @@ export default function MandelbrotSkipping() {
     const buddhabrotImage = new Image();
     let buddhabrotReady = false;
     let flashlightDirty = true;
-    let flashlightCacheMode: "cone" | "spot" | null = null;
-    let cursorSpot = { x: 0, y: 0, inside: false, lastMoved: -Infinity };
 
     buddhabrotImage.decoding = "async";
     buddhabrotImage.onload = () => {
@@ -1037,11 +1060,17 @@ export default function MandelbrotSkipping() {
       const context = ensureAudio();
       const carrier = context.createOscillator();
       const overtone = context.createOscillator();
+      const modulator = context.createOscillator();
       const pulse = context.createOscillator();
       const carrierGain = context.createGain();
       const overtoneGain = context.createGain();
+      const modGain = context.createGain();
       const pulseGain = context.createGain();
       const filter = context.createBiquadFilter();
+      const delay = context.createDelay(.4);
+      const feedback = context.createGain();
+      const wet = context.createGain();
+      const dry = context.createGain();
       const pan = context.createStereoPanner();
       const gain = context.createGain();
       const compressor = context.createDynamicsCompressor();
@@ -1060,9 +1089,12 @@ export default function MandelbrotSkipping() {
       noise.loop = true;
       carrier.type = "sine";
       overtone.type = "triangle";
+      modulator.type = "sine";
       pulse.type = "sine";
       carrierGain.gain.value = .78;
       overtoneGain.gain.value = .24;
+      modulator.frequency.value = 1.5;
+      modGain.gain.value = 12;
       pulseGain.gain.value = .0001;
       noiseGain.gain.value = .0001;
       filter.type = "lowpass";
@@ -1072,16 +1104,31 @@ export default function MandelbrotSkipping() {
       compressor.threshold.value = -30;
       compressor.knee.value = 18;
       compressor.ratio.value = 5;
+      delay.delayTime.value = .08;
+      feedback.gain.value = .1;
+      wet.gain.value = .08;
+      dry.gain.value = .9;
+      modulator.connect(modGain);
+      modGain.connect(carrier.detune);
+      modGain.connect(overtone.detune);
       carrier.connect(carrierGain).connect(filter);
       overtone.connect(overtoneGain).connect(filter);
       pulse.connect(pulseGain).connect(filter);
       noise.connect(noiseGain).connect(filter);
-      filter.connect(pan).connect(gain).connect(compressor).connect(context.destination);
+      filter.connect(dry).connect(pan);
+      filter.connect(delay);
+      delay.connect(feedback).connect(delay);
+      delay.connect(wet).connect(pan);
+      pan.connect(gain).connect(compressor).connect(context.destination);
       carrier.start();
       overtone.start();
+      modulator.start();
       pulse.start();
       noise.start();
-      iterationSynth = { carrier, overtone, pulse, pulseGain, noise, noiseGain, filter, gain, pan };
+      iterationSynth = {
+        carrier, overtone, modulator, pulse, carrierGain, overtoneGain, modGain, pulseGain,
+        noise, noiseGain, filter, delay, feedback, wet, dry, gain, pan,
+      };
       return iterationSynth;
     }
 
@@ -1100,35 +1147,56 @@ export default function MandelbrotSkipping() {
       const activeRatio = activeCount / orbitScores.length;
       const deepest = orbitScores.reduce((best, orbit) => Math.max(best, orbit.shownDepth), 0);
       const depthBand = Math.log2(deepest + 1);
-      const spread = orbitScores.reduce((sum, orbit) => sum + orbitShape(orbit).spread, 0) / orbitScores.length;
+      const shapes = orbitScores.map(orbitShape);
+      const averageShape = (key: "area" | "spread" | "elongation" | "density" | "centroidX" | "centroidY") =>
+        shapes.reduce((sum, shape) => sum + shape[key], 0) / shapes.length;
+      const area = averageShape("area");
+      const spread = averageShape("spread");
+      const elongation = averageShape("elongation");
+      const density = averageShape("density");
+      const centroidX = averageShape("centroidX");
+      const centroidY = averageShape("centroidY");
+      const orientationSin = shapes.reduce((sum, shape) => sum + Math.sin(shape.orientation * 2), 0) / shapes.length;
+      const orientationCos = shapes.reduce((sum, shape) => sum + Math.cos(shape.orientation * 2), 0) / shapes.length;
+      const orientation = .5 * Math.atan2(orientationSin, orientationCos);
+      const orientationTone = (Math.sin(orientation * 2) + 1) * .5;
       const coverage = orbitScores.reduce((sum, orbit) => sum + orbit.distinct, 0);
+      const coverageRatio = Math.min(1, coverage / Math.max(1, orbitScores.length * 96));
       const instability = orbitScores.reduce((sum, orbit) => sum + Math.min(1, Math.hypot(orbit.zr, orbit.zi) / 2), 0) / orbitScores.length;
-      const averageReal = orbitScores.reduce((sum, orbit) => sum + orbit.zr, 0) / orbitScores.length;
       const glyphDensity = Math.min(1, orbitScores.length / Math.max(1, rock.skips * MAX_SOURCE_DOTS));
-      const pitchSteps = rock.skips * 1.7 + depthBand * .34 + spread * 5.5;
+      const pitchSteps = rock.skips * 1.65 + depthBand * .38 + spread * 4.2
+        + elongation * 3.6 + orientationTone * 2.5 + centroidY * 2.2;
       const frequency = Math.min(720, 74 * Math.pow(2, pitchSteps / 12));
-      const overtoneRatio = 1.48 + instability * .54;
-      const cutoff = Math.min(4800, 260 + spread * 2900 + depthBand * 48 + instability * 520);
-      const level = Math.min(.045, .010 + activeRatio * .014 + spread * .011 + glyphDensity * .006);
-      const grain = Math.min(.009, .0007 + spread * .0048 + Math.min(1, coverage / 220) * .0035);
-      const panning = Math.max(-.65, Math.min(.65, (averageReal - viewRef.current.centerX) / Math.max(viewRef.current.halfY, .001) * .35));
+      const overtoneRatio = 1.42 + density * .38 + instability * .31 + elongation * .16;
+      const cutoff = Math.min(6200, 180 + area * 2600 + density * 1700 + depthBand * 54 + instability * 680);
+      const level = Math.min(.048, .009 + activeRatio * .013 + spread * .010 + coverageRatio * .008 + glyphDensity * .004);
+      const grain = Math.min(.012, .0004 + (1 - density) * .004 + instability * .0045 + elongation * .0025);
+      const panning = Math.max(-.72, Math.min(.72, centroidX * .58 + Math.sin(orientation) * .14));
       const at = context.currentTime;
       synth.carrier.frequency.setTargetAtTime(frequency, at, .055);
       synth.overtone.frequency.setTargetAtTime(frequency * overtoneRatio, at, .07);
-      synth.pulse.frequency.setTargetAtTime(frequency * (2.01 + spread * .48), at, .025);
+      synth.pulse.frequency.setTargetAtTime(frequency * (1.48 + density * .72 + orientationTone * .31), at, .025);
+      synth.carrierGain.gain.setTargetAtTime(.56 + (1 - density) * .22, at, .10);
+      synth.overtoneGain.gain.setTargetAtTime(.08 + density * .24 + area * .13, at, .10);
+      synth.modulator.frequency.setTargetAtTime(.35 + density * 4.8 + elongation * 3.2 + activeRatio * 1.4, at, .12);
+      synth.modGain.gain.setTargetAtTime(5 + elongation * 48 + instability * 28, at, .11);
       synth.filter.frequency.setTargetAtTime(cutoff, at, .08);
-      synth.filter.Q.setTargetAtTime(1.4 + (1 - spread) * 5.2, at, .09);
+      synth.filter.Q.setTargetAtTime(1.1 + elongation * 7.5 + density * 2.2, at, .09);
       synth.noiseGain.gain.setTargetAtTime(grain, at, .07);
+      synth.delay.delayTime.setTargetAtTime(.028 + area * .13 + Math.abs(Math.sin(orientation)) * .035, at, .12);
+      synth.feedback.gain.setTargetAtTime(.05 + elongation * .24 + spread * .08, at, .14);
+      synth.wet.gain.setTargetAtTime(.035 + spread * .14 + orientationTone * .035, at, .14);
+      synth.dry.gain.setTargetAtTime(.92 - density * .12, at, .14);
       synth.pan.pan.setTargetAtTime(panning, at, .08);
       synth.gain.gain.setTargetAtTime(level * (phase === "resolving" ? .76 : 1), at, .09);
 
       // Deeper work makes audible grains. The rhythm accelerates with depth,
       // while spatially larger orbits make each grain brighter and longer.
       const depthMotion = deepest - lastAudibleDepth;
-      const pulseInterval = Math.max(58, 260 - Math.min(190, depthBand * 15));
+      const pulseInterval = Math.max(52, 275 - Math.min(175, depthBand * 13) - density * 42 - coverageRatio * 28);
       if (depthMotion > 0 && now - lastIterationPulse >= pulseInterval) {
-        const pulseLevel = Math.min(.72, .22 + spread * .32 + activeRatio * .18);
-        const pulseLength = .045 + spread * .055;
+        const pulseLevel = Math.min(.78, .18 + area * .22 + density * .22 + activeRatio * .16 + elongation * .11);
+        const pulseLength = .035 + area * .07 + (1 - density) * .035;
         synth.pulseGain.gain.cancelScheduledValues(at);
         synth.pulseGain.gain.setValueAtTime(.0001, at);
         synth.pulseGain.gain.exponentialRampToValueAtTime(pulseLevel, at + .008);
@@ -1492,76 +1560,41 @@ export default function MandelbrotSkipping() {
       target.restore();
     }
 
-    function drawFlashlight(now: number) {
+    function drawFlashlight() {
       const geometry = flashlightGeometry();
-      const spotAge = now - cursorSpot.lastMoved;
-      const spotVisible = !geometry && phase !== "aiming" && cursorSpot.inside && spotAge < 900;
-      const mode = geometry ? "cone" : spotVisible ? "spot" : null;
-      if (!mode || !buddhabrotReady || !flashlightContext) return;
-      if (flashlightDirty || flashlightCacheMode !== mode) {
+      if (!geometry || !buddhabrotReady || !flashlightContext) return;
+      if (flashlightDirty) {
         flashlightContext.clearRect(0, 0, width, height);
         flashlightContext.save();
-        if (geometry) {
-          flashlightContext.filter = "blur(14px)";
-          const mask = flashlightContext.createLinearGradient(
-            geometry.apexX,
-            geometry.apexY,
-            geometry.apexX + geometry.directionX * geometry.range,
-            geometry.apexY + geometry.directionY * geometry.range,
-          );
-          mask.addColorStop(0, "rgba(255, 255, 255, .72)");
-          mask.addColorStop(.055, "rgba(255, 255, 255, .96)");
-          mask.addColorStop(.30, "rgba(255, 255, 255, .62)");
-          mask.addColorStop(.62, "rgba(255, 255, 255, .22)");
-          mask.addColorStop(.84, "rgba(255, 255, 255, .06)");
-          mask.addColorStop(1, "rgba(255, 255, 255, 0)");
-          flashlightContext.fillStyle = mask;
-          traceFlashlightCone(flashlightContext, geometry);
-          flashlightContext.fill();
-        } else {
-          const radius = 74;
-          const mask = flashlightContext.createRadialGradient(cursorSpot.x, cursorSpot.y, 0, cursorSpot.x, cursorSpot.y, radius);
-          mask.addColorStop(0, "rgba(255, 255, 255, .98)");
-          mask.addColorStop(.34, "rgba(255, 255, 255, .82)");
-          mask.addColorStop(.72, "rgba(255, 255, 255, .28)");
-          mask.addColorStop(1, "rgba(255, 255, 255, 0)");
-          flashlightContext.fillStyle = mask;
-          flashlightContext.beginPath();
-          flashlightContext.arc(cursorSpot.x, cursorSpot.y, radius, 0, TAU);
-          flashlightContext.fill();
-        }
+        flashlightContext.filter = "blur(14px)";
+        const mask = flashlightContext.createLinearGradient(
+          geometry.apexX,
+          geometry.apexY,
+          geometry.apexX + geometry.directionX * geometry.range,
+          geometry.apexY + geometry.directionY * geometry.range,
+        );
+        mask.addColorStop(0, "rgba(255, 255, 255, .72)");
+        mask.addColorStop(.055, "rgba(255, 255, 255, .96)");
+        mask.addColorStop(.30, "rgba(255, 255, 255, .62)");
+        mask.addColorStop(.62, "rgba(255, 255, 255, .22)");
+        mask.addColorStop(.84, "rgba(255, 255, 255, .06)");
+        mask.addColorStop(1, "rgba(255, 255, 255, 0)");
+        flashlightContext.fillStyle = mask;
+        traceFlashlightCone(flashlightContext, geometry);
+        flashlightContext.fill();
         flashlightContext.restore();
         flashlightContext.globalCompositeOperation = "source-in";
         drawMappedBuddhabrot(flashlightContext);
         flashlightContext.globalCompositeOperation = "source-over";
         flashlightDirty = false;
-        flashlightCacheMode = mode;
       }
 
       ctx.save();
       ctx.globalCompositeOperation = "screen";
-      const spotFade = spotAge < 180 ? 1 : Math.max(0, 1 - (spotAge - 180) / 720);
       ctx.imageSmoothingEnabled = false;
-      ctx.globalAlpha = geometry ? .38 : .48 * spotFade * spotFade;
+      ctx.globalAlpha = .43;
       ctx.drawImage(flashlightCanvas, 0, 0, width, height);
       ctx.restore();
-
-      if (!geometry) {
-        const radius = 74;
-        ctx.save();
-        ctx.globalCompositeOperation = "screen";
-        ctx.globalAlpha = spotFade;
-        const halo = ctx.createRadialGradient(cursorSpot.x, cursorSpot.y, 0, cursorSpot.x, cursorSpot.y, radius);
-        halo.addColorStop(0, "rgba(188, 235, 226, .026)");
-        halo.addColorStop(.55, "rgba(133, 207, 201, .010)");
-        halo.addColorStop(1, "rgba(90, 150, 150, 0)");
-        ctx.fillStyle = halo;
-        ctx.beginPath();
-        ctx.arc(cursorSpot.x, cursorSpot.y, radius, 0, TAU);
-        ctx.fill();
-        ctx.restore();
-        return;
-      }
 
       ctx.save();
       traceFlashlightCone(ctx, geometry);
@@ -1584,7 +1617,7 @@ export default function MandelbrotSkipping() {
     function render(now: number) {
       ctx.clearRect(0, 0, width, height);
       const a = anchor();
-      drawFlashlight(now);
+      drawFlashlight();
       drawPrediction(a);
       drawEffects(now);
       drawRock();
@@ -1653,10 +1686,6 @@ export default function MandelbrotSkipping() {
 
     function onPointerMove(event: PointerEvent) {
       const point = eventPoint(event);
-      if (event.pointerType !== "touch") {
-        cursorSpot = { x: point.x, y: point.y, inside: true, lastMoved: performance.now() };
-        flashlightDirty = true;
-      }
       if (event.pointerId !== pointerId) return;
       if (pointerMode === "pan") {
         const dx = point.x - panOrigin.x;
@@ -1684,7 +1713,6 @@ export default function MandelbrotSkipping() {
 
     function release(event: PointerEvent) {
       if (event.pointerId !== pointerId) return;
-      cursorSpot.lastMoved = -Infinity;
       flashlightDirty = true;
       if (pointerMode === "pan") {
         pointerMode = "none";
@@ -1737,15 +1765,8 @@ export default function MandelbrotSkipping() {
       pull = { ...a };
       rock.x = a.x;
       rock.y = a.y;
-      cursorSpot.lastMoved = -Infinity;
       flashlightDirty = true;
       updateHud(true);
-    }
-
-    function onPointerLeave(event: PointerEvent) {
-      if (event.pointerType === "touch" || pointerMode !== "none") return;
-      cursorSpot.inside = false;
-      flashlightDirty = true;
     }
 
     function onWheel(event: WheelEvent) {
@@ -1770,7 +1791,6 @@ export default function MandelbrotSkipping() {
     canvas.addEventListener("pointermove", onPointerMove);
     canvas.addEventListener("pointerup", release);
     canvas.addEventListener("pointercancel", cancelAim);
-    canvas.addEventListener("pointerleave", onPointerLeave);
     canvas.addEventListener("wheel", onWheel, { passive: false });
     window.addEventListener("keydown", onKeyDown);
     resize();
@@ -1783,7 +1803,6 @@ export default function MandelbrotSkipping() {
       canvas.removeEventListener("pointermove", onPointerMove);
       canvas.removeEventListener("pointerup", release);
       canvas.removeEventListener("pointercancel", cancelAim);
-      canvas.removeEventListener("pointerleave", onPointerLeave);
       canvas.removeEventListener("wheel", onWheel);
       window.removeEventListener("keydown", onKeyDown);
       buddhabrotImage.onload = null;

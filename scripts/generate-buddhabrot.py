@@ -70,19 +70,19 @@ def main() -> None:
 
     light = np.log1p(density.astype(np.float64))
     occupied = light[light > 0]
-    low = np.percentile(occupied, 38)
+    low = np.percentile(occupied, 54)
     high = np.percentile(occupied, 99.92)
     normalized = np.clip((light - low) / max(high - low, 1e-9), 0, 1)
     # Keep raw histogram pixels. A steeper gamma suppresses empty haze and makes
     # genuine high-density orbit paths pop without manufacturing contour bands.
-    contrast = normalized ** 1.34
-    alpha = np.clip(contrast * 1.22, 0, 1)
-    alpha[contrast < 0.035] = 0
+    contrast = normalized ** 1.68
+    alpha = np.clip((contrast - 0.018) * 1.55, 0, 1)
+    alpha[contrast < 0.055] = 0
 
     rgba = np.zeros((HEIGHT, WIDTH, 4), dtype=np.uint8)
-    rgba[..., 0] = np.clip(26 + contrast * 209, 0, 255).astype(np.uint8)
-    rgba[..., 1] = np.clip(199 + contrast * 56, 0, 255).astype(np.uint8)
-    rgba[..., 2] = np.clip(235 - contrast * 26, 0, 255).astype(np.uint8)
+    rgba[..., 0] = np.clip(8 + contrast * 235, 0, 255).astype(np.uint8)
+    rgba[..., 1] = np.clip(72 + contrast * 183, 0, 255).astype(np.uint8)
+    rgba[..., 2] = np.clip(92 + contrast * 143, 0, 255).astype(np.uint8)
     rgba[..., 3] = (alpha * 255).astype(np.uint8)
 
     output = Path(__file__).resolve().parents[1] / "public" / "buddhabrot-density.png"
