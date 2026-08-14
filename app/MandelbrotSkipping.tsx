@@ -40,6 +40,7 @@ type OrbitScore = {
 type OrbitEngine = {
   spawn: (points: Array<{ x: number; y: number }>) => void;
   clear: () => void;
+  freeze: () => void;
   destroy: () => void;
 };
 
@@ -433,6 +434,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
   let nextSource = 0;
   let frame = 0;
   let disposed = false;
+  let paused = false;
   let textures: any[] = [];
   let lineTextures: any[] = [];
   let pondTexture: any = null;
@@ -525,7 +527,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
     const destination = textures[1 - textureIndex];
     const lineDestination = lineTextures[1 - textureIndex];
     const encoder = device.createCommandEncoder();
-    if (sourceCount > 0) {
+    if (sourceCount > 0 && !paused) {
       const compute = encoder.beginComputePass();
       compute.setPipeline(computePipeline);
       compute.setBindGroup(0, computeBind);
@@ -542,7 +544,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
     lineFade.setBindGroup(0, lineFadeBinds[textureIndex]);
     lineFade.draw(3);
     lineFade.end();
-    if (sourceCount > 0) {
+    if (sourceCount > 0 && !paused) {
       const orbit = encoder.beginRenderPass({ colorAttachments: [{ view: destination.createView(), loadOp: "load", storeOp: "store" }] });
       orbit.setPipeline(pointPipeline);
       orbit.setBindGroup(0, pointBind);
@@ -568,6 +570,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
 
   return {
     spawn(points) {
+      paused = false;
       const states = new Float32Array(points.length * 8);
       const uintStates = new Uint32Array(states.buffer);
       points.forEach((point, index) => {
@@ -582,6 +585,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
       sourceCount = Math.min(MAX_SOURCES, sourceCount + points.length);
     },
     clear() {
+      paused = false;
       sourceCount = 0;
       nextSource = 0;
       device.queue.writeBuffer(stateBuffer, 0, new Uint8Array(MAX_SOURCES * 32));
@@ -596,6 +600,9 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
         pass.end();
       }
       device.queue.submit([encoder.finish()]);
+    },
+    freeze() {
+      paused = true;
     },
     destroy() {
       disposed = true;
@@ -795,6 +802,7 @@ export default function MandelbrotSkipping() {
     function finishRound() {
       if (phase === "result") return;
       phase = "result";
+      engineRef.current?.freeze();
       orbitScores.forEach((orbit) => {
         if (!orbit.resolved) {
           orbit.resolved = true;
