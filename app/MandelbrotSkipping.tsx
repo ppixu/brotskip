@@ -30,16 +30,12 @@ type ScoreEntry = {
 type OrbitScore = {
   zr: number;
   zi: number;
-  tortoiseR: number;
-  tortoiseI: number;
   cr: number;
   ci: number;
   depth: number;
   shownDepth: number;
   skip: number;
   glyph: number;
-  invisibleRun: number;
-  convergenceHits: number;
   stepDistance: number;
   distanceContraction: number;
   cells: Uint32Array;
@@ -97,11 +93,8 @@ const COVERAGE_GRID = 32;
 const COVERAGE_WORDS = COVERAGE_GRID * COVERAGE_GRID / 32;
 const FULL_GRID_VARIANCE = (COVERAGE_GRID * COVERAGE_GRID - 1) / 12;
 const SCORE_SAMPLE_STRIDE = 4;
-const INVISIBLE_STEP_LIMIT = 24;
-const CONVERGENCE_MIN_DEPTH = 96;
-const CONVERGENCE_SAMPLE_STRIDE = 1;
-const CONVERGENCE_HITS = 2;
-const CONVERGENCE_PIXEL_RADIUS = 0.72;
+const MIN_VISIBLE_HOP_PX = 1;
+const MAX_HOP_SCREEN_MULTIPLIER = 2;
 const SCORE_KEY = "mandelbrot-skipping:scores:v2";
 const LEGACY_SCORE_KEY = "mandelbrot-skipping:scores:v1";
 const TAU = Math.PI * 2;
@@ -129,7 +122,7 @@ struct Params {
   center: vec2f,
   viewHalf: vec2f,
   viewport: vec2f,
-  convergenceRadius: f32,
+  minHopPx: f32,
   accelerationCurve: f32,
 }
 struct OrbitPoint { position: vec2f, depth: f32, pad: f32 }
@@ -146,12 +139,10 @@ struct CurveSegment {
 struct OrbitState {
   z: vec2f,
   c: vec2f,
-  tortoise: vec2f,
+  reserved: vec2f,
   step: u32,
   alive: u32,
-  invisibleRun: u32,
-  convergenceHits: u32,
-  pad: vec2u,
+  pad: vec4u,
 }
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read_write> vertices: array<OrbitPoint>;
@@ -188,17 +179,11 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     ) + state.c;
     state.z = z;
     state.step += 1u;
-    if (state.step % 2u == 0u) {
-      state.tortoise = vec2f(
-        state.tortoise.x * state.tortoise.x - state.tortoise.y * state.tortoise.y,
-        2.0 * state.tortoise.x * state.tortoise.y
-      ) + state.c;
-    }
     let previousClip = (previousZ - params.center) / params.viewHalf;
     let clip = (z - params.center) / params.viewHalf;
+    let hopPx = length((clip - previousClip) * params.viewport * 0.5);
     let depthColor = log2(f32(state.step) + 1.0) / 25.6;
     if (all(abs(clip) <= vec2f(1.0))) {
-      state.invisibleRun = 0u;
       if (state.step > ${HIDDEN_INITIAL_STEPS}u) {
         let slot = atomicAdd(&drawArgs.vertexCount, 1u);
         if (slot < ${POINT_BUDGET}u) {
@@ -229,19 +214,8 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
           }
         }
       }
-    } else {
-      state.invisibleRun += 1u;
     }
-    if (state.step >= ${CONVERGENCE_MIN_DEPTH}u && state.step % ${CONVERGENCE_SAMPLE_STRIDE}u == 0u) {
-      let tortoiseClip = (state.tortoise - params.center) / params.viewHalf;
-      let separationPx = length((clip - tortoiseClip) * params.viewport * 0.5);
-      if (separationPx <= params.convergenceRadius) {
-        state.convergenceHits += 1u;
-      } else {
-        state.convergenceHits = 0u;
-      }
-    }
-    if (dot(z, z) > 4.0 || state.step >= params.maxDepth || state.invisibleRun >= ${INVISIBLE_STEP_LIMIT}u || state.convergenceHits >= ${CONVERGENCE_HITS}u) {
+    if (hopPx <= params.minHopPx || hopPx >= length(params.viewport) * ${MAX_HOP_SCREEN_MULTIPLIER}.0 || state.step >= params.maxDepth) {
       state.alive = 0u;
       break;
     }
@@ -766,7 +740,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
     floats[7] = view.halfY;
     floats[8] = width;
     floats[9] = height;
-    floats[10] = CONVERGENCE_PIXEL_RADIUS;
+    floats[10] = MIN_VISIBLE_HOP_PX;
     floats[11] = accelerationCurve;
     device.queue.writeBuffer(paramsBuffer, 0, ints);
     device.queue.writeBuffer(styleBuffer, 0, new Float32Array([POINT_ENERGY, 0, 0, 0]));
@@ -1488,10 +1462,9 @@ export default function MandelbrotSkipping() {
       ripples.push({ cr: source.x, ci: source.y, born: now, index });
       for (const orbitSource of sources) {
         orbitScores.push({
-          zr: 0, zi: 0, tortoiseR: 0, tortoiseI: 0,
+          zr: 0, zi: 0,
           cr: orbitSource.x, ci: orbitSource.y, depth: 0, shownDepth: 0,
-          skip: index, glyph, invisibleRun: 0,
-          convergenceHits: 0, stepDistance: 0, distanceContraction: 0, resolved: false, score: 0,
+          skip: index, glyph, stepDistance: 0, distanceContraction: 0, resolved: false, score: 0,
           cells: new Uint32Array(COVERAGE_WORDS), distinct: 0,
           sumX: 0, sumY: 0, sumXX: 0, sumYY: 0, sumXY: 0,
         });
@@ -1568,6 +1541,7 @@ export default function MandelbrotSkipping() {
       const maxPerOrbit = Math.max(1, Math.floor(POINT_BUDGET / Math.max(orbitScores.length, 1)));
       const view = viewRef.current;
       const viewHalfX = view.halfY * width / height;
+      const maxHopPx = Math.hypot(width, height) * MAX_HOP_SCREEN_MULTIPLIER;
       for (const orbit of orbitScores) {
         if (orbit.resolved) continue;
         const perOrbit = acceleratedSteps(orbit.depth, tuningRef.current.maxDepth, maxPerOrbit, tuningRef.current.acceleration);
@@ -1589,21 +1563,11 @@ export default function MandelbrotSkipping() {
           orbit.zr = nextR;
           orbit.depth += 1;
           recordOrbitCell(orbit);
-          if (orbit.depth % 2 === 0) {
-            const tortoiseR = Math.fround(Math.fround(orbit.tortoiseR * orbit.tortoiseR - orbit.tortoiseI * orbit.tortoiseI) + orbit.cr);
-            orbit.tortoiseI = Math.fround(Math.fround(2 * orbit.tortoiseR * orbit.tortoiseI) + orbit.ci);
-            orbit.tortoiseR = tortoiseR;
-          }
-          const visible = Math.abs((orbit.zr - view.centerX) / viewHalfX) <= 1
-            && Math.abs((orbit.zi - view.centerY) / view.halfY) <= 1;
-          orbit.invisibleRun = visible ? 0 : orbit.invisibleRun + 1;
-          if (orbit.depth >= CONVERGENCE_MIN_DEPTH && orbit.depth % CONVERGENCE_SAMPLE_STRIDE === 0) {
-            const dxPx = (orbit.zr - orbit.tortoiseR) / viewHalfX * width * 0.5;
-            const dyPx = (orbit.zi - orbit.tortoiseI) / view.halfY * height * 0.5;
-            orbit.convergenceHits = dxPx * dxPx + dyPx * dyPx <= CONVERGENCE_PIXEL_RADIUS * CONVERGENCE_PIXEL_RADIUS
-              ? orbit.convergenceHits + 1 : 0;
-          }
-          if (orbit.zr * orbit.zr + orbit.zi * orbit.zi > 4 || orbit.invisibleRun >= INVISIBLE_STEP_LIMIT || orbit.convergenceHits >= CONVERGENCE_HITS) {
+          const hopPx = Math.hypot(
+            (nextR - previousR) / viewHalfX * width * .5,
+            (nextI - previousI) / view.halfY * height * .5,
+          );
+          if (hopPx <= MIN_VISIBLE_HOP_PX || hopPx >= maxHopPx || !Number.isFinite(hopPx)) {
             orbit.resolved = true;
             break;
           }
