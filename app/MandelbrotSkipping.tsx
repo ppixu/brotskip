@@ -72,18 +72,19 @@ type OrbitEngine = {
 };
 
 const MAX_SKIPS = 7;
+const MIN_SOURCE_DOTS = 6;
 const MAX_SOURCE_DOTS = 32;
 const MAX_SOURCES = MAX_SKIPS * MAX_SOURCE_DOTS;
 const DEPTH_OPTIONS = [10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000, 2_000_000, 5_000_000, 10_000_000, 20_000_000] as const;
 const SCORE_DEPTH_CAP = DEPTH_OPTIONS[DEPTH_OPTIONS.length - 1];
-const DEFAULT_TUNING: Tuning = { sourceDots: 1, maxDepth: 2_000_000, acceleration: 2 };
+const DEFAULT_TUNING: Tuning = { sourceDots: 18, maxDepth: 2_000_000, acceleration: 2 };
 const TUNING_KEY = "mandelbrot-skipping:tuning:v1";
-const SOURCE_RADIUS_PX = 6;
+const SOURCE_RADIUS_PX = 10;
 const SLING_DRAW_PULL_RATIO = 0.30;
 const SLING_THROW_PULL_RATIO = 0.16;
 const POINT_BUDGET = 200_000;
 const POINT_ENERGY = 0.1;
-const HIDDEN_INITIAL_STEPS = 1;
+const HIDDEN_INITIAL_STEPS = 0;
 const CURVE_SEGMENTS = 6;
 const LINE_SEGMENT_BUDGET = 25_000;
 const LINE_SEGMENT_CAPACITY = LINE_SEGMENT_BUDGET + MAX_SOURCES;
@@ -418,7 +419,10 @@ function formatCompact(value: number) {
 }
 
 function sanitizeTuning(value: Partial<Tuning> | null | undefined): Tuning {
-  const sourceDots = Math.max(1, Math.min(MAX_SOURCE_DOTS, Math.round(Number(value?.sourceDots) || DEFAULT_TUNING.sourceDots)));
+  const requestedDots = Math.round(Number(value?.sourceDots));
+  const sourceDots = requestedDots >= MIN_SOURCE_DOTS
+    ? Math.min(MAX_SOURCE_DOTS, requestedDots)
+    : DEFAULT_TUNING.sourceDots;
   const requestedDepth = Number(value?.maxDepth);
   const maxDepth = DEPTH_OPTIONS.includes(requestedDepth as typeof DEPTH_OPTIONS[number]) ? requestedDepth : DEFAULT_TUNING.maxDepth;
   const acceleration = Math.max(0.5, Math.min(4, Math.round((Number(value?.acceleration) || DEFAULT_TUNING.acceleration) * 10) / 10));
@@ -434,29 +438,64 @@ function storeTuning(tuning: Tuning) {
   try { localStorage.setItem(TUNING_KEY, JSON.stringify(tuning)); } catch { /* tuning still works for this session */ }
 }
 
-function impactSources(x: number, y: number, width: number, height: number, view: ViewTransform, count: number, seed: number) {
-  if (count <= 1) {
-    const center = screenToComplex(x, y, width, height, view);
-    return [{ x: Math.fround(center.x), y: Math.fround(center.y) }];
-  }
-  const points: Array<{ x: number; y: number }> = [];
-  const pairCount = Math.floor(count / 2);
-  const rotation = makeRandom(seed)() * TAU;
-  if (count % 2 === 1) {
-    const center = screenToComplex(x, y, width, height, view);
-    points.push({ x: Math.fround(center.x), y: Math.fround(center.y) });
-  }
-  for (let pair = 0; pair < pairCount; pair++) {
-    const radius = SOURCE_RADIUS_PX * Math.sqrt((pair + 1) / pairCount);
-    const angle = rotation + pair * 2.399963229728653;
-    const offsetX = Math.cos(angle) * radius;
-    const offsetY = Math.sin(angle) * radius;
-    for (const direction of [-1, 1]) {
-      const mapped = screenToComplex(x + offsetX * direction, y + offsetY * direction, width, height, view);
-      points.push({ x: Math.fround(mapped.x), y: Math.fround(mapped.y) });
+function samplePolygon(vertices: Array<{ x: number; y: number }>, t: number) {
+  const position = ((t % 1) + 1) % 1 * vertices.length;
+  const edge = Math.floor(position) % vertices.length;
+  const local = position - Math.floor(position);
+  const a = vertices[edge];
+  const b = vertices[(edge + 1) % vertices.length];
+  return { x: a.x + (b.x - a.x) * local, y: a.y + (b.y - a.y) * local };
+}
+
+function regularVertices(sides: number, rotation = -Math.PI / 2) {
+  return Array.from({ length: sides }, (_, index) => ({
+    x: Math.cos(rotation + index * TAU / sides),
+    y: Math.sin(rotation + index * TAU / sides),
+  }));
+}
+
+function sacredShapeOffset(shape: number, path: number, t: number) {
+  const circle = (cx: number, cy: number, radius: number) => ({
+    x: cx + Math.cos(t * TAU - Math.PI / 2) * radius,
+    y: cy + Math.sin(t * TAU - Math.PI / 2) * radius,
+  });
+  switch (shape % MAX_SKIPS) {
+    case 0: return circle(0, 0, path === 0 ? 1 : .46); // concentric halo
+    case 1: return path === 0 ? samplePolygon(regularVertices(3), t) : circle(0, 0, .48); // triangle mandala
+    case 2: return circle(path === 0 ? -.32 : .32, 0, .68); // vesica piscis
+    case 3: { // four-petal rose
+      const angle = path * Math.PI / 2;
+      return circle(Math.cos(angle) * .43, Math.sin(angle) * .43, .52);
+    }
+    case 4: { // pentagram and inner seal
+      if (path === 1) return circle(0, 0, .34);
+      const vertices = regularVertices(5);
+      return samplePolygon([vertices[0], vertices[2], vertices[4], vertices[1], vertices[3]], t);
+    }
+    case 5: return path < 2
+      ? samplePolygon(regularVertices(3, -Math.PI / 2 + path * Math.PI), t)
+      : circle(0, 0, .34); // hexagram and inner seal
+    default: { // flower of life
+      if (path === 0) return circle(0, 0, .42);
+      const angle = (path - 1) * TAU / 6 - Math.PI / 2;
+      return circle(Math.cos(angle) * .42, Math.sin(angle) * .42, .42);
     }
   }
-  return points.slice(0, count);
+}
+
+function impactSources(x: number, y: number, width: number, height: number, view: ViewTransform, count: number, shape: number) {
+  const points: Array<{ x: number; y: number }> = [];
+  const pathCounts = [2, 2, 2, 4, 2, 3, 7];
+  const paths = pathCounts[shape % pathCounts.length];
+  for (let index = 0; index < count; index++) {
+    const path = index % paths;
+    const pathIndex = Math.floor(index / paths);
+    const samplesOnPath = Math.ceil((count - path) / paths);
+    const offset = sacredShapeOffset(shape, path, pathIndex / Math.max(samplesOnPath, 1));
+    const mapped = screenToComplex(x + offset.x * SOURCE_RADIUS_PX, y + offset.y * SOURCE_RADIUS_PX, width, height, view);
+    points.push({ x: Math.fround(mapped.x), y: Math.fround(mapped.y) });
+  }
+  return points;
 }
 
 function acceleratedSteps(depth: number, maxDepth: number, budget: number, curve: number) {
@@ -1012,7 +1051,7 @@ export default function MandelbrotSkipping() {
       const index = rock.skips;
       const mapped = screenToComplex(x, y, width, height, viewRef.current);
       const source = { x: Math.fround(mapped.x), y: Math.fround(mapped.y) };
-      const sources = impactSources(x, y, width, height, viewRef.current, tuningRef.current.sourceDots, (shotId << 8) ^ index);
+      const sources = impactSources(x, y, width, height, viewRef.current, tuningRef.current.sourceDots, index - 1);
       impacts.push({ cr: source.x, ci: source.y, born: now, index });
       ripples.push({ cr: source.x, ci: source.y, born: now, index });
       for (const orbitSource of sources) {
@@ -1451,7 +1490,7 @@ export default function MandelbrotSkipping() {
 
   const instruction = hud.phase === "ready" ? "Grab the white orb. Pull back and release."
     : hud.phase === "aiming" ? "Aim for deep water · farther pull = faster throw"
-    : hud.phase === "flying" ? `Each splash launches ${tuning.sourceDots} complex ${tuning.sourceDots === 1 ? "orbit" : "orbits"}`
+    : hud.phase === "flying" ? `Each splash launches a new ${tuning.sourceDots}-point glyph`
     : hud.phase === "resolving" ? `Resolving the pond · ${Math.round(hud.progress * 100)}%`
     : "Press Space or throw again";
 
@@ -1483,9 +1522,9 @@ export default function MandelbrotSkipping() {
         <section className="tuningPanel" aria-label="Orbit tuning">
           <div className="tuningHeading"><span>Orbit tuning</span><span>Live</span></div>
           <div className="tuningControl">
-            <span><span>Dots per splash</span><output>{tuning.sourceDots}</output></span>
-            <input type="range" min="1" max={MAX_SOURCE_DOTS} step="1" value={tuning.sourceDots}
-              aria-label="Dots per splash"
+            <span><span>Glyph dots</span><output>{tuning.sourceDots}</output></span>
+            <input type="range" min={MIN_SOURCE_DOTS} max={MAX_SOURCE_DOTS} step="1" value={tuning.sourceDots}
+              aria-label="Dots per sacred geometry glyph"
               onChange={(event) => updateTuning({ sourceDots: Number(event.target.value) })} />
           </div>
           <div className="tuningControl">
