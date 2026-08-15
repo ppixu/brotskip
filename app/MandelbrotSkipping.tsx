@@ -29,6 +29,15 @@ import {
   MAX_ACCELERATION,
   MIN_ACCELERATION,
 } from "@/lib/orbit-tuning";
+import {
+  complexToClip,
+  complexToScreen,
+  mathBoundsForView,
+  screenToComplex,
+  trailUvOffset,
+  viewCenterKeepingFocus,
+  type ViewTransform,
+} from "@/lib/view-map";
 
 type Phase = "ready" | "aiming" | "flying" | "resolving" | "result";
 
@@ -77,12 +86,6 @@ type OrbitScore = {
   tinyHopStreak: number;
 };
 
-type ViewTransform = {
-  centerX: number;
-  centerY: number;
-  halfY: number;
-};
-
 type Tuning = {
   sourceDots: number;
   maxDepth: number;
@@ -92,6 +95,7 @@ type Tuning = {
   previewIterations: number;
   skipColors: boolean;
   coordinateAxes: boolean;
+  rotateRight: boolean;
 };
 
 type OrbitEngine = {
@@ -136,6 +140,7 @@ const DEFAULT_TUNING: Tuning = {
   previewIterations: 20,
   skipColors: true,
   coordinateAxes: false,
+  rotateRight: false,
 };
 const TUNING_KEY = "mandelbrot-skipping:tuning:v3";
 const SOURCE_RADIUS_PX = 10;
@@ -151,7 +156,6 @@ const COVERAGE_GRID = 32;
 const COVERAGE_WORDS = COVERAGE_GRID * COVERAGE_GRID / 32;
 const FULL_GRID_VARIANCE = (COVERAGE_GRID * COVERAGE_GRID - 1) / 12;
 const SCORE_SAMPLE_STRIDE = 4;
-const MIN_VISIBLE_HOP_PX = 1;
 const MAX_HOP_SCREEN_MULTIPLIER = 2;
 const SCORE_KEY = "mandelbrot-skipping:scores:v2";
 const LEGACY_SCORE_KEY = "mandelbrot-skipping:scores:v1";
@@ -180,7 +184,7 @@ struct Params {
   center: vec2f,
   viewHalf: vec2f,
   viewport: vec2f,
-  minHopPx: f32,
+  rotateRight: f32,
   accelerationCurve: f32,
 }
 struct OrbitPoint { position: vec2f, depth: f32, pad: f32 }
@@ -217,6 +221,12 @@ struct DrawArgs {
 @group(0) @binding(4) var<storage, read_write> lineSegments: array<CurveSegment>;
 @group(0) @binding(5) var<storage, read_write> lineDrawArgs: DrawArgs;
 
+fn toClip(z: vec2f) -> vec2f {
+  let delta = z - params.center;
+  let oriented = select(delta, vec2f(delta.y, -delta.x), params.rotateRight > 0.5);
+  return oriented / params.viewHalf;
+}
+
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) id: vec3u) {
   let source = id.x;
@@ -239,8 +249,8 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     ) + state.c;
     state.z = z;
     state.step += 1u;
-    let previousClip = (previousZ - params.center) / params.viewHalf;
-    let clip = (z - params.center) / params.viewHalf;
+    let previousClip = toClip(previousZ);
+    let clip = toClip(z);
     let hopPx = length((clip - previousClip) * params.viewport * 0.5);
     let depthColor = log2(f32(state.step) + 1.0) / 25.6;
     if (all(abs(clip) <= vec2f(1.0))) {
@@ -252,7 +262,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
       }
       if (state.step > ${HIDDEN_INITIAL_STEPS + 1}u && all(abs(previousClip) <= vec2f(1.0)) && i >= firstLineStep) {
         let future = vec2f(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + state.c;
-        let futureClip = (future - params.center) / params.viewHalf;
+        let futureClip = toClip(future);
         let incoming = clip - previousClip;
         let outgoing = futureClip - clip;
         let incomingLength = length(incoming);
@@ -473,22 +483,6 @@ function makeRandom(seed: number) {
   };
 }
 
-function screenToComplex(x: number, y: number, width: number, height: number, view: ViewTransform) {
-  const aspect = width / Math.max(height, 1);
-  return {
-    x: view.centerX + (x / width * 2 - 1) * view.halfY * aspect,
-    y: view.centerY + (1 - y / height * 2) * view.halfY,
-  };
-}
-
-function complexToScreen(x: number, y: number, width: number, height: number, view: ViewTransform) {
-  const halfX = view.halfY * width / Math.max(height, 1);
-  return {
-    x: ((x - view.centerX) / halfX + 1) * width * 0.5,
-    y: (1 - (y - view.centerY) / view.halfY) * height * 0.5,
-  };
-}
-
 function skipTintRgb(skipIndex: number, colored: boolean): [number, number, number] {
   if (!colored) return [SKIP_TINTS[0][0], SKIP_TINTS[0][1], SKIP_TINTS[0][2]];
   const tint = SKIP_TINTS[(Math.max(1, skipIndex) - 1) % SKIP_TINTS.length];
@@ -524,12 +518,13 @@ function sanitizeTuning(value: Partial<Tuning> | null | undefined): Tuning {
   const previewOrbits = value?.previewOrbits === true;
   const skipColors = value?.skipColors !== false;
   const coordinateAxes = value?.coordinateAxes === true;
+  const rotateRight = value?.rotateRight === true;
   const requestedPreview = Math.round(Number(value?.previewIterations) || DEFAULT_TUNING.previewIterations);
   const previewIterations = Math.max(
     MIN_PREVIEW_ITERATIONS,
     Math.min(MAX_PREVIEW_ITERATIONS, requestedPreview),
   );
-  return { sourceDots, maxDepth, acceleration, linePersist, previewOrbits, previewIterations, skipColors, coordinateAxes };
+  return { sourceDots, maxDepth, acceleration, linePersist, previewOrbits, previewIterations, skipColors, coordinateAxes, rotateRight };
 }
 
 function loadTuning(): Tuning {
@@ -586,7 +581,7 @@ function sacredShapeOffset(shape: number, path: number, t: number) {
   }
 }
 
-function impactSources(x: number, y: number, width: number, height: number, view: ViewTransform, count: number, shape: number) {
+function impactSources(x: number, y: number, width: number, height: number, view: ViewTransform, count: number, shape: number, rotateRight: boolean) {
   const points: Array<{ x: number; y: number }> = [];
   const paths = SACRED_PATH_COUNTS[shape % SACRED_PATH_COUNTS.length];
   for (let index = 0; index < count; index++) {
@@ -594,7 +589,7 @@ function impactSources(x: number, y: number, width: number, height: number, view
     const pathIndex = Math.floor(index / paths);
     const samplesOnPath = Math.ceil((count - path) / paths);
     const offset = sacredShapeOffset(shape, path, pathIndex / Math.max(samplesOnPath, 1));
-    const mapped = screenToComplex(x + offset.x * SOURCE_RADIUS_PX, y + offset.y * SOURCE_RADIUS_PX, width, height, view);
+    const mapped = screenToComplex(x + offset.x * SOURCE_RADIUS_PX, y + offset.y * SOURCE_RADIUS_PX, width, height, view, rotateRight);
     points.push({ x: Math.fround(mapped.x), y: Math.fround(mapped.y) });
   }
   return points;
@@ -745,6 +740,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   let accelerationCurve = DEFAULT_TUNING.acceleration;
   let linePersist = DEFAULT_TUNING.linePersist;
   let skipColors = DEFAULT_TUNING.skipColors;
+  let rotateRight = DEFAULT_TUNING.rotateRight;
   let lastDrawTime = 0;
 
   const makeTexture = (format: string, usages: number) => device.createTexture({ size: [width, height], format, usage: usages });
@@ -828,7 +824,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     floats[7] = view.halfY;
     floats[8] = width;
     floats[9] = height;
-    floats[10] = MIN_VISIBLE_HOP_PX;
+    floats[10] = rotateRight ? 1 : 0;
     floats[11] = accelerationCurve;
     device.queue.writeBuffer(paramsBuffer, 0, ints);
     device.queue.writeBuffer(styleBuffer, 0, new Float32Array([POINT_ENERGY, 0, skipColors ? 1 : 0, 0]));
@@ -836,10 +832,9 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     device.queue.writeBuffer(lineIndirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
     const oldHalfX = previousView.halfY * width / height;
     const viewScale = view.halfY / previousView.halfY;
-    const offsetX = (view.centerX - previousView.centerX) / (2 * oldHalfX);
-    const offsetY = -(view.centerY - previousView.centerY) / (2 * previousView.halfY);
-    device.queue.writeBuffer(fadeBuffer, 0, new Float32Array([1, 0, 0, 0, viewScale, viewScale, offsetX, offsetY]));
-    device.queue.writeBuffer(lineFadeBuffer, 0, new Float32Array([lineRetention, 0, 0, 0, viewScale, viewScale, offsetX, offsetY]));
+    const uvOffset = trailUvOffset(previousView, view, width, height, rotateRight);
+    device.queue.writeBuffer(fadeBuffer, 0, new Float32Array([1, 0, 0, 0, viewScale, viewScale, uvOffset.x, uvOffset.y]));
+    device.queue.writeBuffer(lineFadeBuffer, 0, new Float32Array([lineRetention, 0, 0, 0, viewScale, viewScale, uvOffset.x, uvOffset.y]));
     const destination = textures[1 - textureIndex];
     const lineDestination = lineTextures[1 - textureIndex];
     const encoder = device.createCommandEncoder({ label: "orbit-draw" });
@@ -912,6 +907,17 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       accelerationCurve = tuning.acceleration;
       linePersist = tuning.linePersist;
       skipColors = tuning.skipColors === true;
+      const nextRotate = tuning.rotateRight === true;
+      if (nextRotate !== rotateRight && textures.length) {
+        const encoder = device.createCommandEncoder({ label: "orbit-rotate-clear" });
+        for (const texture of [...textures, ...lineTextures]) {
+          const pass = encoder.beginRenderPass({ colorAttachments: [{ view: texture.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
+          pass.end();
+        }
+        device.queue.submit([encoder.finish()]);
+        cameraPausedUntil = performance.now() + 80;
+      }
+      rotateRight = nextRotate;
     },
     clear() {
       paused = false;
@@ -1128,6 +1134,7 @@ export default function MandelbrotSkipping() {
     storeTuning(next);
     engineRef.current?.setTuning(next);
     invalidateGridRef.current();
+    invalidateFlashlightRef.current();
   }, []);
 
   useEffect(() => {
@@ -1651,11 +1658,11 @@ export default function MandelbrotSkipping() {
 
     function spawnImpact(x: number, y: number, now: number) {
       const index = rock.skips;
-      const mapped = screenToComplex(x, y, width, height, viewRef.current);
+      const mapped = screenToComplex(x, y, width, height, viewRef.current, tuningRef.current.rotateRight);
       const source = { x: Math.fround(mapped.x), y: Math.fround(mapped.y) };
       const glyph = (shapeOffset + index - 1) % GLYPH_COUNT;
       const sources = impactSources(
-        x, y, width, height, viewRef.current, tuningRef.current.sourceDots, glyph,
+        x, y, width, height, viewRef.current, tuningRef.current.sourceDots, glyph, tuningRef.current.rotateRight,
       );
       impacts.push({ cr: source.x, ci: source.y, born: now, index });
       ripples.push({ cr: source.x, ci: source.y, born: now, index });
@@ -1740,7 +1747,7 @@ export default function MandelbrotSkipping() {
       }
       const maxPerOrbit = Math.max(1, Math.floor(POINT_BUDGET / Math.max(orbitScores.length, 1)));
       const view = viewRef.current;
-      const viewHalfX = view.halfY * width / height;
+      const rotateRight = tuningRef.current.rotateRight;
       const maxHopPx = Math.hypot(width, height) * MAX_HOP_SCREEN_MULTIPLIER;
       for (const orbit of orbitScores) {
         if (orbit.resolved) continue;
@@ -1763,12 +1770,10 @@ export default function MandelbrotSkipping() {
           orbit.zr = nextR;
           orbit.depth += 1;
           recordOrbitCell(orbit);
-          const hopPx = Math.hypot(
-            (nextR - previousR) / viewHalfX * width * .5,
-            (nextI - previousI) / view.halfY * height * .5,
-          );
-          const onScreen = Math.abs(nextR - view.centerX) <= viewHalfX * 1.02
-            && Math.abs(nextI - view.centerY) <= view.halfY * 1.02;
+          const previousClip = complexToClip(previousR, previousI, view, width, height, rotateRight);
+          const clip = complexToClip(nextR, nextI, view, width, height, rotateRight);
+          const hopPx = Math.hypot((clip.x - previousClip.x) * width * .5, (clip.y - previousClip.y) * height * .5);
+          const onScreen = Math.abs(clip.x) <= 1.02 && Math.abs(clip.y) <= 1.02;
           const end = updateOrbitEnd({
             magSq: nextR * nextR + nextI * nextI,
             hopPx,
@@ -1943,7 +1948,7 @@ export default function MandelbrotSkipping() {
       strength: number,
     ) {
       if (!previewContext || iterations <= 0) return;
-      const viewHalfX = view.halfY * width / Math.max(height, 1);
+      const rotateRight = tuningRef.current.rotateRight;
       const maxHopPx = Math.hypot(width, height) * MAX_HOP_SCREEN_MULTIPLIER;
       let zr = 0;
       let zi = 0;
@@ -1955,17 +1960,16 @@ export default function MandelbrotSkipping() {
         const previousI = zi;
         const nextR = Math.fround(Math.fround(previousR * previousR - previousI * previousI) + source.x);
         const nextI = Math.fround(Math.fround(2 * previousR * previousI) + source.y);
-        const hopPx = Math.hypot(
-          (nextR - previousR) / viewHalfX * width * 0.5,
-          (nextI - previousI) / view.halfY * height * 0.5,
-        );
+        const previousClip = complexToClip(previousR, previousI, view, width, height, rotateRight);
+        const clip = complexToClip(nextR, nextI, view, width, height, rotateRight);
+        const hopPx = Math.hypot((clip.x - previousClip.x) * width * 0.5, (clip.y - previousClip.y) * height * 0.5);
         zr = nextR;
         zi = nextI;
         if (hopPx >= maxHopPx || !Number.isFinite(hopPx)) break;
         const depth = step / Math.max(1, iterations);
         const alpha = strength * Math.pow(1 - depth, 0.72);
         const pointAlpha = Math.min(1, alpha * 1.1);
-        const to = complexToScreen(nextR, nextI, width, height, view);
+        const to = complexToScreen(nextR, nextI, width, height, view, rotateRight);
         if (step === 0) {
           previewContext.fillStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${pointAlpha})`;
           previewContext.beginPath();
@@ -1975,7 +1979,7 @@ export default function MandelbrotSkipping() {
         }
         const from = step === 1
           ? startScreen
-          : complexToScreen(previousR, previousI, width, height, view);
+          : complexToScreen(previousR, previousI, width, height, view, rotateRight);
         previewContext.strokeStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha})`;
         previewContext.beginPath();
         previewContext.moveTo(from.x, from.y);
@@ -2001,7 +2005,7 @@ export default function MandelbrotSkipping() {
         const iterations = Math.max(1, Math.floor(tuning.previewIterations / 2 ** (skipIndex - 1)));
         const strength = 0.48 / (1 + (skipIndex - 1) * 0.55);
         const rgb = skipTintRgb(skipIndex, tuning.skipColors);
-        const source = screenToComplex(landing.x, landing.y, width, height, view);
+        const source = screenToComplex(landing.x, landing.y, width, height, view, tuning.rotateRight);
         drawPreviewOrbit(source, landing, view, iterations, rgb, strength);
       }
       previewContext.globalCompositeOperation = "source-over";
@@ -2036,6 +2040,7 @@ export default function MandelbrotSkipping() {
         view.halfY.toFixed(5),
         tuningRef.current.previewIterations,
         tuningRef.current.skipColors ? "1" : "0",
+        tuningRef.current.rotateRight ? "1" : "0",
         plannedSkips,
         width,
         height,
@@ -2067,69 +2072,69 @@ export default function MandelbrotSkipping() {
       if (!gridContext) return;
       gridContext.clearRect(0, 0, width, height);
       const view = viewRef.current;
-      const halfX = view.halfY * width / Math.max(height, 1);
-      const xMin = view.centerX - halfX;
-      const xMax = view.centerX + halfX;
-      const yMin = view.centerY - view.halfY;
-      const yMax = view.centerY + view.halfY;
+      const rotateRight = tuningRef.current.rotateRight;
+      const bounds = mathBoundsForView(view, width, height, rotateRight);
+      const pad = Math.max(bounds.xMax - bounds.xMin, bounds.yMax - bounds.yMin) * 0.08;
+      const xMin = bounds.xMin - pad;
+      const xMax = bounds.xMax + pad;
+      const yMin = bounds.yMin - pad;
+      const yMax = bounds.yMax + pad;
       const major = scientificStep(view.halfY * 2 / Math.max(height / 92, 1));
       const minor = major / 5;
       const snap = (position: number) => Math.round(position * dpr) / dpr;
       const isMajor = (value: number) => Math.abs(value / major - Math.round(value / major)) < 1e-6;
       const isAxis = (value: number) => Math.abs(value) < minor * 1e-4;
+      const toScreen = (re: number, im: number) => complexToScreen(re, im, width, height, view, rotateRight);
 
-      const traceVerticals = (majorLines: boolean) => {
+      const traceRe = (majorLines: boolean) => {
         gridContext.beginPath();
         const first = Math.ceil(xMin / minor);
         const last = Math.floor(xMax / minor);
         for (let index = first; index <= last; index++) {
           const value = index * minor;
           if (isAxis(value) || isMajor(value) !== majorLines) continue;
-          const x = snap(complexToScreen(value, 0, width, height, view).x);
-          gridContext.moveTo(x, 0);
-          gridContext.lineTo(x, height);
+          const start = toScreen(value, yMin);
+          const end = toScreen(value, yMax);
+          gridContext.moveTo(snap(start.x), snap(start.y));
+          gridContext.lineTo(snap(end.x), snap(end.y));
         }
         gridContext.stroke();
       };
-      const traceHorizontals = (majorLines: boolean) => {
+      const traceIm = (majorLines: boolean) => {
         gridContext.beginPath();
         const first = Math.ceil(yMin / minor);
         const last = Math.floor(yMax / minor);
         for (let index = first; index <= last; index++) {
           const value = index * minor;
           if (isAxis(value) || isMajor(value) !== majorLines) continue;
-          const y = snap(complexToScreen(0, value, width, height, view).y);
-          gridContext.moveTo(0, y);
-          gridContext.lineTo(width, y);
+          const start = toScreen(xMin, value);
+          const end = toScreen(xMax, value);
+          gridContext.moveTo(snap(start.x), snap(start.y));
+          gridContext.lineTo(snap(end.x), snap(end.y));
         }
         gridContext.stroke();
       };
 
       gridContext.lineWidth = 1 / dpr;
       gridContext.strokeStyle = "rgba(104, 196, 216, .026)";
-      traceVerticals(false);
-      traceHorizontals(false);
+      traceRe(false);
+      traceIm(false);
       gridContext.strokeStyle = "rgba(119, 211, 228, .065)";
-      traceVerticals(true);
-      traceHorizontals(true);
+      traceRe(true);
+      traceIm(true);
 
       if (tuningRef.current.coordinateAxes) {
-        const zero = complexToScreen(0, 0, width, height, view);
-        const realAxisVisible = zero.y >= 0 && zero.y <= height;
-        const imaginaryAxisVisible = zero.x >= 0 && zero.x <= width;
+        const realStart = toScreen(xMin, 0);
+        const realEnd = toScreen(xMax, 0);
+        const imagStart = toScreen(0, yMin);
+        const imagEnd = toScreen(0, yMax);
         gridContext.strokeStyle = "rgba(151, 231, 240, .18)";
         gridContext.lineWidth = 1 / dpr;
         gridContext.beginPath();
-        if (realAxisVisible) {
-          const y = snap(zero.y);
-          gridContext.moveTo(0, y);
-          gridContext.lineTo(width, y);
-        }
-        if (imaginaryAxisVisible) {
-          const x = snap(zero.x);
-          gridContext.moveTo(x, 0);
-          gridContext.lineTo(x, height);
-        }
+        gridContext.moveTo(snap(realStart.x), snap(realStart.y));
+        gridContext.lineTo(snap(realEnd.x), snap(realEnd.y));
+        gridContext.moveTo(snap(imagStart.x), snap(imagStart.y));
+        gridContext.lineTo(snap(imagEnd.x), snap(imagEnd.y));
         gridContext.stroke();
 
         gridContext.fillStyle = "rgba(171, 230, 238, .32)";
@@ -2137,46 +2142,40 @@ export default function MandelbrotSkipping() {
         gridContext.font = "8px ui-monospace, SFMono-Regular, Menlo, monospace";
         gridContext.textBaseline = "top";
         gridContext.textAlign = "center";
-        const labelY = realAxisVisible ? Math.min(height - 11, zero.y + 4) : height - 11;
         for (let index = Math.ceil(xMin / major); index <= Math.floor(xMax / major); index++) {
           const value = index * major;
           if (isAxis(value)) continue;
-          const x = snap(complexToScreen(value, 0, width, height, view).x);
-          if (realAxisVisible) {
-            gridContext.beginPath();
-            gridContext.moveTo(x, zero.y - 3);
-            gridContext.lineTo(x, zero.y + 3);
-            gridContext.stroke();
+          const tick = toScreen(value, 0);
+          gridContext.beginPath();
+          gridContext.arc(snap(tick.x), snap(tick.y), 2, 0, TAU);
+          gridContext.stroke();
+          if (tick.x > 18 && tick.x < width - 18 && tick.y > 9 && tick.y < height - 9) {
+            gridContext.fillText(coordinateLabel(value, major), snap(tick.x), snap(tick.y) + 4);
           }
-          if (x > 18 && x < width - 18) gridContext.fillText(coordinateLabel(value, major), x, labelY);
         }
         gridContext.textBaseline = "middle";
         gridContext.textAlign = "right";
-        const labelX = imaginaryAxisVisible ? Math.max(28, zero.x - 5) : 28;
         for (let index = Math.ceil(yMin / major); index <= Math.floor(yMax / major); index++) {
           const value = index * major;
           if (isAxis(value)) continue;
-          const y = snap(complexToScreen(0, value, width, height, view).y);
-          if (imaginaryAxisVisible) {
-            gridContext.beginPath();
-            gridContext.moveTo(zero.x - 3, y);
-            gridContext.lineTo(zero.x + 3, y);
-            gridContext.stroke();
+          const tick = toScreen(0, value);
+          gridContext.beginPath();
+          gridContext.arc(snap(tick.x), snap(tick.y), 2, 0, TAU);
+          gridContext.stroke();
+          if (tick.x > 28 && tick.x < width - 8 && tick.y > 9 && tick.y < height - 9) {
+            gridContext.fillText(coordinateLabel(value, major), snap(tick.x) - 5, snap(tick.y));
           }
-          if (y > 9 && y < height - 9) gridContext.fillText(coordinateLabel(value, major), labelX, y);
         }
         gridContext.fillStyle = "rgba(180, 239, 245, .42)";
         gridContext.font = "italic 9px ui-monospace, SFMono-Regular, Menlo, monospace";
-        if (realAxisVisible) {
-          gridContext.textAlign = "right";
-          gridContext.textBaseline = "bottom";
-          gridContext.fillText("Re(c)", width - 7, Math.max(11, zero.y - 5));
-        }
-        if (imaginaryAxisVisible) {
-          gridContext.textAlign = "left";
-          gridContext.textBaseline = "top";
-          gridContext.fillText("Im(c)", Math.min(width - 34, zero.x + 6), 6);
-        }
+        const reLabel = toScreen(xMax, 0);
+        gridContext.textAlign = "right";
+        gridContext.textBaseline = "bottom";
+        gridContext.fillText("Re(c)", Math.min(width - 7, Math.max(40, reLabel.x - 6)), Math.min(height - 6, Math.max(14, reLabel.y - 4)));
+        const imLabel = toScreen(0, yMax);
+        gridContext.textAlign = "left";
+        gridContext.textBaseline = "top";
+        gridContext.fillText("Im(c)", Math.min(width - 34, Math.max(6, imLabel.x + 6)), Math.max(6, imLabel.y + 4));
       }
       gridDirty = false;
     }
@@ -2234,7 +2233,7 @@ export default function MandelbrotSkipping() {
     function drawEffects(now: number) {
       ripples = ripples.filter((ripple) => now - ripple.born < 1000);
       for (const ripple of ripples) {
-        const point = complexToScreen(ripple.cr, ripple.ci, width, height, viewRef.current);
+        const point = complexToScreen(ripple.cr, ripple.ci, width, height, viewRef.current, tuningRef.current.rotateRight);
         const t = (now - ripple.born) / 1000;
         for (let ring = 0; ring < 2; ring++) {
           const rt = Math.max(0, t - ring * .11);
@@ -2247,7 +2246,7 @@ export default function MandelbrotSkipping() {
       ctx.textBaseline = "middle";
       ctx.font = "700 8px ui-monospace, monospace";
       for (const impact of impacts) {
-        const point = complexToScreen(impact.cr, impact.ci, width, height, viewRef.current);
+        const point = complexToScreen(impact.cr, impact.ci, width, height, viewRef.current, tuningRef.current.rotateRight);
         const age = now - impact.born;
         const alpha = Math.max(0.46, 0.82 - age / 9000);
         ctx.fillStyle = `rgba(220, 250, 255, ${alpha})`;
@@ -2294,11 +2293,17 @@ export default function MandelbrotSkipping() {
     }
 
     function drawMappedBuddhabrot(target: CanvasRenderingContext2D) {
-      const topLeft = complexToScreen(BUDDHABROT_BOUNDS.xMin, BUDDHABROT_BOUNDS.yMax, width, height, viewRef.current);
-      const bottomRight = complexToScreen(BUDDHABROT_BOUNDS.xMax, BUDDHABROT_BOUNDS.yMin, width, height, viewRef.current);
+      const rotateRight = tuningRef.current.rotateRight;
+      const topLeft = complexToScreen(BUDDHABROT_BOUNDS.xMin, BUDDHABROT_BOUNDS.yMax, width, height, viewRef.current, false);
+      const bottomRight = complexToScreen(BUDDHABROT_BOUNDS.xMax, BUDDHABROT_BOUNDS.yMin, width, height, viewRef.current, false);
       const source = buddhabrotSourceRef.current;
       if (!source) return;
       target.save();
+      if (rotateRight) {
+        target.translate(width / 2, height / 2);
+        target.rotate(Math.PI / 2);
+        target.translate(-width / 2, -height / 2);
+      }
       target.imageSmoothingEnabled = true;
       target.drawImage(source, topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y);
       target.restore();
@@ -2405,15 +2410,9 @@ export default function MandelbrotSkipping() {
       const previous = viewRef.current;
       const nextHalfY = Math.max(MIN_VIEW_HALF_Y, Math.min(MAX_VIEW_HALF_Y, previous.halfY * factor));
       if (nextHalfY === previous.halfY) return;
-      const aspect = width / Math.max(height, 1);
-      const nx = x / width * 2 - 1;
-      const ny = 1 - y / height * 2;
-      const focus = screenToComplex(x, y, width, height, previous);
-      applyView({
-        centerX: focus.x - nx * nextHalfY * aspect,
-        centerY: focus.y - ny * nextHalfY,
-        halfY: nextHalfY,
-      });
+      const rotateRight = tuningRef.current.rotateRight;
+      const focus = screenToComplex(x, y, width, height, previous, rotateRight);
+      applyView(viewCenterKeepingFocus(x, y, focus, width, height, nextHalfY, rotateRight));
     }
 
     function onPointerDown(event: PointerEvent) {
@@ -2441,12 +2440,12 @@ export default function MandelbrotSkipping() {
       const point = eventPoint(event);
       if (event.pointerId !== pointerId) return;
       if (pointerMode === "pan") {
-        const dx = point.x - panOrigin.x;
-        const dy = point.y - panOrigin.y;
-        const aspect = width / Math.max(height, 1);
+        const rotateRight = tuningRef.current.rotateRight;
+        const before = screenToComplex(panOrigin.x, panOrigin.y, width, height, panView, rotateRight);
+        const after = screenToComplex(point.x, point.y, width, height, panView, rotateRight);
         applyView({
-          centerX: panView.centerX - dx / width * 2 * panView.halfY * aspect,
-          centerY: panView.centerY + dy / height * 2 * panView.halfY,
+          centerX: panView.centerX - (after.x - before.x),
+          centerY: panView.centerY - (after.y - before.y),
           halfY: panView.halfY,
         });
         return;
@@ -2650,6 +2649,12 @@ export default function MandelbrotSkipping() {
               aria-label="Show coordinate axes"
               onChange={(event) => updateTuning({ coordinateAxes: event.target.checked })} />
             Coordinate axes
+          </label>
+          <label className="tuningCheck">
+            <input type="checkbox" checked={tuning.rotateRight}
+              aria-label="Rotate coordinates and Buddhabrot 90 degrees right"
+              onChange={(event) => updateTuning({ rotateRight: event.target.checked })} />
+            Rotate 90° right
           </label>
           <div className="tuningControl">
             <span><span>Preview iterations</span><output>{tuning.previewIterations}</output></span>
