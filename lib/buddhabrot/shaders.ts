@@ -67,15 +67,15 @@ fn accumulate(@builtin(global_invocation_id) id: vec3u) {
 `;
 
 export const histogramShader = /* wgsl */ `
-struct Params { pixelCount: u32, pad0: u32, pad1: u32, pad2: u32 }
+struct Params { size: u32, pad0: u32, pad1: u32, pad2: u32 }
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read> density: array<u32>;
 @group(0) @binding(2) var<storage, read_write> histogram: array<atomic<u32>>;
 
-@compute @workgroup_size(64)
+@compute @workgroup_size(8, 8)
 fn histogram(@builtin(global_invocation_id) id: vec3u) {
-  if (id.x >= params.pixelCount) { return; }
-  let value = density[id.x];
+  if (id.x >= params.size || id.y >= params.size) { return; }
+  let value = density[id.y * params.size + id.x];
   // Percentiles are taken over occupied pixels only, matching the Python.
   if (value == 0u) { return; }
   let light = log(1.0 + f32(value));

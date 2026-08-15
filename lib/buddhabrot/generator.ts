@@ -28,7 +28,7 @@ export type BuddhabrotGenerator = {
   step: (deltaSeconds: number) => void;
   progress: () => number;
   isComplete: () => boolean;
-  blit: (context: any) => void;
+  blit: (context: any) => boolean;
   toBitmapAndBlob: () => Promise<{ bitmap: ImageBitmap; blob: Blob | null }>;
   destroy: () => void;
 };
@@ -122,7 +122,7 @@ export function createBuddhabrotGenerator(
     ],
   });
 
-  device.queue.writeBuffer(histogramParams, 0, new Uint32Array([pixelCount, 0, 0, 0]));
+  device.queue.writeBuffer(histogramParams, 0, new Uint32Array([size, 0, 0, 0]));
 
   let emitted = 0;
   let chunkIndex = 0;
@@ -182,7 +182,7 @@ export function createBuddhabrotGenerator(
       pass.dispatchWorkgroups(Math.ceil(sampleCount / 64));
       pass.setPipeline(histogramPipeline);
       pass.setBindGroup(0, histogramBind);
-      pass.dispatchWorkgroups(Math.ceil(pixelCount / 64));
+      pass.dispatchWorkgroups(Math.ceil(size / 8), Math.ceil(size / 8));
       pass.setPipeline(colorizePipeline);
       pass.setBindGroup(0, colorizeBind);
       pass.dispatchWorkgroups(Math.ceil(size / 8), Math.ceil(size / 8));
@@ -201,7 +201,7 @@ export function createBuddhabrotGenerator(
       return emitted >= totalSamples;
     },
     blit(context) {
-      if (destroyed || gpu.hasFailed()) return;
+      if (destroyed || gpu.hasFailed()) return false;
       const encoder = device.createCommandEncoder();
       const pass = encoder.beginRenderPass({
         colorAttachments: [{
@@ -216,6 +216,7 @@ export function createBuddhabrotGenerator(
       pass.draw(3);
       pass.end();
       device.queue.submit([encoder.finish()]);
+      return true;
     },
     async toBitmapAndBlob() {
       const canvas = new OffscreenCanvas(size, size);
@@ -225,7 +226,10 @@ export function createBuddhabrotGenerator(
         format: gpu.preferredFormat,
         alphaMode: "premultiplied",
       });
-      this.blit(context);
+      const drew = this.blit(context);
+      if (!drew) {
+        throw new Error("Buddhabrot generator cannot blit: GPU context is destroyed or has failed.");
+      }
       // createImageBitmap reads the canvas without emptying it, unlike
       // transferToImageBitmap, so the same canvas still yields the blob.
       const bitmap = await createImageBitmap(canvas);
