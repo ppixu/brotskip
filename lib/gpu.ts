@@ -31,10 +31,15 @@ export async function acquireGpu(fail: (message: string) => void): Promise<GpuCo
     fail("Orbit renderer hit a GPU validation error.");
   });
   device.lost.then(() => { failed = true; });
+  let destroyed = false;
   return {
     device,
     preferredFormat: gpu.getPreferredCanvasFormat(),
     hasFailed: () => failed,
-    destroy: () => device.destroy(),
+    destroy: () => {
+      if (destroyed) return;
+      destroyed = true;
+      device.destroy();
+    },
   };
 }
