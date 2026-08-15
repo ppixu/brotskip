@@ -1010,7 +1010,7 @@ export default function MandelbrotSkipping() {
       buddhabrotReady = true;
       flashlightDirty = true;
     };
-    buddhabrotImage.src = "/buddhabrot-density.png";
+    buddhabrotImage.src = "buddhabrot-density.png";
 
     function anchor() { return { x: width * 0.5, y: height * 0.82 }; }
     function minDimension() { return Math.min(width, height); }
