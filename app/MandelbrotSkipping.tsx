@@ -19,6 +19,7 @@ import {
   TINY_HOP_STREAK,
   updateOrbitEnd,
 } from "@/lib/orbit-end";
+import { MAX_SKIPS, MIN_SKIPS, sampleSkipCount } from "@/lib/skip-count";
 
 type Phase = "ready" | "aiming" | "flying" | "resolving" | "result";
 
@@ -94,7 +95,7 @@ type OrbitEngine = {
   destroy: () => void;
 };
 
-const MAX_SKIPS = 7;
+const GLYPH_COUNT = 7;
 const SACRED_PATH_COUNTS = [2, 2, 2, 4, 2, 3, 7] as const;
 const MIN_SOURCE_DOTS = 6;
 const MAX_SOURCE_DOTS = 32;
@@ -555,7 +556,7 @@ function sacredShapeOffset(shape: number, path: number, t: number) {
     x: cx + Math.cos(t * TAU - Math.PI / 2) * radius,
     y: cy + Math.sin(t * TAU - Math.PI / 2) * radius,
   });
-  switch (shape % MAX_SKIPS) {
+  switch (shape % GLYPH_COUNT) {
     case 0: return circle(0, 0, path === 0 ? 1 : .46); // concentric halo
     case 1: return path === 0 ? samplePolygon(regularVertices(3), t) : circle(0, 0, .48); // triangle mandala
     case 2: return circle(path === 0 ? -.32 : .32, 0, .68); // vesica piscis
@@ -1151,6 +1152,7 @@ export default function MandelbrotSkipping() {
     let lastHud = 0;
     let viewChangingUntil = 0;
     let rock = { x: 0, y: 0, vx: 0, vy: 0, z: 0, vz: 0, spin: 0, skips: 0, bounceAge: 10 };
+    let plannedSkips = MIN_SKIPS;
     let impacts: Array<{ cr: number; ci: number; born: number; index: number }> = [];
     let ripples: Array<{ cr: number; ci: number; born: number; index: number }> = [];
     let orbitScores: OrbitScore[] = [];
@@ -1289,7 +1291,7 @@ export default function MandelbrotSkipping() {
         const oscillator = context.createOscillator();
         const voiceGain = context.createGain();
         const voicePan = context.createStereoPanner();
-        oscillator.type = (["sine", "triangle", "sine", "sawtooth", "triangle", "square", "sine"] as OscillatorType[])[index];
+        oscillator.type = (["sine", "triangle", "sine", "sawtooth", "triangle", "square", "sine"] as OscillatorType[])[index % GLYPH_COUNT];
         oscillator.frequency.value = 110;
         voiceGain.gain.value = .0001;
         oscillator.connect(voiceGain).connect(voicePan).connect(filter);
@@ -1630,7 +1632,7 @@ export default function MandelbrotSkipping() {
       impacts = [];
       ripples = [];
       orbitScores = [];
-      shapeOffset = Math.floor(Math.random() * MAX_SKIPS);
+      shapeOffset = Math.floor(Math.random() * GLYPH_COUNT);
       lastShapeCoverage.clear();
       lastAudibleDepth = 0;
       lastAudibleCoverage = 0;
@@ -1650,7 +1652,7 @@ export default function MandelbrotSkipping() {
       const index = rock.skips;
       const mapped = screenToComplex(x, y, width, height, viewRef.current);
       const source = { x: Math.fround(mapped.x), y: Math.fround(mapped.y) };
-      const glyph = (shapeOffset + index - 1) % MAX_SKIPS;
+      const glyph = (shapeOffset + index - 1) % GLYPH_COUNT;
       const sources = impactSources(
         x, y, width, height, viewRef.current, tuningRef.current.sourceDots, glyph,
       );
@@ -1815,7 +1817,8 @@ export default function MandelbrotSkipping() {
         rock.skips += 1;
         rock.bounceAge = 0;
         spawnImpact(rock.x, rock.y, now);
-        rock.vz = Math.abs(rock.vz) * 0.56;
+        const remaining = plannedSkips - rock.skips;
+        rock.vz = Math.max(Math.abs(rock.vz) * 0.56, minDimension() * (0.05 + remaining * 0.008));
         rock.vx *= 0.79;
         rock.vy *= 0.79;
         const jitter = (makeRandom((shotId << 8) ^ rock.skips)() - 0.5) * Math.PI / 60;
@@ -1824,8 +1827,15 @@ export default function MandelbrotSkipping() {
         const vx = rock.vx * cos - rock.vy * sin;
         rock.vy = rock.vx * sin + rock.vy * cos;
         rock.vx = vx;
-        const speed = Math.hypot(rock.vx, rock.vy);
-        if (rock.skips >= MAX_SKIPS || rock.vz < minDimension() * 0.045 || speed < minDimension() * 0.08 ||
+        if (remaining > 0) {
+          const speed = Math.hypot(rock.vx, rock.vy);
+          const minSpeed = minDimension() * 0.09;
+          if (speed > 0 && speed < minSpeed) {
+            rock.vx *= minSpeed / speed;
+            rock.vy *= minSpeed / speed;
+          }
+        }
+        if (rock.skips >= plannedSkips ||
           rock.x < -50 || rock.x > width + 50 || rock.y < -50 || rock.y > height + 50) {
           startResolving(now);
         }
@@ -1892,7 +1902,7 @@ export default function MandelbrotSkipping() {
       const gravity = minDimension() * 1.65;
       const dt = 1 / 120;
       const landings: Array<{ x: number; y: number; index: number; glyph: number }> = [];
-      for (let step = 0; step < 120 * 12 && skips < MAX_SKIPS; step++) {
+      for (let step = 0; step < 120 * 20 && skips < plannedSkips; step++) {
         x += vx * dt;
         y += vy * dt;
         z += vz * dt;
@@ -1904,12 +1914,20 @@ export default function MandelbrotSkipping() {
         z = 0;
         if (x < 24 || x > width - 24 || y < 24 || y > height - 24) break;
         skips += 1;
-        landings.push({ x, y, index: skips, glyph: (shapeOffset + skips - 1) % MAX_SKIPS });
-        vz = Math.abs(vz) * 0.56;
+        landings.push({ x, y, index: skips, glyph: (shapeOffset + skips - 1) % GLYPH_COUNT });
+        const remaining = plannedSkips - skips;
+        vz = Math.max(Math.abs(vz) * 0.56, minDimension() * (0.05 + remaining * 0.008));
         vx *= 0.79;
         vy *= 0.79;
-        const remaining = Math.hypot(vx, vy);
-        if (skips >= MAX_SKIPS || vz < minDimension() * 0.045 || remaining < minDimension() * 0.08) break;
+        if (remaining > 0) {
+          const speed = Math.hypot(vx, vy);
+          const minSpeed = minDimension() * 0.09;
+          if (speed > 0 && speed < minSpeed) {
+            vx *= minSpeed / speed;
+            vy *= minSpeed / speed;
+          }
+        }
+        if (skips >= plannedSkips) break;
         if (x < -50 || x > width + 50 || y < -50 || y > height + 50) break;
       }
       return landings;
@@ -2017,6 +2035,7 @@ export default function MandelbrotSkipping() {
         view.halfY.toFixed(5),
         tuningRef.current.previewIterations,
         tuningRef.current.skipColors ? "1" : "0",
+        plannedSkips,
         width,
         height,
       ].join(":");
@@ -2170,7 +2189,7 @@ export default function MandelbrotSkipping() {
       if (phase === "resolving" || phase === "result") return;
       const lift = rock.z * 0.30;
       const radius = 10;
-      const nextShape = (shapeOffset + rock.skips) % MAX_SKIPS;
+      const nextShape = (shapeOffset + rock.skips) % GLYPH_COUNT;
       const shapePaths = SACRED_PATH_COUNTS[nextShape];
       const heightT = Math.min(1, rock.z / Math.max(minDimension() * .45, 1));
       const drawX = Math.round(rock.x * dpr) / dpr;
@@ -2403,6 +2422,8 @@ export default function MandelbrotSkipping() {
       if (phase === "ready" && Math.hypot(point.x - rock.x, point.y - rock.y) <= 48) {
         pointerMode = "aim";
         phase = "aiming";
+        plannedSkips = sampleSkipCount(Math.random);
+        previewKey = "";
         flashlightDirty = true;
         pull = point;
         rock.x = point.x;
