@@ -1,100 +1,206 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { DEMO_SEEDS, escapingOrbit } from "@/lib/buddhabrot/explain";
+import {
+  ESCAPE_SEED,
+  EXPLAIN_PARTS,
+  ITERATE_SEED,
+  STACK_SEEDS,
+  TRAPPED_SEED,
+  canvasBackingSize,
+  escapingOrbit,
+  type ExplainPart,
+} from "@/lib/buddhabrot/explain";
 
-const WIDTH = 288;
-const HEIGHT = 148;
-const HALF = 1.85;
+const HALF = 2.35;
+const FILM_HEIGHT = 104;
 
-function toScreen(re: number, im: number) {
+type Size = { width: number; height: number };
+
+function toScreen(re: number, im: number, size: Size) {
   return {
-    x: (re / HALF + 1) * 0.5 * WIDTH,
-    y: (1 - im / HALF) * 0.5 * HEIGHT,
+    x: (re / HALF + 1) * 0.5 * size.width,
+    y: (1 - im / HALF) * 0.5 * size.height,
   };
 }
 
-function HowItWorksFilm() {
+function fitCanvas(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): Size {
+  const cssWidth = Math.max(1, canvas.clientWidth);
+  const cssHeight = Math.max(1, canvas.clientHeight);
+  const backing = canvasBackingSize(cssWidth, cssHeight, window.devicePixelRatio || 1);
+  if (canvas.width !== backing.width || canvas.height !== backing.height) {
+    canvas.width = backing.width;
+    canvas.height = backing.height;
+  }
+  ctx.setTransform(backing.dpr, 0, 0, backing.dpr, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  return { width: cssWidth, height: cssHeight };
+}
+
+function drawAxes(ctx: CanvasRenderingContext2D, size: Size) {
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.strokeStyle = "rgba(151, 231, 240, .28)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, Math.round(size.height / 2) + 0.5);
+  ctx.lineTo(size.width, Math.round(size.height / 2) + 0.5);
+  ctx.moveTo(Math.round(size.width / 2) + 0.5, 0);
+  ctx.lineTo(Math.round(size.width / 2) + 0.5, size.height);
+  ctx.stroke();
+  const radius = size.width * (1 / HALF);
+  ctx.strokeStyle = "rgba(186, 230, 238, .42)";
+  ctx.beginPath();
+  ctx.arc(size.width / 2, size.height / 2, radius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = "rgba(186, 230, 238, .72)";
+  ctx.font = "700 11px ui-sans-serif, system-ui, sans-serif";
+  ctx.fillText("|z| = 2", 8, 16);
+}
+
+function numberedDot(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  text: string,
+  active: boolean,
+  fill = "#071014",
+  stroke = "#9fe7f0",
+) {
+  ctx.beginPath();
+  ctx.arc(x, y, active ? 8.5 : 7.5, 0, Math.PI * 2);
+  ctx.fillStyle = active ? "#dffbff" : fill;
+  ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = stroke;
+  ctx.stroke();
+  ctx.fillStyle = active ? "#072026" : "#e7fbff";
+  ctx.font = "700 11px ui-sans-serif, system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, x, y + 0.5);
+}
+
+function drawPath(
+  ctx: CanvasRenderingContext2D,
+  size: Size,
+  points: { re: number; im: number }[],
+  until: number,
+  alpha: number,
+  rgb: string,
+  radius = 2.2,
+) {
+  const last = Math.max(0, Math.min(until, points.length));
+  if (last <= 0) return;
+  ctx.strokeStyle = `rgba(${rgb}, ${alpha})`;
+  ctx.fillStyle = `rgba(${rgb}, ${Math.min(1, alpha * 1.2)})`;
+  ctx.lineWidth = 1.5;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  const origin = toScreen(0, 0, size);
+  ctx.moveTo(origin.x, origin.y);
+  for (let index = 0; index < last; index++) {
+    const point = toScreen(points[index].re, points[index].im, size);
+    ctx.lineTo(point.x, point.y);
+  }
+  ctx.stroke();
+  for (let index = 0; index < last; index++) {
+    const point = toScreen(points[index].re, points[index].im, size);
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, index === last - 1 ? radius + 1.1 : radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function HowItWorksFilm({ kind }: { kind: ExplainPart["film"] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d", { alpha: false });
     if (!ctx) return;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const orbits = DEMO_SEEDS.map((seed) => escapingOrbit(seed, 24));
-    const primary = orbits[0];
+    const iterate = escapingOrbit(ITERATE_SEED, 4);
+    const trapped = escapingOrbit(TRAPPED_SEED, 18);
+    const escaping = escapingOrbit(ESCAPE_SEED, 16);
+    const stacked = STACK_SEEDS.map((seed) => escapingOrbit(seed, 16));
+    let size = fitCanvas(canvas, ctx);
     let frame = 0;
-    let start = performance.now();
+    const start = performance.now();
 
-    function drawAxes() {
-      ctx.strokeStyle = "rgba(151, 231, 240, .18)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(0, HEIGHT / 2);
-      ctx.lineTo(WIDTH, HEIGHT / 2);
-      ctx.moveTo(WIDTH / 2, 0);
-      ctx.lineTo(WIDTH / 2, HEIGHT);
-      ctx.stroke();
-      const radius = WIDTH * (1 / HALF);
-      ctx.strokeStyle = "rgba(120, 190, 200, .22)";
-      ctx.beginPath();
-      ctx.arc(WIDTH / 2, HEIGHT / 2, radius, 0, Math.PI * 2);
-      ctx.stroke();
-    }
+    const observer = new ResizeObserver(() => {
+      size = fitCanvas(canvas, ctx);
+    });
+    observer.observe(canvas);
 
-    function drawPath(points: typeof primary, until: number, alpha: number, rgb: string) {
-      ctx.strokeStyle = `rgba(${rgb}, ${alpha})`;
-      ctx.fillStyle = `rgba(${rgb}, ${alpha * 1.15})`;
-      ctx.lineWidth = 1.15;
-      ctx.beginPath();
-      const origin = toScreen(0, 0);
-      ctx.moveTo(origin.x, origin.y);
-      for (let index = 0; index < until; index++) {
-        const point = toScreen(points[index].re, points[index].im);
-        ctx.lineTo(point.x, point.y);
-      }
-      ctx.stroke();
-      for (let index = 0; index < until; index++) {
-        const point = toScreen(points[index].re, points[index].im);
-        ctx.beginPath();
-        ctx.arc(point.x, point.y, index === until - 1 ? 3.2 : 1.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
+    function label(text: string, re: number, im: number, color: string, dx = 7, dy = -7) {
+      const point = toScreen(re, im, size);
+      ctx.textAlign = "left";
+      ctx.textBaseline = "alphabetic";
+      ctx.fillStyle = color;
+      ctx.font = "700 11px ui-sans-serif, system-ui, sans-serif";
+      ctx.fillText(text, point.x + dx, point.y + dy);
     }
 
     function paint(now: number) {
       const elapsed = (now - start) / 1000;
-      ctx.clearRect(0, 0, WIDTH, HEIGHT);
-      ctx.fillStyle = "rgba(4, 10, 12, .55)";
-      ctx.fillRect(0, 0, WIDTH, HEIGHT);
-      drawAxes();
+      ctx.fillStyle = "#071014";
+      ctx.fillRect(0, 0, size.width, size.height);
+      drawAxes(ctx, size);
 
-      if (reduceMotion) {
-        drawPath(primary, primary.length, 0.72, "120, 220, 236");
-      } else {
-        const hopMs = 280;
-        const cycle = primary.length * hopMs + 900;
-        const t = elapsed * 1000 % cycle;
-        const shown = Math.min(primary.length, 1 + Math.floor(t / hopMs));
-        drawPath(orbits[2], orbits[2].length, 0.16, "186, 255, 120");
-        drawPath(orbits[1], orbits[1].length, 0.18, "255, 168, 92");
-        drawPath(primary, shown, 0.78, "120, 220, 236");
+      if (kind === "iterate") {
+        const hopMs = 480;
+        const cycle = (iterate.length + 1) * hopMs + 800;
+        const shown = reduceMotion
+          ? iterate.length
+          : Math.min(iterate.length, Math.floor(((elapsed * 1000) % cycle) / hopMs));
+        drawPath(ctx, size, iterate, shown, 0.95, "120, 220, 236", 1.6);
+        const origin = toScreen(0, 0, size);
+        numberedDot(ctx, origin.x, origin.y, "0", shown === 0);
+        for (let index = 0; index < shown; index++) {
+          const point = toScreen(iterate[index].re, iterate[index].im, size);
+          numberedDot(
+            ctx,
+            point.x,
+            point.y,
+            String(index + 1),
+            index === shown - 1,
+            index === 0 ? "#3a2f08" : "#071014",
+            index === 0 ? "#ffe46a" : "#9fe7f0",
+          );
+        }
+        label("start", 0, 0, "#fff6c8", 12, 16);
+        if (shown > 0) label("splash", iterate[0].re, iterate[0].im, "#ffe46a", 12, 16);
       }
 
-      const seed = toScreen(DEMO_SEEDS[0].re, DEMO_SEEDS[0].im);
-      ctx.fillStyle = "#dffbff";
-      ctx.font = "700 10px ui-monospace, SFMono-Regular, Menlo, monospace";
-      ctx.fillText("c", seed.x + 6, seed.y - 6);
-      ctx.fillStyle = "rgba(255, 230, 110, .95)";
-      ctx.beginPath();
-      ctx.arc(seed.x, seed.y, 3.4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "rgba(171, 230, 238, .55)";
-      ctx.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
-      ctx.fillText("0", WIDTH / 2 + 6, HEIGHT / 2 - 6);
-      ctx.fillText("|z| = 2", 12, 16);
+      if (kind === "escape") {
+        const hopMs = 280;
+        const cycle = escaping.length * hopMs + 900;
+        const shown = reduceMotion
+          ? escaping.length
+          : Math.min(escaping.length, 1 + Math.floor(((elapsed * 1000) % cycle) / hopMs));
+        drawPath(ctx, size, trapped, trapped.length, 0.5, "120, 210, 140", 2);
+        drawPath(ctx, size, escaping, shown, 0.95, "120, 220, 236", 2.5);
+        label("stays", trapped[3].re, trapped[3].im, "rgba(168, 230, 176, .95)", 10, -8);
+        ctx.textAlign = "left";
+        ctx.textBaseline = "alphabetic";
+        ctx.fillStyle = "#dffbff";
+        ctx.font = "700 11px ui-sans-serif, system-ui, sans-serif";
+        ctx.fillText("escapes →", size.width - 72, size.height / 2 - 10);
+      }
+
+      if (kind === "stack") {
+        const reveal = reduceMotion
+          ? stacked.length
+          : Math.min(stacked.length, 1 + Math.floor((elapsed * 2.2) % (stacked.length + 3)));
+        for (let index = 0; index < reveal; index++) {
+          const tint = index % 3 === 0 ? "120, 220, 236" : index % 3 === 1 ? "186, 255, 150" : "255, 176, 110";
+          drawPath(ctx, size, stacked[index], stacked[index].length, 0.28, tint, 1.35);
+        }
+      }
     }
 
     function loop(now: number) {
@@ -104,18 +210,20 @@ function HowItWorksFilm() {
 
     if (reduceMotion) {
       paint(start);
-      return;
+      return () => observer.disconnect();
     }
     frame = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(frame);
-  }, []);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [kind]);
 
   return (
     <canvas
       ref={canvasRef}
       className="howItWorksFilm"
-      width={WIDTH}
-      height={HEIGHT}
+      height={FILM_HEIGHT}
       aria-hidden="true"
     />
   );
@@ -128,10 +236,15 @@ export default function HowItWorks() {
         How does this work
       </button>
       <div id="how-it-works-panel" className="howItWorksPanel" role="tooltip">
-        <p className="howItWorksKicker">Buddhabrot</p>
-        <HowItWorksFilm />
-        <p>Each splash is a complex number <i>c</i>. Start at <i>z</i> = 0 and repeat <i>z → z² + c</i>.</p>
-        <p>If the path flies past |z| = 2, paint every stop it visited. The nebula is thousands of those escaping paths stacked together. Paths that never leave are the Mandelbrot set — they stay dark.</p>
+        <p className="howItWorksKicker">How the picture is made</p>
+        {EXPLAIN_PARTS.map((part) => (
+          <section key={part.title} className="howItWorksPart">
+            <h3>{part.title}</h3>
+            <HowItWorksFilm kind={part.film} />
+            {part.formula ? <p className="howItWorksFormula">{part.formula}</p> : null}
+            <p>{part.body}</p>
+          </section>
+        ))}
       </div>
     </div>
   );

@@ -78,7 +78,9 @@ button, input { font: inherit; }
   position: absolute;
   left: 0;
   bottom: calc(100% + 10px);
-  width: min(340px, calc(100vw - 48px));
+  width: min(360px, calc(100vw - 48px));
+  max-height: min(72vh, 640px);
+  overflow: auto;
   padding: 14px 14px 12px;
   border: 1px solid rgba(151, 231, 240, .16);
   border-radius: 12px;
@@ -109,10 +111,28 @@ button, input { font: inherit; }
 .howItWorksFilm {
   display: block;
   width: 100%;
-  height: auto;
-  margin: 0 0 10px;
+  height: 104px;
+  margin: 0 0 8px;
   border-radius: 8px;
-  background: #05090a;
+  background: #071014;
+  image-rendering: auto;
+}
+.howItWorksPart { margin: 0 0 12px; }
+.howItWorksPart:last-child { margin: 0; }
+.howItWorksPart h3 {
+  margin: 0 0 6px;
+  color: #dffbff;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.howItWorksFormula {
+  margin: -2px 0 6px;
+  color: #dffbff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 650;
 }
 .howItWorksPanel p { margin: 0 0 8px; }
 .howItWorksPanel p:last-child { margin: 0; }
