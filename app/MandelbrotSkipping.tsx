@@ -91,8 +91,8 @@ const SCORE_DEPTH_CAP = DEPTH_OPTIONS[DEPTH_OPTIONS.length - 1];
 const LINE_VISIBLE_FLOOR = 0.05;
 const MIN_LINE_PERSIST = 0.05;
 const MAX_LINE_PERSIST = 8;
-const MIN_PREVIEW_ITERATIONS = 100;
-const MAX_PREVIEW_ITERATIONS = 8000;
+const MIN_PREVIEW_ITERATIONS = 10;
+const MAX_PREVIEW_ITERATIONS = 50;
 const SKIP_PREVIEW_COLORS = [
   "rgba(80, 214, 255, .62)",
   "rgba(92, 255, 196, .58)",
@@ -108,7 +108,7 @@ const DEFAULT_TUNING: Tuning = {
   acceleration: 2,
   linePersist: 0.6,
   previewOrbits: false,
-  previewIterations: 2000,
+  previewIterations: 20,
 };
 const TUNING_KEY = "mandelbrot-skipping:tuning:v1";
 const SOURCE_RADIUS_PX = 10;
@@ -460,6 +460,38 @@ function lineFadeRetention(dt: number, persistSeconds: number) {
   return Math.pow(LINE_VISIBLE_FLOOR, clampedDt / persistSeconds);
 }
 
+function strokeBezierPath(target: CanvasRenderingContext2D, points: Array<{ x: number; y: number }>) {
+  if (points.length < 2) return;
+  target.beginPath();
+  target.moveTo(points[0].x, points[0].y);
+  for (let index = 1; index < points.length; index++) {
+    const previous = points[index - 1];
+    const current = points[index];
+    const future = points[index + 1] ?? {
+      x: current.x * 2 - previous.x,
+      y: current.y * 2 - previous.y,
+    };
+    const incomingX = current.x - previous.x;
+    const incomingY = current.y - previous.y;
+    const outgoingX = future.x - current.x;
+    const outgoingY = future.y - current.y;
+    const incomingLength = Math.hypot(incomingX, incomingY);
+    const outgoingLength = Math.hypot(outgoingX, outgoingY);
+    const curveScale = outgoingLength > 1e-5
+      ? Math.min(outgoingLength, incomingLength * 1.5) / outgoingLength
+      : 0;
+    target.bezierCurveTo(
+      previous.x + incomingX / 3,
+      previous.y + incomingY / 3,
+      current.x - outgoingX * curveScale / 3,
+      current.y - outgoingY * curveScale / 3,
+      current.x,
+      current.y,
+    );
+  }
+  target.stroke();
+}
+
 function sanitizeTuning(value: Partial<Tuning> | null | undefined): Tuning {
   const requestedDots = Math.round(Number(value?.sourceDots));
   const sourceDots = requestedDots >= MIN_SOURCE_DOTS
@@ -476,7 +508,7 @@ function sanitizeTuning(value: Partial<Tuning> | null | undefined): Tuning {
   const requestedPreview = Math.round(Number(value?.previewIterations) || DEFAULT_TUNING.previewIterations);
   const previewIterations = Math.max(
     MIN_PREVIEW_ITERATIONS,
-    Math.min(MAX_PREVIEW_ITERATIONS, Math.round(requestedPreview / 100) * 100),
+    Math.min(MAX_PREVIEW_ITERATIONS, requestedPreview),
   );
   return { sourceDots, maxDepth, acceleration, linePersist, previewOrbits, previewIterations };
 }
@@ -1826,12 +1858,7 @@ export default function MandelbrotSkipping() {
         if (x < 24 || x > width - 24 || y < 24 || y > height - 24) break;
         skips += 1;
         landings.push({ x, y, index: skips, glyph: (shapeOffset + skips - 1) % MAX_SKIPS });
-        vz = Math.abs(vz) * 0.56;
-        vx *= 0.79;
-        vy *= 0.79;
-        const remaining = Math.hypot(vx, vy);
-        if (skips >= MAX_SKIPS || vz < minDimension() * 0.045 || remaining < minDimension() * 0.08) break;
-        if (x < -50 || x > width + 50 || y < -50 || y > height + 50) break;
+        break;
       }
       return landings;
     }
@@ -1839,61 +1866,48 @@ export default function MandelbrotSkipping() {
     function rebuildAimOrbitPreview(a: { x: number; y: number }) {
       if (!previewContext) return;
       previewContext.clearRect(0, 0, width, height);
-      const landings = predictSkipImpacts(a);
-      if (!landings.length) return;
+      const landing = predictSkipImpacts(a)[0];
+      if (!landing) return;
       const tuning = tuningRef.current;
       const view = viewRef.current;
       const viewHalfX = view.halfY * width / Math.max(height, 1);
       const maxHopPx = Math.hypot(width, height) * MAX_HOP_SCREEN_MULTIPLIER;
-      previewContext.lineWidth = 0.7;
+      const source = screenToComplex(landing.x, landing.y, width, height, view);
+      const color = SKIP_PREVIEW_COLORS[0];
+      const points: Array<{ x: number; y: number }> = [];
+      let zr = 0;
+      let zi = 0;
+      for (let step = 0; step < tuning.previewIterations; step++) {
+        const previousR = zr;
+        const previousI = zi;
+        const nextR = Math.fround(Math.fround(previousR * previousR - previousI * previousI) + source.x);
+        const nextI = Math.fround(Math.fround(2 * previousR * previousI) + source.y);
+        const hopPx = Math.hypot(
+          (nextR - previousR) / viewHalfX * width * 0.5,
+          (nextI - previousI) / view.halfY * height * 0.5,
+        );
+        zr = nextR;
+        zi = nextI;
+        if (hopPx >= maxHopPx || !Number.isFinite(hopPx)) break;
+        if (!points.length) points.push(complexToScreen(previousR, previousI, width, height, view));
+        points.push(complexToScreen(nextR, nextI, width, height, view));
+      }
+      previewContext.lineWidth = 1.35;
       previewContext.lineJoin = "round";
       previewContext.lineCap = "round";
+      previewContext.strokeStyle = color;
       previewContext.globalCompositeOperation = "lighter";
-      for (const landing of landings) {
-        const color = SKIP_PREVIEW_COLORS[(landing.index - 1) % SKIP_PREVIEW_COLORS.length];
-        previewContext.strokeStyle = color;
-        const sources = impactSources(landing.x, landing.y, width, height, view, tuning.sourceDots, landing.glyph);
-        for (const source of sources) {
-          let zr = 0;
-          let zi = 0;
-          let started = false;
-          previewContext.beginPath();
-          for (let step = 0; step < tuning.previewIterations; step++) {
-            const previousR = zr;
-            const previousI = zi;
-            const nextR = Math.fround(Math.fround(previousR * previousR - previousI * previousI) + source.x);
-            const nextI = Math.fround(Math.fround(2 * previousR * previousI) + source.y);
-            const hopPx = Math.hypot(
-              (nextR - previousR) / viewHalfX * width * 0.5,
-              (nextI - previousI) / view.halfY * height * 0.5,
-            );
-            zr = nextR;
-            zi = nextI;
-            if (hopPx <= MIN_VISIBLE_HOP_PX || hopPx >= maxHopPx || !Number.isFinite(hopPx)) break;
-            const from = complexToScreen(previousR, previousI, width, height, view);
-            const to = complexToScreen(nextR, nextI, width, height, view);
-            if (!started) {
-              previewContext.moveTo(from.x, from.y);
-              started = true;
-            }
-            previewContext.lineTo(to.x, to.y);
-          }
-          if (started) previewContext.stroke();
-        }
-      }
+      strokeBezierPath(previewContext, points);
       previewContext.globalCompositeOperation = "source-over";
+      previewContext.fillStyle = color;
+      previewContext.beginPath();
+      previewContext.arc(landing.x, landing.y, 3.2, 0, TAU);
+      previewContext.fill();
+      previewContext.fillStyle = "rgba(8, 18, 24, .86)";
       previewContext.font = "700 8px ui-monospace, monospace";
       previewContext.textAlign = "center";
       previewContext.textBaseline = "middle";
-      for (const landing of landings) {
-        const color = SKIP_PREVIEW_COLORS[(landing.index - 1) % SKIP_PREVIEW_COLORS.length];
-        previewContext.fillStyle = color;
-        previewContext.beginPath();
-        previewContext.arc(landing.x, landing.y, 3.2, 0, TAU);
-        previewContext.fill();
-        previewContext.fillStyle = "rgba(8, 18, 24, .86)";
-        previewContext.fillText(String(landing.index), landing.x, landing.y + 0.5);
-      }
+      previewContext.fillText("1", landing.x, landing.y + 0.5);
     }
 
     function drawAimOrbitPreview(a: { x: number; y: number }) {
@@ -1905,9 +1919,7 @@ export default function MandelbrotSkipping() {
         view.centerX.toFixed(5),
         view.centerY.toFixed(5),
         view.halfY.toFixed(5),
-        tuningRef.current.sourceDots,
         tuningRef.current.previewIterations,
-        shapeOffset,
         width,
         height,
       ].join(":");
@@ -2502,13 +2514,13 @@ export default function MandelbrotSkipping() {
             Aim orbit preview
           </label>
           <div className="tuningControl">
-            <span><span>Preview iterations</span><output>{formatCompact(tuning.previewIterations)}</output></span>
-            <input type="range" min={MIN_PREVIEW_ITERATIONS} max={MAX_PREVIEW_ITERATIONS} step="100" value={tuning.previewIterations}
+            <span><span>Preview iterations</span><output>{tuning.previewIterations}</output></span>
+            <input type="range" min={MIN_PREVIEW_ITERATIONS} max={MAX_PREVIEW_ITERATIONS} step="1" value={tuning.previewIterations}
               aria-label="Orbit iterations to draw while aiming"
-              aria-valuetext={`${formatNumber(tuning.previewIterations)} iterations`}
+              aria-valuetext={`${tuning.previewIterations} iterations`}
               onChange={(event) => updateTuning({ previewIterations: Number(event.target.value) })} />
           </div>
-          <p className="tuningNote">Higher curve starts slower, then ramps harder. Line persist is time to fade. Aim preview draws the first iterations of every predicted skip.</p>
+          <p className="tuningNote">Higher curve starts slower, then ramps harder. Line persist is time to fade. Aim preview draws a short bezier of the first skip.</p>
         </section>
 
         {hud.phase === "result" && (
