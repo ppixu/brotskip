@@ -59,6 +59,9 @@ type Tuning = {
   sourceDots: number;
   maxDepth: number;
   acceleration: number;
+  linePersist: number;
+  previewOrbits: boolean;
+  previewIterations: number;
 };
 
 type OrbitEngine = {
@@ -77,7 +80,28 @@ const MAX_SOURCE_DOTS = 32;
 const MAX_SOURCES = MAX_SKIPS * MAX_SOURCE_DOTS;
 const DEPTH_OPTIONS = [10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000, 2_000_000, 5_000_000, 10_000_000, 20_000_000] as const;
 const SCORE_DEPTH_CAP = DEPTH_OPTIONS[DEPTH_OPTIONS.length - 1];
-const DEFAULT_TUNING: Tuning = { sourceDots: 18, maxDepth: 2_000_000, acceleration: 2 };
+const LINE_VISIBLE_FLOOR = 0.05;
+const MIN_LINE_PERSIST = 0.05;
+const MAX_LINE_PERSIST = 8;
+const MIN_PREVIEW_ITERATIONS = 100;
+const MAX_PREVIEW_ITERATIONS = 8000;
+const SKIP_PREVIEW_COLORS = [
+  "rgba(80, 214, 255, .62)",
+  "rgba(92, 255, 196, .58)",
+  "rgba(186, 255, 120, .56)",
+  "rgba(255, 230, 110, .54)",
+  "rgba(255, 168, 92, .52)",
+  "rgba(255, 122, 186, .50)",
+  "rgba(196, 146, 255, .50)",
+] as const;
+const DEFAULT_TUNING: Tuning = {
+  sourceDots: 18,
+  maxDepth: 2_000_000,
+  acceleration: 2,
+  linePersist: 0.6,
+  previewOrbits: false,
+  previewIterations: 2000,
+};
 const TUNING_KEY = "mandelbrot-skipping:tuning:v1";
 const SOURCE_RADIUS_PX = 10;
 const SLING_DRAW_PULL_RATIO = 0.30;
@@ -421,6 +445,13 @@ function formatCompact(value: number) {
   return String(value);
 }
 
+function lineFadeRetention(dt: number, persistSeconds: number) {
+  const clampedDt = Math.max(0, Math.min(0.05, dt));
+  if (persistSeconds <= 0) return 0;
+  if (clampedDt === 0) return 1;
+  return Math.pow(LINE_VISIBLE_FLOOR, clampedDt / persistSeconds);
+}
+
 function sanitizeTuning(value: Partial<Tuning> | null | undefined): Tuning {
   const requestedDots = Math.round(Number(value?.sourceDots));
   const sourceDots = requestedDots >= MIN_SOURCE_DOTS
@@ -429,7 +460,17 @@ function sanitizeTuning(value: Partial<Tuning> | null | undefined): Tuning {
   const requestedDepth = Number(value?.maxDepth);
   const maxDepth = DEPTH_OPTIONS.includes(requestedDepth as typeof DEPTH_OPTIONS[number]) ? requestedDepth : DEFAULT_TUNING.maxDepth;
   const acceleration = Math.max(0.5, Math.min(4, Math.round((Number(value?.acceleration) || DEFAULT_TUNING.acceleration) * 10) / 10));
-  return { sourceDots, maxDepth, acceleration };
+  const linePersist = Math.max(
+    MIN_LINE_PERSIST,
+    Math.min(MAX_LINE_PERSIST, Math.round((Number(value?.linePersist) || DEFAULT_TUNING.linePersist) * 20) / 20),
+  );
+  const previewOrbits = value?.previewOrbits === true;
+  const requestedPreview = Math.round(Number(value?.previewIterations) || DEFAULT_TUNING.previewIterations);
+  const previewIterations = Math.max(
+    MIN_PREVIEW_ITERATIONS,
+    Math.min(MAX_PREVIEW_ITERATIONS, Math.round(requestedPreview / 100) * 100),
+  );
+  return { sourceDots, maxDepth, acceleration, linePersist, previewOrbits, previewIterations };
 }
 
 function loadTuning(): Tuning {
@@ -663,6 +704,8 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
   let cameraPausedUntil = 0;
   let maxDepth = DEFAULT_TUNING.maxDepth;
   let accelerationCurve = DEFAULT_TUNING.acceleration;
+  let linePersist = DEFAULT_TUNING.linePersist;
+  let lastDrawTime = 0;
 
   const makeTexture = (format: string, usages: number) => device.createTexture({ size: [width, height], format, usage: usages });
 
@@ -727,6 +770,10 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
 
   function draw() {
     if (disposed || deviceFailed || !textures.length) return;
+    const now = performance.now();
+    const dt = lastDrawTime ? (now - lastDrawTime) / 1000 : 1 / 60;
+    lastDrawTime = now;
+    const lineRetention = lineFadeRetention(dt, linePersist);
     const batch = Math.max(1, Math.floor(POINT_BUDGET / Math.max(sourceCount, 1)));
     const ints = new Uint32Array(12);
     ints[0] = sourceCount;
@@ -751,7 +798,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
     const offsetX = (view.centerX - previousView.centerX) / (2 * oldHalfX);
     const offsetY = -(view.centerY - previousView.centerY) / (2 * previousView.halfY);
     device.queue.writeBuffer(fadeBuffer, 0, new Float32Array([1, 0, 0, 0, viewScale, viewScale, offsetX, offsetY]));
-    device.queue.writeBuffer(lineFadeBuffer, 0, new Float32Array([0.92, 0, 0, 0, viewScale, viewScale, offsetX, offsetY]));
+    device.queue.writeBuffer(lineFadeBuffer, 0, new Float32Array([lineRetention, 0, 0, 0, viewScale, viewScale, offsetX, offsetY]));
     const destination = textures[1 - textureIndex];
     const lineDestination = lineTextures[1 - textureIndex];
     const encoder = device.createCommandEncoder();
@@ -821,6 +868,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
     setTuning(tuning) {
       maxDepth = tuning.maxDepth;
       accelerationCurve = tuning.acceleration;
+      linePersist = tuning.linePersist;
     },
     clear() {
       paused = false;
@@ -1001,9 +1049,12 @@ export default function MandelbrotSkipping() {
     let gridDirty = true;
     const flashlightCanvas = document.createElement("canvas");
     const flashlightContext = flashlightCanvas.getContext("2d");
+    const previewCanvas = document.createElement("canvas");
+    const previewContext = previewCanvas.getContext("2d");
     const buddhabrotImage = new Image();
     let buddhabrotReady = false;
     let flashlightDirty = true;
+    let previewKey = "";
 
     buddhabrotImage.decoding = "async";
     buddhabrotImage.onload = () => {
@@ -1030,6 +1081,10 @@ export default function MandelbrotSkipping() {
       flashlightCanvas.width = Math.ceil(width);
       flashlightCanvas.height = Math.ceil(height);
       flashlightDirty = true;
+      previewCanvas.width = Math.round(width * dpr);
+      previewCanvas.height = Math.round(height * dpr);
+      previewContext?.setTransform(dpr, 0, 0, dpr, 0, 0);
+      previewKey = "";
       if (phase === "ready" || phase === "aiming" || phase === "result") {
         const a = anchor();
         rock.x = a.x;
@@ -1663,6 +1718,131 @@ export default function MandelbrotSkipping() {
       ctx.restore();
     }
 
+    function predictSkipImpacts(a: { x: number; y: number }) {
+      const dx = a.x - pull.x;
+      const dy = a.y - pull.y;
+      const length = Math.hypot(dx, dy);
+      if (length < 12) return [];
+      const maxPull = minDimension() * SLING_DRAW_PULL_RATIO;
+      const rawPower = Math.min(1, length / maxPull);
+      const power = rawPower * rawPower * (3 - 2 * rawPower);
+      const speed = minDimension() * (0.32 + 0.56 * power);
+      const launchPull = minDimension() * SLING_THROW_PULL_RATIO * rawPower;
+      let x = a.x - dx / length * launchPull;
+      let y = a.y - dy / length * launchPull;
+      let vx = dx / length * speed;
+      let vy = dy / length * speed;
+      let vz = minDimension() * (0.38 + 0.20 * power);
+      let z = 1;
+      let skips = 0;
+      const gravity = minDimension() * 1.65;
+      const dt = 1 / 120;
+      const landings: Array<{ x: number; y: number; index: number; glyph: number }> = [];
+      for (let step = 0; step < 120 * 12 && skips < MAX_SKIPS; step++) {
+        x += vx * dt;
+        y += vy * dt;
+        z += vz * dt;
+        vz -= gravity * dt;
+        const drag = Math.exp(-0.06 * dt);
+        vx *= drag;
+        vy *= drag;
+        if (z > 0 || vz >= 0) continue;
+        z = 0;
+        if (x < 24 || x > width - 24 || y < 24 || y > height - 24) break;
+        skips += 1;
+        landings.push({ x, y, index: skips, glyph: (shapeOffset + skips - 1) % MAX_SKIPS });
+        vz = Math.abs(vz) * 0.56;
+        vx *= 0.79;
+        vy *= 0.79;
+        const remaining = Math.hypot(vx, vy);
+        if (skips >= MAX_SKIPS || vz < minDimension() * 0.045 || remaining < minDimension() * 0.08) break;
+        if (x < -50 || x > width + 50 || y < -50 || y > height + 50) break;
+      }
+      return landings;
+    }
+
+    function rebuildAimOrbitPreview(a: { x: number; y: number }) {
+      if (!previewContext) return;
+      previewContext.clearRect(0, 0, width, height);
+      const landings = predictSkipImpacts(a);
+      if (!landings.length) return;
+      const tuning = tuningRef.current;
+      const view = viewRef.current;
+      const viewHalfX = view.halfY * width / Math.max(height, 1);
+      const maxHopPx = Math.hypot(width, height) * MAX_HOP_SCREEN_MULTIPLIER;
+      previewContext.lineWidth = 0.7;
+      previewContext.lineJoin = "round";
+      previewContext.lineCap = "round";
+      previewContext.globalCompositeOperation = "lighter";
+      for (const landing of landings) {
+        const color = SKIP_PREVIEW_COLORS[(landing.index - 1) % SKIP_PREVIEW_COLORS.length];
+        previewContext.strokeStyle = color;
+        const sources = impactSources(landing.x, landing.y, width, height, view, tuning.sourceDots, landing.glyph);
+        for (const source of sources) {
+          let zr = 0;
+          let zi = 0;
+          let started = false;
+          previewContext.beginPath();
+          for (let step = 0; step < tuning.previewIterations; step++) {
+            const previousR = zr;
+            const previousI = zi;
+            const nextR = Math.fround(Math.fround(previousR * previousR - previousI * previousI) + source.x);
+            const nextI = Math.fround(Math.fround(2 * previousR * previousI) + source.y);
+            const hopPx = Math.hypot(
+              (nextR - previousR) / viewHalfX * width * 0.5,
+              (nextI - previousI) / view.halfY * height * 0.5,
+            );
+            zr = nextR;
+            zi = nextI;
+            if (hopPx <= MIN_VISIBLE_HOP_PX || hopPx >= maxHopPx || !Number.isFinite(hopPx)) break;
+            const from = complexToScreen(previousR, previousI, width, height, view);
+            const to = complexToScreen(nextR, nextI, width, height, view);
+            if (!started) {
+              previewContext.moveTo(from.x, from.y);
+              started = true;
+            }
+            previewContext.lineTo(to.x, to.y);
+          }
+          if (started) previewContext.stroke();
+        }
+      }
+      previewContext.globalCompositeOperation = "source-over";
+      previewContext.font = "700 8px ui-monospace, monospace";
+      previewContext.textAlign = "center";
+      previewContext.textBaseline = "middle";
+      for (const landing of landings) {
+        const color = SKIP_PREVIEW_COLORS[(landing.index - 1) % SKIP_PREVIEW_COLORS.length];
+        previewContext.fillStyle = color;
+        previewContext.beginPath();
+        previewContext.arc(landing.x, landing.y, 3.2, 0, TAU);
+        previewContext.fill();
+        previewContext.fillStyle = "rgba(8, 18, 24, .86)";
+        previewContext.fillText(String(landing.index), landing.x, landing.y + 0.5);
+      }
+    }
+
+    function drawAimOrbitPreview(a: { x: number; y: number }) {
+      if (phase !== "aiming" || !tuningRef.current.previewOrbits || !previewContext) return;
+      const view = viewRef.current;
+      const nextKey = [
+        Math.round(pull.x),
+        Math.round(pull.y),
+        view.centerX.toFixed(5),
+        view.centerY.toFixed(5),
+        view.halfY.toFixed(5),
+        tuningRef.current.sourceDots,
+        tuningRef.current.previewIterations,
+        shapeOffset,
+        width,
+        height,
+      ].join(":");
+      if (nextKey !== previewKey) {
+        previewKey = nextKey;
+        rebuildAimOrbitPreview(a);
+      }
+      ctx.drawImage(previewCanvas, 0, 0, width, height);
+    }
+
     function scientificStep(target: number) {
       const exponent = Math.floor(Math.log10(Math.max(target, Number.EPSILON)));
       const magnitude = 10 ** exponent;
@@ -1976,6 +2156,7 @@ export default function MandelbrotSkipping() {
       drawScientificGrid();
       drawFlashlight();
       drawPrediction(a);
+      drawAimOrbitPreview(a);
       drawEffects(now);
       drawRock();
     }
@@ -2221,7 +2402,27 @@ export default function MandelbrotSkipping() {
               aria-valuetext={`${tuning.acceleration.toFixed(1)} curve`}
               onChange={(event) => updateTuning({ acceleration: Number(event.target.value) })} />
           </div>
-          <p className="tuningNote">Higher curve starts slower, then ramps harder. Invisible and converged paths still stop early.</p>
+          <div className="tuningControl">
+            <span><span>Line persist</span><output>{tuning.linePersist.toFixed(2)}s</output></span>
+            <input type="range" min={MIN_LINE_PERSIST} max={MAX_LINE_PERSIST} step="0.05" value={tuning.linePersist}
+              aria-label="How long iteration lines stay visible"
+              aria-valuetext={`${tuning.linePersist.toFixed(2)} seconds`}
+              onChange={(event) => updateTuning({ linePersist: Number(event.target.value) })} />
+          </div>
+          <label className="tuningCheck">
+            <input type="checkbox" checked={tuning.previewOrbits}
+              aria-label="Preview skip orbits while aiming"
+              onChange={(event) => updateTuning({ previewOrbits: event.target.checked })} />
+            Aim orbit preview
+          </label>
+          <div className="tuningControl">
+            <span><span>Preview iterations</span><output>{formatCompact(tuning.previewIterations)}</output></span>
+            <input type="range" min={MIN_PREVIEW_ITERATIONS} max={MAX_PREVIEW_ITERATIONS} step="100" value={tuning.previewIterations}
+              aria-label="Orbit iterations to draw while aiming"
+              aria-valuetext={`${formatNumber(tuning.previewIterations)} iterations`}
+              onChange={(event) => updateTuning({ previewIterations: Number(event.target.value) })} />
+          </div>
+          <p className="tuningNote">Higher curve starts slower, then ramps harder. Line persist is time to fade. Aim preview draws the first iterations of every predicted skip.</p>
         </section>
 
         {hud.phase === "result" && (

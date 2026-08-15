@@ -22,6 +22,8 @@ test("server-renders Mandelbrot Skipping", async () => {
   assert.match(html, /Drag the white orb/);
   assert.match(html, /Live score/);
   assert.match(html, /Score and local high scores/);
+  assert.match(html, /Line persist/);
+  assert.match(html, /Aim orbit preview/);
   assert.doesNotMatch(html, /waterGrain|resultCard|gameTitle|hudPill/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/i);
 });
