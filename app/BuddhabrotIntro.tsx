@@ -7,6 +7,9 @@ import { createBuddhabrotGenerator } from "@/lib/buddhabrot/generator";
 import type { GpuContext } from "@/lib/gpu";
 
 const FADE_MS = 600;
+// Defense in depth: if toBitmapAndBlob() never settles (createImageBitmap
+// wedging under memory pressure, a half-lost device), don't strand play.
+const COMPLETION_TIMEOUT_MS = 10_000;
 
 export default function BuddhabrotIntro({
   gpu, size, reduceMotion, onReady, onDismiss,
@@ -14,7 +17,7 @@ export default function BuddhabrotIntro({
   gpu: GpuContext;
   size: number;
   reduceMotion: boolean;
-  onReady: (bitmap: ImageBitmap, blob: Blob | null) => void;
+  onReady: (bitmap: ImageBitmap, blobPromise: Promise<Blob | null>, size: number) => void;
   onDismiss: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -31,8 +34,12 @@ export default function BuddhabrotIntro({
     }
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const rect = canvas.getBoundingClientRect();
-    canvas.width = Math.max(1, Math.round(rect.width * dpr));
-    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    // Square backing store: the Buddhabrot texture is square, and CSS
+    // object-fit: cover crops it to the (possibly non-square) viewport
+    // instead of the blit shader stretching it to fit.
+    const side = Math.max(1, Math.round(Math.max(rect.width, rect.height) * dpr));
+    canvas.width = side;
+    canvas.height = side;
     context.configure({ device: gpu.device, format: gpu.preferredFormat, alphaMode: "premultiplied" });
 
     const generator = createBuddhabrotGenerator(gpu, {
@@ -45,6 +52,7 @@ export default function BuddhabrotIntro({
     let lastTime = performance.now();
     let finished = false;
     let dismissTimer: ReturnType<typeof setTimeout> | undefined;
+    let completionTimer: ReturnType<typeof setTimeout> | undefined;
 
     function loop(now: number) {
       if (gpu.hasFailed()) {
@@ -58,11 +66,16 @@ export default function BuddhabrotIntro({
       setProgress(generator.progress());
       if (generator.isComplete() && !finished) {
         finished = true;
-        generator.toBitmapAndBlob().then(({ bitmap, blob }) => {
-          onReady(bitmap, blob);
+        completionTimer = setTimeout(onDismiss, COMPLETION_TIMEOUT_MS);
+        generator.toBitmapAndBlob().then(({ bitmap, blobPromise }) => {
+          clearTimeout(completionTimer);
+          onReady(bitmap, blobPromise, size);
           setFading(true);
           dismissTimer = setTimeout(onDismiss, FADE_MS);
-        }).catch(() => onDismiss());
+        }).catch(() => {
+          clearTimeout(completionTimer);
+          onDismiss();
+        });
         return;
       }
       frame = requestAnimationFrame(loop);
@@ -72,6 +85,7 @@ export default function BuddhabrotIntro({
     return () => {
       cancelAnimationFrame(frame);
       clearTimeout(dismissTimer);
+      clearTimeout(completionTimer);
       generator.destroy();
     };
   }, [gpu, size, reduceMotion, onReady, onDismiss]);

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   cacheKey,
+  pruneStaleTextures,
   readCachedTexture,
   selectTextureSize,
   writeCachedTexture,
@@ -17,6 +18,12 @@ function memoryStore(initial: Record<string, Blob> = {}): BlobStore {
     async put(key, value) {
       entries.set(key, value);
     },
+    async keys() {
+      return Array.from(entries.keys());
+    },
+    async delete(key) {
+      entries.delete(key);
+    },
   };
 }
 
@@ -25,6 +32,12 @@ const failingStore: BlobStore = {
     throw new Error("quota exceeded");
   },
   async put() {
+    throw new Error("quota exceeded");
+  },
+  async keys() {
+    throw new Error("quota exceeded");
+  },
+  async delete() {
     throw new Error("quota exceeded");
   },
 };
@@ -80,4 +93,20 @@ test("a successful write reports true", async () => {
 
 test("a failing write is swallowed and reports false", async () => {
   assert.equal(await writeCachedTexture(4096, new Blob(["density"]), failingStore), false);
+});
+
+test("a prune removes a stale key and keeps the current one", async () => {
+  const store = memoryStore({
+    "buddhabrot:v0:4096": new Blob(["stale"]),
+    [cacheKey(4096)]: new Blob(["current"]),
+    "unrelated:key": new Blob(["keep"]),
+  });
+  await pruneStaleTextures(cacheKey(4096), store);
+  assert.equal(await store.get("buddhabrot:v0:4096"), null);
+  assert.notEqual(await store.get(cacheKey(4096)), null);
+  assert.notEqual(await store.get("unrelated:key"), null);
+});
+
+test("a failing prune is swallowed", async () => {
+  await assert.doesNotReject(pruneStaleTextures(cacheKey(4096), failingStore));
 });

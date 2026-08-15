@@ -13,6 +13,8 @@ const STORE_NAME = "textures";
 export type BlobStore = {
   get(key: string): Promise<Blob | null>;
   put(key: string, value: Blob): Promise<void>;
+  keys(): Promise<string[]>;
+  delete(key: string): Promise<void>;
 };
 
 export type Viewportish = {
@@ -43,11 +45,32 @@ export async function writeCachedTexture(
   blob: Blob,
   store: BlobStore,
 ): Promise<boolean> {
+  const key = cacheKey(size);
   try {
-    await store.put(cacheKey(size), blob);
-    return true;
+    await store.put(key, blob);
   } catch {
     return false;
+  }
+  await pruneStaleTextures(key, store);
+  return true;
+}
+
+/**
+ * Deletes every cached Buddhabrot entry except `currentKey` — the mechanism
+ * that actually retires images left behind by a CACHE_VERSION bump or a
+ * texture-size switch. Every failure is swallowed, same contract as the
+ * rest of this module: a failed prune just leaves the stale blob in place.
+ */
+export async function pruneStaleTextures(currentKey: string, store: BlobStore): Promise<void> {
+  try {
+    const keys = await store.keys();
+    await Promise.all(
+      keys
+        .filter((key) => key.startsWith("buddhabrot:") && key !== currentKey)
+        .map((key) => store.delete(key).catch(() => {})),
+    );
+  } catch {
+    // Enumeration itself failed; nothing to prune this time.
   }
 }
 
@@ -87,6 +110,33 @@ export function indexedDbStore(factory: IDBFactory): BlobStore {
         await new Promise<void>((resolve, reject) => {
           const transaction = database.transaction(STORE_NAME, "readwrite");
           transaction.objectStore(STORE_NAME).put(value, key);
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => reject(transaction.error);
+          transaction.onabort = () => reject(transaction.error);
+        });
+      } finally {
+        database.close();
+      }
+    },
+    async keys() {
+      const database = await openDatabase(factory);
+      try {
+        return await new Promise<string[]>((resolve, reject) => {
+          const request = database.transaction(STORE_NAME, "readonly")
+            .objectStore(STORE_NAME).getAllKeys();
+          request.onsuccess = () => resolve((request.result as IDBValidKey[]).map(String));
+          request.onerror = () => reject(request.error);
+        });
+      } finally {
+        database.close();
+      }
+    },
+    async delete(key) {
+      const database = await openDatabase(factory);
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const transaction = database.transaction(STORE_NAME, "readwrite");
+          transaction.objectStore(STORE_NAME).delete(key);
           transaction.oncomplete = () => resolve();
           transaction.onerror = () => reject(transaction.error);
           transaction.onabort = () => reject(transaction.error);

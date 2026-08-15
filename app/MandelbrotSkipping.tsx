@@ -1010,16 +1010,22 @@ export default function MandelbrotSkipping() {
       });
     }
 
-    boot().catch(fallbackToStaticImage);
+    boot().catch((error: unknown) => {
+      console.warn("[buddhabrot] boot failed; falling back to static image", error);
+      fallbackToStaticImage();
+    });
     return () => { cancelled = true; };
   }, []);
 
-  const handleIntroReady = useCallback((bitmap: ImageBitmap, blob: Blob | null) => {
+  const handleIntroReady = useCallback((bitmap: ImageBitmap, blobPromise: Promise<Blob | null>, size: number) => {
     buddhabrotSourceRef.current = bitmap;
     invalidateFlashlightRef.current();
-    if (!blob) return;
-    // Fire and forget: encoding is slow and play has already started.
-    void writeCachedTexture(selectTextureSize(window), blob, indexedDbStore(window.indexedDB));
+    // Fire and forget: encoding is slow and play has already started. Use
+    // the size generation actually ran at, not a fresh (possibly different)
+    // selectTextureSize(window) call.
+    void blobPromise.then((blob) => {
+      if (blob) void writeCachedTexture(size, blob, indexedDbStore(window.indexedDB));
+    });
   }, []);
 
   const handleIntroDismiss = useCallback(() => {

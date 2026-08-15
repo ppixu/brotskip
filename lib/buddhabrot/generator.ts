@@ -29,7 +29,7 @@ export type BuddhabrotGenerator = {
   progress: () => number;
   isComplete: () => boolean;
   blit: (context: any) => boolean;
-  toBitmapAndBlob: () => Promise<{ bitmap: ImageBitmap; blob: Blob | null }>;
+  toBitmapAndBlob: () => Promise<{ bitmap: ImageBitmap; blobPromise: Promise<Blob | null> }>;
   destroy: () => void;
 };
 
@@ -129,7 +129,9 @@ export function createBuddhabrotGenerator(
   let destroyed = false;
   let readbackInFlight = false;
   // Bootstrap cuts for the very first chunk, before any histogram has landed.
-  let cuts = { low: 0, high: 1 };
+  // 0.69 ~= log1p(1): the dimmest occupied pixel (density 1), so single-hit
+  // pixels open near-invisible instead of near-opaque at ~80% alpha.
+  let cuts = { low: 0.69, high: 3 };
 
   function writeAccumulateParams(sampleCount: number) {
     const header = new ArrayBuffer(32);
@@ -156,8 +158,9 @@ export function createBuddhabrotGenerator(
       if (destroyed) return;
       cuts = cutsFromHistogram(new Uint32Array(histogramReadback.getMappedRange().slice(0)));
       histogramReadback.unmap();
-    } catch {
+    } catch (error) {
       // Keep the previous cuts. A missed readback costs one chunk of exposure lag.
+      console.warn("[buddhabrot] histogram readback failed", error);
     } finally {
       readbackInFlight = false;
     }
@@ -233,13 +236,14 @@ export function createBuddhabrotGenerator(
       // createImageBitmap reads the canvas without emptying it, unlike
       // transferToImageBitmap, so the same canvas still yields the blob.
       const bitmap = await createImageBitmap(canvas);
-      let blob: Blob | null = null;
-      try {
-        blob = await canvas.convertToBlob({ type: "image/png" });
-      } catch {
-        blob = null;
-      }
-      return { bitmap, blob };
+      // Deliberately not awaited: a 4096^2 PNG encode takes 1-3s and must not
+      // block the fade-in. The canvas stays alive via this closure, so a
+      // pending encode survives even if the generator is destroyed later.
+      const blobPromise = canvas.convertToBlob({ type: "image/png" }).catch((error: unknown) => {
+        console.warn("[buddhabrot] PNG encode failed; texture will not be cached", error);
+        return null;
+      });
+      return { bitmap, blobPromise };
     },
     destroy() {
       destroyed = true;
