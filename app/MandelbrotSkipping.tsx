@@ -1952,7 +1952,7 @@ export default function MandelbrotSkipping() {
       const maxHopPx = Math.hypot(width, height) * MAX_HOP_SCREEN_MULTIPLIER;
       let zr = 0;
       let zi = 0;
-      previewContext.lineWidth = 0.55;
+      previewContext.lineWidth = 0.85;
       previewContext.lineJoin = "round";
       previewContext.lineCap = "round";
       for (let step = 0; step < iterations; step++) {
@@ -1967,7 +1967,7 @@ export default function MandelbrotSkipping() {
         zi = nextI;
         if (hopPx >= maxHopPx || !Number.isFinite(hopPx)) break;
         const depth = step / Math.max(1, iterations);
-        const alpha = strength * Math.pow(1 - depth, 0.72);
+        const alpha = strength * Math.pow(1 - depth, 0.38);
         const pointAlpha = Math.min(1, alpha * 1.1);
         const to = complexToScreen(nextR, nextI, width, height, view, rotateRight);
         if (step === 0) {
@@ -2003,7 +2003,7 @@ export default function MandelbrotSkipping() {
       for (const landing of landings) {
         const skipIndex = landing.index;
         const iterations = Math.max(1, Math.floor(tuning.previewIterations / 2 ** (skipIndex - 1)));
-        const strength = 0.48 / (1 + (skipIndex - 1) * 0.55);
+        const strength = 0.82 / (1 + (skipIndex - 1) * 0.22);
         const rgb = skipTintRgb(skipIndex, tuning.skipColors);
         const source = screenToComplex(landing.x, landing.y, width, height, view, tuning.rotateRight);
         drawPreviewOrbit(source, landing, view, iterations, rgb, strength);
@@ -2663,7 +2663,7 @@ export default function MandelbrotSkipping() {
               aria-valuetext={`${tuning.previewIterations} iterations`}
               onChange={(event) => updateTuning({ previewIterations: Number(event.target.value) })} />
           </div>
-          <p className="tuningNote">Higher curve starts slower, then ramps harder. Line persist is time to fade. Aim preview draws each predicted skip from its splash point, halving iterations and brightness each skip. Skip colors tint preview and live trails per splash.</p>
+          <p className="tuningNote">Higher curve starts slower, then ramps harder. Line persist is time to fade. Aim preview draws each predicted skip from its splash point, halving iterations each skip. Skip colors tint preview and live trails per splash.</p>
         </section>
 
         {hud.phase === "result" && (
