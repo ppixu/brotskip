@@ -25,6 +25,9 @@ test("server-renders Mandelbrot Skipping", async () => {
   assert.match(html, /Line persist/);
   assert.match(html, /Aim orbit preview/);
   assert.match(html, /Skip colors/);
+  assert.match(html, /Coordinate axes/);
+  assert.match(html, /How does this work/);
+  assert.match(html, /z → z² \+ c/);
   assert.doesNotMatch(html, /waterGrain|resultCard|gameTitle|hudPill/);
   assert.doesNotMatch(html, /introOverlay|introCanvas/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/i);

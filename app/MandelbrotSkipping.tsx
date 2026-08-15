@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { acquireGpu, type GpuContext } from "@/lib/gpu";
 import BuddhabrotIntro from "./BuddhabrotIntro";
+import HowItWorks from "./HowItWorks";
 import {
   indexedDbStore,
   readCachedTexture,
@@ -80,6 +81,7 @@ type Tuning = {
   previewOrbits: boolean;
   previewIterations: number;
   skipColors: boolean;
+  coordinateAxes: boolean;
 };
 
 type OrbitEngine = {
@@ -124,6 +126,7 @@ const DEFAULT_TUNING: Tuning = {
   previewOrbits: false,
   previewIterations: 20,
   skipColors: true,
+  coordinateAxes: false,
 };
 const TUNING_KEY = "mandelbrot-skipping:tuning:v1";
 const SOURCE_RADIUS_PX = 10;
@@ -513,12 +516,13 @@ function sanitizeTuning(value: Partial<Tuning> | null | undefined): Tuning {
   );
   const previewOrbits = value?.previewOrbits === true;
   const skipColors = value?.skipColors !== false;
+  const coordinateAxes = value?.coordinateAxes === true;
   const requestedPreview = Math.round(Number(value?.previewIterations) || DEFAULT_TUNING.previewIterations);
   const previewIterations = Math.max(
     MIN_PREVIEW_ITERATIONS,
     Math.min(MAX_PREVIEW_ITERATIONS, requestedPreview),
   );
-  return { sourceDots, maxDepth, acceleration, linePersist, previewOrbits, previewIterations, skipColors };
+  return { sourceDots, maxDepth, acceleration, linePersist, previewOrbits, previewIterations, skipColors, coordinateAxes };
 }
 
 function loadTuning(): Tuning {
@@ -962,6 +966,7 @@ export default function MandelbrotSkipping() {
   const tuningRef = useRef<Tuning>({ ...DEFAULT_TUNING });
   const buddhabrotSourceRef = useRef<CanvasImageSource | null>(null);
   const invalidateFlashlightRef = useRef<() => void>(() => {});
+  const invalidateGridRef = useRef<() => void>(() => {});
   const introActiveRef = useRef(false);
   const [intro, setIntro] = useState<{ gpu: GpuContext; size: number; reduceMotion: boolean } | null>(null);
   const [gpuError, setGpuError] = useState<string | null>(null);
@@ -1120,6 +1125,7 @@ export default function MandelbrotSkipping() {
     setTuning(next);
     storeTuning(next);
     engineRef.current?.setTuning(next);
+    invalidateGridRef.current();
   }, []);
 
   useEffect(() => {
@@ -1195,6 +1201,7 @@ export default function MandelbrotSkipping() {
     let previewKey = "";
 
     invalidateFlashlightRef.current = () => { flashlightDirty = true; };
+    invalidateGridRef.current = () => { gridDirty = true; };
 
     function anchor() { return { x: width * 0.5, y: height * 0.82 }; }
     function minDimension() { return Math.min(width, height); }
@@ -1921,7 +1928,7 @@ export default function MandelbrotSkipping() {
       const maxHopPx = Math.hypot(width, height) * MAX_HOP_SCREEN_MULTIPLIER;
       let zr = 0;
       let zi = 0;
-      previewContext.lineWidth = 0.28;
+      previewContext.lineWidth = 0.55;
       previewContext.lineJoin = "round";
       previewContext.lineCap = "round";
       for (let step = 0; step < iterations; step++) {
@@ -1973,29 +1980,29 @@ export default function MandelbrotSkipping() {
       for (const landing of landings) {
         const skipIndex = landing.index;
         const iterations = Math.max(1, Math.floor(tuning.previewIterations / 2 ** (skipIndex - 1)));
-        const strength = 0.28 / (1 + (skipIndex - 1) * 0.55);
+        const strength = 0.48 / (1 + (skipIndex - 1) * 0.55);
         const rgb = skipTintRgb(skipIndex, tuning.skipColors);
         const source = screenToComplex(landing.x, landing.y, width, height, view);
         drawPreviewOrbit(source, landing, view, iterations, rgb, strength);
       }
       previewContext.globalCompositeOperation = "source-over";
-      previewContext.font = "700 8px ui-monospace, monospace";
+      previewContext.font = "700 11px ui-monospace, monospace";
       previewContext.textAlign = "center";
       previewContext.textBaseline = "middle";
       for (const landing of landings) {
         const skipIndex = landing.index;
-        const markerStrength = 0.9 / (1 + (skipIndex - 1) * 0.35);
+        const markerStrength = 0.92 / (1 + (skipIndex - 1) * 0.22);
         const rgb = skipTintRgb(skipIndex, tuning.skipColors);
-        const color = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, .62)`;
         previewContext.save();
         previewContext.globalAlpha = markerStrength;
-        previewContext.fillStyle = color;
+        previewContext.strokeStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, .9)`;
+        previewContext.lineWidth = 1.35;
         previewContext.beginPath();
-        previewContext.arc(landing.x, landing.y, 3.2, 0, TAU);
-        previewContext.fill();
-        previewContext.restore();
-        previewContext.fillStyle = "rgba(8, 18, 24, .86)";
+        previewContext.arc(landing.x, landing.y, 8, 0, TAU);
+        previewContext.stroke();
+        previewContext.fillStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, .92)`;
         previewContext.fillText(String(skipIndex), landing.x, landing.y + 0.5);
+        previewContext.restore();
       }
     }
 
@@ -2026,6 +2033,14 @@ export default function MandelbrotSkipping() {
       const fraction = target / magnitude;
       const nice = fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10;
       return nice * magnitude;
+    }
+
+    function coordinateLabel(value: number, step: number) {
+      if (Math.abs(value) < step * .001) return "0";
+      if (Math.abs(value) >= 10_000 || Math.abs(value) < .001) return value.toExponential(1);
+      const decimals = Math.max(0, Math.min(6, -Math.floor(Math.log10(step))));
+      const fixed = value.toFixed(decimals);
+      return decimals ? fixed.replace(/\.?0+$/, "") : fixed;
     }
 
     function rebuildScientificGrid() {
@@ -2077,6 +2092,72 @@ export default function MandelbrotSkipping() {
       gridContext.strokeStyle = "rgba(119, 211, 228, .065)";
       traceVerticals(true);
       traceHorizontals(true);
+
+      if (tuningRef.current.coordinateAxes) {
+        const zero = complexToScreen(0, 0, width, height, view);
+        const realAxisVisible = zero.y >= 0 && zero.y <= height;
+        const imaginaryAxisVisible = zero.x >= 0 && zero.x <= width;
+        gridContext.strokeStyle = "rgba(151, 231, 240, .18)";
+        gridContext.lineWidth = 1 / dpr;
+        gridContext.beginPath();
+        if (realAxisVisible) {
+          const y = snap(zero.y);
+          gridContext.moveTo(0, y);
+          gridContext.lineTo(width, y);
+        }
+        if (imaginaryAxisVisible) {
+          const x = snap(zero.x);
+          gridContext.moveTo(x, 0);
+          gridContext.lineTo(x, height);
+        }
+        gridContext.stroke();
+
+        gridContext.fillStyle = "rgba(171, 230, 238, .32)";
+        gridContext.strokeStyle = "rgba(151, 231, 240, .14)";
+        gridContext.font = "8px ui-monospace, SFMono-Regular, Menlo, monospace";
+        gridContext.textBaseline = "top";
+        gridContext.textAlign = "center";
+        const labelY = realAxisVisible ? Math.min(height - 11, zero.y + 4) : height - 11;
+        for (let index = Math.ceil(xMin / major); index <= Math.floor(xMax / major); index++) {
+          const value = index * major;
+          if (isAxis(value)) continue;
+          const x = snap(complexToScreen(value, 0, width, height, view).x);
+          if (realAxisVisible) {
+            gridContext.beginPath();
+            gridContext.moveTo(x, zero.y - 3);
+            gridContext.lineTo(x, zero.y + 3);
+            gridContext.stroke();
+          }
+          if (x > 18 && x < width - 18) gridContext.fillText(coordinateLabel(value, major), x, labelY);
+        }
+        gridContext.textBaseline = "middle";
+        gridContext.textAlign = "right";
+        const labelX = imaginaryAxisVisible ? Math.max(28, zero.x - 5) : 28;
+        for (let index = Math.ceil(yMin / major); index <= Math.floor(yMax / major); index++) {
+          const value = index * major;
+          if (isAxis(value)) continue;
+          const y = snap(complexToScreen(0, value, width, height, view).y);
+          if (imaginaryAxisVisible) {
+            gridContext.beginPath();
+            gridContext.moveTo(zero.x - 3, y);
+            gridContext.lineTo(zero.x + 3, y);
+            gridContext.stroke();
+          }
+          if (y > 9 && y < height - 9) gridContext.fillText(coordinateLabel(value, major), labelX, y);
+        }
+        gridContext.fillStyle = "rgba(180, 239, 245, .42)";
+        gridContext.font = "italic 9px ui-monospace, SFMono-Regular, Menlo, monospace";
+        if (realAxisVisible) {
+          gridContext.textAlign = "right";
+          gridContext.textBaseline = "bottom";
+          gridContext.fillText("Re(c)", width - 7, Math.max(11, zero.y - 5));
+        }
+        if (imaginaryAxisVisible) {
+          gridContext.textAlign = "left";
+          gridContext.textBaseline = "top";
+          gridContext.fillText("Im(c)", Math.min(width - 34, zero.x + 6), 6);
+        }
+      }
       gridDirty = false;
     }
 
@@ -2207,7 +2288,7 @@ export default function MandelbrotSkipping() {
       const geometry = flashlightGeometry();
       if (!geometry || !buddhabrotSourceRef.current || !flashlightContext) return;
       ctx.save();
-      ctx.fillStyle = "rgba(0, 0, 0, .78)";
+      ctx.fillStyle = "rgba(0, 0, 0, .88)";
       ctx.fillRect(0, 0, width, height);
       ctx.restore();
       if (flashlightDirty) {
@@ -2239,7 +2320,7 @@ export default function MandelbrotSkipping() {
       ctx.save();
       ctx.globalCompositeOperation = "screen";
       ctx.imageSmoothingEnabled = false;
-      ctx.globalAlpha = .82;
+      ctx.globalAlpha = .28;
       ctx.drawImage(flashlightCanvas, 0, 0, width, height);
       ctx.restore();
 
@@ -2487,6 +2568,7 @@ export default function MandelbrotSkipping() {
             onDismiss={handleIntroDismiss}
           />
         )}
+        <HowItWorks />
       </section>
 
       <aside className={`scoreRail ${hud.phase === "result" ? "hasResult" : ""}`} aria-label="Score and local high scores">
@@ -2540,6 +2622,12 @@ export default function MandelbrotSkipping() {
               aria-label="Color each skip differently"
               onChange={(event) => updateTuning({ skipColors: event.target.checked })} />
             Skip colors
+          </label>
+          <label className="tuningCheck">
+            <input type="checkbox" checked={tuning.coordinateAxes}
+              aria-label="Show coordinate axes"
+              onChange={(event) => updateTuning({ coordinateAxes: event.target.checked })} />
+            Coordinate axes
           </label>
           <div className="tuningControl">
             <span><span>Preview iterations</span><output>{tuning.previewIterations}</output></span>

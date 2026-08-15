@@ -14,6 +14,12 @@ function wgslNames(source: string) {
   return { bindings, fns };
 }
 
+test("colorize shader uses the original muted contrast curve", () => {
+  assert.match(shaders.colorizeShader, /pow\(normalized, 1\.68\)/);
+  assert.match(shaders.colorizeShader, /\(contrast - 0\.018\) \* 1\.55/);
+  assert.match(shaders.colorizeShader, /if \(contrast < 0\.055\)/);
+});
+
 test("WGSL shaders do not reuse a binding name as an entry point", () => {
   assert.ok(Object.keys(shaders).includes("histogramShader"));
   for (const [name, source] of Object.entries(shaders)) {

@@ -62,7 +62,7 @@ test("a fine pointer always selects the full tier", () => {
 });
 
 test("cache keys are versioned and size-scoped", () => {
-  assert.equal(cacheKey(4096), "buddhabrot:v2:4096");
+  assert.equal(cacheKey(4096), "buddhabrot:v3:4096");
   assert.notEqual(cacheKey(2048), cacheKey(4096));
 });
 
