@@ -5,7 +5,7 @@
  */
 
 /** Bump whenever the shaders or tuning change, retiring stale images. */
-export const CACHE_VERSION = 1;
+export const CACHE_VERSION = 2;
 
 const DATABASE_NAME = "mandelbrot-skipping";
 const STORE_NAME = "textures";

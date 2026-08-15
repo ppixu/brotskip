@@ -97,13 +97,13 @@ fn colorize(@builtin(global_invocation_id) id: vec3u) {
   let value = density[id.y * params.size + id.x];
   let light = log(1.0 + f32(value));
   let normalized = clamp((light - params.low) / max(params.high - params.low, 1e-9), 0.0, 1.0);
-  let contrast = pow(normalized, 1.68);
-  var alpha = clamp((contrast - 0.018) * 1.55, 0.0, 1.0);
-  if (contrast < 0.055) { alpha = 0.0; }
+  let contrast = pow(normalized, 1.28);
+  var alpha = clamp(contrast * 2.45, 0.0, 1.0);
+  if (contrast < 0.018) { alpha = 0.0; }
   let color = vec3f(
-    (8.0 + contrast * 235.0) / 255.0,
-    (72.0 + contrast * 183.0) / 255.0,
-    (92.0 + contrast * 143.0) / 255.0,
+    (22.0 + contrast * 233.0) / 255.0,
+    (110.0 + contrast * 145.0) / 255.0,
+    (102.0 + contrast * 153.0) / 255.0,
   );
   textureStore(output, vec2i(id.xy), vec4f(color, alpha));
 }

@@ -11,6 +11,13 @@ import {
   selectTextureSize,
   writeCachedTexture,
 } from "@/lib/buddhabrot/cache";
+import {
+  ESCAPE_RADIUS_SQ,
+  OFFSCREEN_STREAK,
+  TINY_HOP_PX,
+  TINY_HOP_STREAK,
+  updateOrbitEnd,
+} from "@/lib/orbit-end";
 
 type Phase = "ready" | "aiming" | "flying" | "resolving" | "result";
 
@@ -55,6 +62,8 @@ type OrbitScore = {
   sumXY: number;
   resolved: boolean;
   score: number;
+  offscreenStreak: number;
+  tinyHopStreak: number;
 };
 
 type ViewTransform = {
@@ -70,10 +79,11 @@ type Tuning = {
   linePersist: number;
   previewOrbits: boolean;
   previewIterations: number;
+  skipColors: boolean;
 };
 
 type OrbitEngine = {
-  spawn: (points: Array<{ x: number; y: number }>) => void;
+  spawn: (points: Array<{ x: number; y: number }>, skipIndex: number) => void;
   setView: (view: ViewTransform) => void;
   setTuning: (tuning: Tuning) => void;
   clear: () => void;
@@ -94,15 +104,18 @@ const MIN_LINE_PERSIST = 0.05;
 const MAX_LINE_PERSIST = 8;
 const MIN_PREVIEW_ITERATIONS = 10;
 const MAX_PREVIEW_ITERATIONS = 50;
-const SKIP_PREVIEW_COLORS = [
-  "rgba(80, 214, 255, .62)",
-  "rgba(92, 255, 196, .58)",
-  "rgba(186, 255, 120, .56)",
-  "rgba(255, 230, 110, .54)",
-  "rgba(255, 168, 92, .52)",
-  "rgba(255, 122, 186, .50)",
-  "rgba(196, 146, 255, .50)",
+const SKIP_TINTS = [
+  [80, 214, 255],
+  [92, 255, 196],
+  [186, 255, 120],
+  [255, 230, 110],
+  [255, 168, 92],
+  [255, 122, 186],
+  [196, 146, 255],
 ] as const;
+const SKIP_TINT_WGSL = SKIP_TINTS
+  .map(([r, g, b]) => `vec3f(${(r / 255).toFixed(5)}, ${(g / 255).toFixed(5)}, ${(b / 255).toFixed(5)})`)
+  .join(", ");
 const DEFAULT_TUNING: Tuning = {
   sourceDots: 18,
   maxDepth: 2_000_000,
@@ -110,6 +123,7 @@ const DEFAULT_TUNING: Tuning = {
   linePersist: 0.6,
   previewOrbits: false,
   previewIterations: 20,
+  skipColors: true,
 };
 const TUNING_KEY = "mandelbrot-skipping:tuning:v1";
 const SOURCE_RADIUS_PX = 10;
@@ -175,7 +189,9 @@ struct OrbitState {
   reserved: vec2f,
   step: u32,
   alive: u32,
-  pad: vec4u,
+  offscreenStreak: u32,
+  tinyHopStreak: u32,
+  pad: vec2u,
 }
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read_write> vertices: array<OrbitPoint>;
@@ -220,7 +236,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
       if (state.step > ${HIDDEN_INITIAL_STEPS}u) {
         let slot = atomicAdd(&drawArgs.vertexCount, 1u);
         if (slot < ${POINT_BUDGET}u) {
-          vertices[slot] = OrbitPoint(clip, depthColor, 0.0);
+          vertices[slot] = OrbitPoint(clip, depthColor, state.reserved.x);
         }
       }
       if (state.step > ${HIDDEN_INITIAL_STEPS + 1}u && all(abs(previousClip) <= vec2f(1.0)) && i >= firstLineStep) {
@@ -242,13 +258,25 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
               previousClip, control1, control2, clip,
               f32(i - firstLineStep) / f32(max(lineCount, 1u)),
               f32(i - firstLineStep + 1u) / f32(max(lineCount, 1u)),
-              depthColor, 0.0
+              depthColor, state.reserved.x
             );
           }
         }
       }
     }
-    if (hopPx <= params.minHopPx || hopPx >= length(params.viewport) * ${MAX_HOP_SCREEN_MULTIPLIER}.0 || state.step >= params.maxDepth) {
+    let magSq = dot(z, z);
+    let onScreen = all(abs(clip) <= vec2f(1.02));
+    state.offscreenStreak = select(state.offscreenStreak + 1u, 0u, onScreen);
+    state.tinyHopStreak = select(0u, state.tinyHopStreak + 1u, hopPx <= ${TINY_HOP_PX} && hopPx == hopPx);
+    let blownOffscreen = hopPx >= length(params.viewport) * ${MAX_HOP_SCREEN_MULTIPLIER}.0 && !onScreen;
+    if (
+      magSq > ${ESCAPE_RADIUS_SQ}.0
+      || blownOffscreen
+      || state.offscreenStreak >= ${OFFSCREEN_STREAK}u
+      || state.tinyHopStreak >= ${TINY_HOP_STREAK}u
+      || state.step >= params.maxDepth
+      || hopPx != hopPx
+    ) {
       state.alive = 0u;
       break;
     }
@@ -258,14 +286,19 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
 `;
 
 const pointShader = /* wgsl */ `
-struct Style { alpha: f32, pulse: f32, pad: vec2f }
+struct Style { alpha: f32, pulse: f32, colorMode: f32, pad: f32 }
 @group(0) @binding(0) var<uniform> style: Style;
 struct VSOut { @builtin(position) position: vec4f, @location(0) color: vec3f }
-@vertex fn vs(@location(0) position: vec2f, @location(1) depth: f32) -> VSOut {
+fn skipTint(index: f32) -> vec3f {
+  let colors = array<vec3f, 7>(${SKIP_TINT_WGSL});
+  return colors[u32(max(index, 1.0) - 1.0) % 7u];
+}
+@vertex fn vs(@location(0) position: vec2f, @location(1) depth: f32, @location(2) skip: f32) -> VSOut {
   var out: VSOut;
   out.position = vec4f(position, 0.0, 1.0);
   let t = clamp(depth, 0.0, 1.0);
-  out.color = mix(vec3f(0.10, 0.78, 0.92), vec3f(0.92, 1.0, 0.82), t);
+  let depthColor = mix(vec3f(0.10, 0.78, 0.92), vec3f(0.92, 1.0, 0.82), t);
+  out.color = mix(depthColor, skipTint(skip), style.colorMode);
   return out;
 }
 @fragment fn fs(in: VSOut) -> @location(0) vec4f {
@@ -284,11 +317,17 @@ struct CurveSegment {
   depth: f32,
   pad: f32,
 }
+struct Style { alpha: f32, pulse: f32, colorMode: f32, pad: f32 }
 @group(0) @binding(0) var<storage, read> segments: array<CurveSegment>;
+@group(0) @binding(1) var<uniform> style: Style;
 struct VSOut {
   @builtin(position) position: vec4f,
   @location(0) color: vec3f,
   @location(1) alpha: f32,
+}
+fn skipTint(index: f32) -> vec3f {
+  let colors = array<vec3f, 7>(${SKIP_TINT_WGSL});
+  return colors[u32(max(index, 1.0) - 1.0) % 7u];
 }
 fn bezier(curve: CurveSegment, t: f32) -> vec2f {
   let u = 1.0 - t;
@@ -307,7 +346,7 @@ fn bezier(curve: CurveSegment, t: f32) -> vec2f {
   let depth = clamp(curve.depth, 0.0, 1.0);
   var out: VSOut;
   out.position = vec4f(bezier(curve, t), 0.0, 1.0);
-  out.color = mix(vec3f(0.08, 0.66, 0.86), vec3f(0.78, 1.0, 0.70), depth);
+  out.color = mix(mix(vec3f(0.08, 0.66, 0.86), vec3f(0.78, 1.0, 0.70), depth), skipTint(curve.pad), style.colorMode);
   let directionalFreshness = mix(curve.freshnessStart, curve.freshnessEnd, t);
   out.alpha = 0.34 * pow(directionalFreshness, 0.65);
   return out;
@@ -441,6 +480,12 @@ function complexToScreen(x: number, y: number, width: number, height: number, vi
   };
 }
 
+function skipTintRgb(skipIndex: number, colored: boolean): [number, number, number] {
+  if (!colored) return [SKIP_TINTS[0][0], SKIP_TINTS[0][1], SKIP_TINTS[0][2]];
+  const tint = SKIP_TINTS[(Math.max(1, skipIndex) - 1) % SKIP_TINTS.length];
+  return [tint[0], tint[1], tint[2]];
+}
+
 function formatCompact(value: number) {
   if (value >= 1_000_000) return `${value / 1_000_000}M`;
   if (value >= 1_000) return `${value / 1_000}K`;
@@ -467,12 +512,13 @@ function sanitizeTuning(value: Partial<Tuning> | null | undefined): Tuning {
     Math.min(MAX_LINE_PERSIST, Math.round((Number(value?.linePersist) || DEFAULT_TUNING.linePersist) * 20) / 20),
   );
   const previewOrbits = value?.previewOrbits === true;
+  const skipColors = value?.skipColors !== false;
   const requestedPreview = Math.round(Number(value?.previewIterations) || DEFAULT_TUNING.previewIterations);
   const previewIterations = Math.max(
     MIN_PREVIEW_ITERATIONS,
     Math.min(MAX_PREVIEW_ITERATIONS, requestedPreview),
   );
-  return { sourceDots, maxDepth, acceleration, linePersist, previewOrbits, previewIterations };
+  return { sourceDots, maxDepth, acceleration, linePersist, previewOrbits, previewIterations, skipColors };
 }
 
 function loadTuning(): Tuning {
@@ -611,6 +657,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       buffers: [{ arrayStride: 16, attributes: [
         { shaderLocation: 0, offset: 0, format: "float32x2" },
         { shaderLocation: 1, offset: 8, format: "float32" },
+        { shaderLocation: 2, offset: 12, format: "float32" },
       ] }],
     },
     fragment: { module: pointModule, entryPoint: "fs", targets: [{
@@ -667,6 +714,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   ] });
   const lineBind = device.createBindGroup({ layout: linePipeline.getBindGroupLayout(0), entries: [
     { binding: 0, resource: { buffer: lineSegmentBuffer } },
+    { binding: 1, resource: { buffer: styleBuffer } },
   ] });
 
   let sourceCount = 0;
@@ -690,6 +738,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   let maxDepth = DEFAULT_TUNING.maxDepth;
   let accelerationCurve = DEFAULT_TUNING.acceleration;
   let linePersist = DEFAULT_TUNING.linePersist;
+  let skipColors = DEFAULT_TUNING.skipColors;
   let lastDrawTime = 0;
 
   const makeTexture = (format: string, usages: number) => device.createTexture({ size: [width, height], format, usage: usages });
@@ -776,7 +825,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     floats[10] = MIN_VISIBLE_HOP_PX;
     floats[11] = accelerationCurve;
     device.queue.writeBuffer(paramsBuffer, 0, ints);
-    device.queue.writeBuffer(styleBuffer, 0, new Float32Array([POINT_ENERGY, 0, 0, 0]));
+    device.queue.writeBuffer(styleBuffer, 0, new Float32Array([POINT_ENERGY, 0, skipColors ? 1 : 0, 0]));
     device.queue.writeBuffer(indirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
     device.queue.writeBuffer(lineIndirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
     const oldHalfX = previousView.halfY * width / height;
@@ -832,7 +881,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   scheduleDraw();
 
   return {
-    spawn(points) {
+    spawn(points, skipIndex) {
       paused = false;
       const states = new Float32Array(points.length * 12);
       const uintStates = new Uint32Array(states.buffer);
@@ -840,6 +889,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
         const offset = index * 12;
         states[offset + 2] = point.x;
         states[offset + 3] = point.y;
+        states[offset + 4] = skipIndex;
         uintStates[offset + 7] = 1;
       });
       if (nextSource + points.length > MAX_SOURCES) nextSource = 0;
@@ -855,6 +905,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       maxDepth = tuning.maxDepth;
       accelerationCurve = tuning.acceleration;
       linePersist = tuning.linePersist;
+      skipColors = tuning.skipColors === true;
     },
     clear() {
       paused = false;
@@ -1603,11 +1654,12 @@ export default function MandelbrotSkipping() {
           zr: 0, zi: 0,
           cr: orbitSource.x, ci: orbitSource.y, depth: 0, shownDepth: 0,
           skip: index, glyph, stepDistance: 0, distanceContraction: 0, resolved: false, score: 0,
+          offscreenStreak: 0, tinyHopStreak: 0,
           cells: new Uint32Array(COVERAGE_WORDS), distinct: 0,
           sumX: 0, sumY: 0, sumXX: 0, sumYY: 0, sumXY: 0,
         });
       }
-      engineRef.current?.spawn(sources);
+      engineRef.current?.spawn(sources, index);
       tone(320 + index * 62, 0.1, 0.06);
       if ("vibrate" in navigator) navigator.vibrate?.(12);
       updateHud(true);
@@ -1705,7 +1757,19 @@ export default function MandelbrotSkipping() {
             (nextR - previousR) / viewHalfX * width * .5,
             (nextI - previousI) / view.halfY * height * .5,
           );
-          if (hopPx <= MIN_VISIBLE_HOP_PX || hopPx >= maxHopPx || !Number.isFinite(hopPx)) {
+          const onScreen = Math.abs(nextR - view.centerX) <= viewHalfX * 1.02
+            && Math.abs(nextI - view.centerY) <= view.halfY * 1.02;
+          const end = updateOrbitEnd({
+            magSq: nextR * nextR + nextI * nextI,
+            hopPx,
+            onScreen,
+            offscreenStreak: orbit.offscreenStreak,
+            tinyHopStreak: orbit.tinyHopStreak,
+            maxHopPx,
+          });
+          orbit.offscreenStreak = end.offscreenStreak;
+          orbit.tinyHopStreak = end.tinyHopStreak;
+          if (end.resolved) {
             orbit.resolved = true;
             break;
           }
@@ -1857,7 +1921,7 @@ export default function MandelbrotSkipping() {
       const maxHopPx = Math.hypot(width, height) * MAX_HOP_SCREEN_MULTIPLIER;
       let zr = 0;
       let zi = 0;
-      previewContext.lineWidth = 0.45;
+      previewContext.lineWidth = 0.28;
       previewContext.lineJoin = "round";
       previewContext.lineCap = "round";
       for (let step = 0; step < iterations; step++) {
@@ -1874,12 +1938,12 @@ export default function MandelbrotSkipping() {
         if (hopPx >= maxHopPx || !Number.isFinite(hopPx)) break;
         const depth = step / Math.max(1, iterations);
         const alpha = strength * Math.pow(1 - depth, 0.72);
-        const pointAlpha = Math.min(1, alpha * 1.35);
+        const pointAlpha = Math.min(1, alpha * 1.1);
         const to = complexToScreen(nextR, nextI, width, height, view);
         if (step === 0) {
           previewContext.fillStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${pointAlpha})`;
           previewContext.beginPath();
-          previewContext.arc(startScreen.x, startScreen.y, 1.15, 0, TAU);
+          previewContext.arc(startScreen.x, startScreen.y, 0.8, 0, TAU);
           previewContext.fill();
           continue;
         }
@@ -1893,7 +1957,7 @@ export default function MandelbrotSkipping() {
         previewContext.stroke();
         previewContext.fillStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${pointAlpha})`;
         previewContext.beginPath();
-        previewContext.arc(to.x, to.y, 1.15, 0, TAU);
+        previewContext.arc(to.x, to.y, 0.8, 0, TAU);
         previewContext.fill();
       }
     }
@@ -1909,12 +1973,8 @@ export default function MandelbrotSkipping() {
       for (const landing of landings) {
         const skipIndex = landing.index;
         const iterations = Math.max(1, Math.floor(tuning.previewIterations / 2 ** (skipIndex - 1)));
-        const strength = 0.62 / (1 + (skipIndex - 1) * 0.55);
-        const color = SKIP_PREVIEW_COLORS[(skipIndex - 1) % SKIP_PREVIEW_COLORS.length];
-        const match = color.match(/rgba\((\d+),\s*(\d+),\s*(\d+)/);
-        const rgb: [number, number, number] = match
-          ? [Number(match[1]), Number(match[2]), Number(match[3])]
-          : [80, 214, 255];
+        const strength = 0.28 / (1 + (skipIndex - 1) * 0.55);
+        const rgb = skipTintRgb(skipIndex, tuning.skipColors);
         const source = screenToComplex(landing.x, landing.y, width, height, view);
         drawPreviewOrbit(source, landing, view, iterations, rgb, strength);
       }
@@ -1925,7 +1985,8 @@ export default function MandelbrotSkipping() {
       for (const landing of landings) {
         const skipIndex = landing.index;
         const markerStrength = 0.9 / (1 + (skipIndex - 1) * 0.35);
-        const color = SKIP_PREVIEW_COLORS[(skipIndex - 1) % SKIP_PREVIEW_COLORS.length];
+        const rgb = skipTintRgb(skipIndex, tuning.skipColors);
+        const color = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, .62)`;
         previewContext.save();
         previewContext.globalAlpha = markerStrength;
         previewContext.fillStyle = color;
@@ -1948,6 +2009,7 @@ export default function MandelbrotSkipping() {
         view.centerY.toFixed(5),
         view.halfY.toFixed(5),
         tuningRef.current.previewIterations,
+        tuningRef.current.skipColors ? "1" : "0",
         width,
         height,
       ].join(":");
@@ -1964,14 +2026,6 @@ export default function MandelbrotSkipping() {
       const fraction = target / magnitude;
       const nice = fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10;
       return nice * magnitude;
-    }
-
-    function coordinateLabel(value: number, step: number) {
-      if (Math.abs(value) < step * .001) return "0";
-      if (Math.abs(value) >= 10_000 || Math.abs(value) < .001) return value.toExponential(1);
-      const decimals = Math.max(0, Math.min(6, -Math.floor(Math.log10(step))));
-      const fixed = value.toFixed(decimals);
-      return decimals ? fixed.replace(/\.?0+$/, "") : fixed;
     }
 
     function rebuildScientificGrid() {
@@ -2023,70 +2077,6 @@ export default function MandelbrotSkipping() {
       gridContext.strokeStyle = "rgba(119, 211, 228, .065)";
       traceVerticals(true);
       traceHorizontals(true);
-
-      const zero = complexToScreen(0, 0, width, height, view);
-      const realAxisVisible = zero.y >= 0 && zero.y <= height;
-      const imaginaryAxisVisible = zero.x >= 0 && zero.x <= width;
-      gridContext.strokeStyle = "rgba(151, 231, 240, .18)";
-      gridContext.lineWidth = 1 / dpr;
-      gridContext.beginPath();
-      if (realAxisVisible) {
-        const y = snap(zero.y);
-        gridContext.moveTo(0, y);
-        gridContext.lineTo(width, y);
-      }
-      if (imaginaryAxisVisible) {
-        const x = snap(zero.x);
-        gridContext.moveTo(x, 0);
-        gridContext.lineTo(x, height);
-      }
-      gridContext.stroke();
-
-      gridContext.fillStyle = "rgba(171, 230, 238, .32)";
-      gridContext.strokeStyle = "rgba(151, 231, 240, .14)";
-      gridContext.font = "8px ui-monospace, SFMono-Regular, Menlo, monospace";
-      gridContext.textBaseline = "top";
-      gridContext.textAlign = "center";
-      const labelY = realAxisVisible ? Math.min(height - 11, zero.y + 4) : height - 11;
-      for (let index = Math.ceil(xMin / major); index <= Math.floor(xMax / major); index++) {
-        const value = index * major;
-        if (isAxis(value)) continue;
-        const x = snap(complexToScreen(value, 0, width, height, view).x);
-        if (realAxisVisible) {
-          gridContext.beginPath();
-          gridContext.moveTo(x, zero.y - 3);
-          gridContext.lineTo(x, zero.y + 3);
-          gridContext.stroke();
-        }
-        if (x > 18 && x < width - 18) gridContext.fillText(coordinateLabel(value, major), x, labelY);
-      }
-      gridContext.textBaseline = "middle";
-      gridContext.textAlign = "right";
-      const labelX = imaginaryAxisVisible ? Math.max(28, zero.x - 5) : 28;
-      for (let index = Math.ceil(yMin / major); index <= Math.floor(yMax / major); index++) {
-        const value = index * major;
-        if (isAxis(value)) continue;
-        const y = snap(complexToScreen(0, value, width, height, view).y);
-        if (imaginaryAxisVisible) {
-          gridContext.beginPath();
-          gridContext.moveTo(zero.x - 3, y);
-          gridContext.lineTo(zero.x + 3, y);
-          gridContext.stroke();
-        }
-        if (y > 9 && y < height - 9) gridContext.fillText(coordinateLabel(value, major), labelX, y);
-      }
-      gridContext.fillStyle = "rgba(180, 239, 245, .42)";
-      gridContext.font = "italic 9px ui-monospace, SFMono-Regular, Menlo, monospace";
-      if (realAxisVisible) {
-        gridContext.textAlign = "right";
-        gridContext.textBaseline = "bottom";
-        gridContext.fillText("Re(c)", width - 7, Math.max(11, zero.y - 5));
-      }
-      if (imaginaryAxisVisible) {
-        gridContext.textAlign = "left";
-        gridContext.textBaseline = "top";
-        gridContext.fillText("Im(c)", Math.min(width - 34, zero.x + 6), 6);
-      }
       gridDirty = false;
     }
 
@@ -2216,6 +2206,10 @@ export default function MandelbrotSkipping() {
     function drawFlashlight() {
       const geometry = flashlightGeometry();
       if (!geometry || !buddhabrotSourceRef.current || !flashlightContext) return;
+      ctx.save();
+      ctx.fillStyle = "rgba(0, 0, 0, .78)";
+      ctx.fillRect(0, 0, width, height);
+      ctx.restore();
       if (flashlightDirty) {
         flashlightContext.clearRect(0, 0, width, height);
         flashlightContext.save();
@@ -2245,7 +2239,7 @@ export default function MandelbrotSkipping() {
       ctx.save();
       ctx.globalCompositeOperation = "screen";
       ctx.imageSmoothingEnabled = false;
-      ctx.globalAlpha = .43;
+      ctx.globalAlpha = .82;
       ctx.drawImage(flashlightCanvas, 0, 0, width, height);
       ctx.restore();
 
@@ -2541,6 +2535,12 @@ export default function MandelbrotSkipping() {
               onChange={(event) => updateTuning({ previewOrbits: event.target.checked })} />
             Aim orbit preview
           </label>
+          <label className="tuningCheck">
+            <input type="checkbox" checked={tuning.skipColors}
+              aria-label="Color each skip differently"
+              onChange={(event) => updateTuning({ skipColors: event.target.checked })} />
+            Skip colors
+          </label>
           <div className="tuningControl">
             <span><span>Preview iterations</span><output>{tuning.previewIterations}</output></span>
             <input type="range" min={MIN_PREVIEW_ITERATIONS} max={MAX_PREVIEW_ITERATIONS} step="1" value={tuning.previewIterations}
@@ -2548,7 +2548,7 @@ export default function MandelbrotSkipping() {
               aria-valuetext={`${tuning.previewIterations} iterations`}
               onChange={(event) => updateTuning({ previewIterations: Number(event.target.value) })} />
           </div>
-          <p className="tuningNote">Higher curve starts slower, then ramps harder. Line persist is time to fade. Aim preview draws each predicted skip from its splash point, halving iterations and brightness each skip.</p>
+          <p className="tuningNote">Higher curve starts slower, then ramps harder. Line persist is time to fade. Aim preview draws each predicted skip from its splash point, halving iterations and brightness each skip. Skip colors tint preview and live trails per splash.</p>
         </section>
 
         {hud.phase === "result" && (

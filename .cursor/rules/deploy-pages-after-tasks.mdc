@@ -1,0 +1,15 @@
+---
+description: After each completed user task, commit, push main, and confirm Pages deploy.
+alwaysApply: true
+---
+
+# Deploy Pages after every task
+
+When a user-requested task is done (code, tests, or docs that belong in git):
+
+1. Commit the relevant files. Skip secrets, `tsconfig.tsbuildinfo`, and unrelated junk.
+2. Push `main` to `origin` (`ppixu/brotskip`). Push to `main` triggers `.github/workflows/deploy-pages.yml`.
+3. Confirm the **Deploy GitHub Pages** run starts (`gh run list --workflow=deploy-pages.yml --limit 1`). If push does not start it, `gh workflow run deploy-pages.yml --ref main`.
+4. Tell the user to test https://ppixu.github.io/brotskip/ (not henquistador).
+
+Do not wait for the user to ask to push. Do not force-push. Do not skip hooks.
