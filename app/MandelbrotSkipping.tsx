@@ -20,6 +20,15 @@ import {
   updateOrbitEnd,
 } from "@/lib/orbit-end";
 import { MAX_SKIPS, MIN_SKIPS, sampleSkipCount } from "@/lib/skip-count";
+import {
+  acceleratedSteps,
+  BASE_STEPS_PER_SOURCE,
+  clampAcceleration,
+  DEFAULT_ACCELERATION,
+  DEPTH_OPTIONS,
+  MAX_ACCELERATION,
+  MIN_ACCELERATION,
+} from "@/lib/orbit-tuning";
 
 type Phase = "ready" | "aiming" | "flying" | "resolving" | "result";
 
@@ -100,7 +109,6 @@ const SACRED_PATH_COUNTS = [2, 2, 2, 4, 2, 3, 7] as const;
 const MIN_SOURCE_DOTS = 6;
 const MAX_SOURCE_DOTS = 32;
 const MAX_SOURCES = MAX_SKIPS * MAX_SOURCE_DOTS;
-const DEPTH_OPTIONS = [10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000, 2_000_000, 5_000_000, 10_000_000, 20_000_000] as const;
 const SCORE_DEPTH_CAP = DEPTH_OPTIONS[DEPTH_OPTIONS.length - 1];
 const LINE_VISIBLE_FLOOR = 0.05;
 const MIN_LINE_PERSIST = 0.05;
@@ -122,14 +130,14 @@ const SKIP_TINT_WGSL = SKIP_TINTS
 const DEFAULT_TUNING: Tuning = {
   sourceDots: 18,
   maxDepth: 2_000_000,
-  acceleration: 2,
+  acceleration: DEFAULT_ACCELERATION,
   linePersist: 0.6,
   previewOrbits: false,
   previewIterations: 20,
   skipColors: true,
   coordinateAxes: false,
 };
-const TUNING_KEY = "mandelbrot-skipping:tuning:v1";
+const TUNING_KEY = "mandelbrot-skipping:tuning:v2";
 const SOURCE_RADIUS_PX = 10;
 const SLING_DRAW_PULL_RATIO = 0.30;
 const SLING_THROW_PULL_RATIO = 0.16;
@@ -139,7 +147,6 @@ const HIDDEN_INITIAL_STEPS = 0;
 const CURVE_SEGMENTS = 6;
 const LINE_SEGMENT_BUDGET = 25_000;
 const LINE_SEGMENT_CAPACITY = LINE_SEGMENT_BUDGET + MAX_SOURCES;
-const BASE_STEPS_PER_SOURCE = 4;
 const COVERAGE_GRID = 32;
 const COVERAGE_WORDS = COVERAGE_GRID * COVERAGE_GRID / 32;
 const FULL_GRID_VARIANCE = (COVERAGE_GRID * COVERAGE_GRID - 1) / 12;
@@ -510,7 +517,7 @@ function sanitizeTuning(value: Partial<Tuning> | null | undefined): Tuning {
     : DEFAULT_TUNING.sourceDots;
   const requestedDepth = Number(value?.maxDepth);
   const maxDepth = DEPTH_OPTIONS.includes(requestedDepth as typeof DEPTH_OPTIONS[number]) ? requestedDepth : DEFAULT_TUNING.maxDepth;
-  const acceleration = Math.max(0.5, Math.min(4, Math.round((Number(value?.acceleration) || DEFAULT_TUNING.acceleration) * 10) / 10));
+  const acceleration = clampAcceleration(value?.acceleration ?? DEFAULT_ACCELERATION);
   const linePersist = Math.max(
     MIN_LINE_PERSIST,
     Math.min(MAX_LINE_PERSIST, Math.round((Number(value?.linePersist) || DEFAULT_TUNING.linePersist) * 20) / 20),
@@ -592,11 +599,6 @@ function impactSources(x: number, y: number, width: number, height: number, view
     points.push({ x: Math.fround(mapped.x), y: Math.fround(mapped.y) });
   }
   return points;
-}
-
-function acceleratedSteps(depth: number, maxDepth: number, budget: number, curve: number) {
-  const progress = Math.max(0, Math.min(1, depth / Math.max(maxDepth, 1)));
-  return Math.min(budget, Math.max(BASE_STEPS_PER_SOURCE, Math.floor(BASE_STEPS_PER_SOURCE + Math.pow(progress, curve) * Math.max(0, budget - BASE_STEPS_PER_SOURCE))));
 }
 
 function loadScores(): ScoreEntry[] {
@@ -2620,7 +2622,7 @@ export default function MandelbrotSkipping() {
           </div>
           <div className="tuningControl">
             <span><span>Acceleration curve</span><output>{tuning.acceleration.toFixed(1)}×</output></span>
-            <input type="range" min="0.5" max="4" step="0.1" value={tuning.acceleration}
+            <input type="range" min={MIN_ACCELERATION} max={MAX_ACCELERATION} step="0.1" value={tuning.acceleration}
               aria-label="Iteration speed acceleration curve"
               aria-valuetext={`${tuning.acceleration.toFixed(1)} curve`}
               onChange={(event) => updateTuning({ acceleration: Number(event.target.value) })} />
