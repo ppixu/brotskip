@@ -23,7 +23,7 @@ export default function BuddhabrotIntro({
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) { onDismiss(); return; }
     const context = canvas.getContext("webgpu") as any;
     if (!context) {
       onDismiss();

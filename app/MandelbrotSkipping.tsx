@@ -2159,10 +2159,10 @@ export default function MandelbrotSkipping() {
     function drawMappedBuddhabrot(target: CanvasRenderingContext2D) {
       const topLeft = complexToScreen(BUDDHABROT_BOUNDS.xMin, BUDDHABROT_BOUNDS.yMax, width, height, viewRef.current);
       const bottomRight = complexToScreen(BUDDHABROT_BOUNDS.xMax, BUDDHABROT_BOUNDS.yMin, width, height, viewRef.current);
-      target.save();
-      target.imageSmoothingEnabled = true;
       const source = buddhabrotSourceRef.current;
       if (!source) return;
+      target.save();
+      target.imageSmoothingEnabled = true;
       target.drawImage(source, topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y);
       target.restore();
     }
