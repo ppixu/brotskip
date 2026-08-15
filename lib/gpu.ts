@@ -27,10 +27,14 @@ export async function acquireGpu(fail: (message: string) => void): Promise<GpuCo
   let failed = false;
   device.addEventListener("uncapturederror", (event: any) => {
     failed = true;
-    console.error("WebGPU validation", event.error?.message || event.error);
-    fail("Orbit renderer hit a GPU validation error.");
+    const detail = event.error?.message || String(event.error);
+    console.error("WebGPU validation", detail);
+    fail(`WebGPU validation error: ${detail}`);
   });
-  device.lost.then(() => { failed = true; });
+  device.lost.then(() => {
+    failed = true;
+    fail("The GPU device was lost. Reload to restore orbit trails.");
+  });
   let destroyed = false;
   return {
     device,

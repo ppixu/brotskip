@@ -3,8 +3,8 @@
 :root {
   --ink: #edfaff;
   --muted: #7692a0;
-  --shore: #06111a;
-  --rail: #091720;
+  --shore: #000000;
+  --rail: #050505;
   --cyan: #62e8ff;
 }
 
@@ -31,7 +31,7 @@ button, input { font: inherit; }
   min-width: 0;
   overflow: hidden;
   isolation: isolate;
-  background: #09212c;
+  background: #000000;
   touch-action: none;
   user-select: none;
 }
@@ -300,7 +300,7 @@ button, input { font: inherit; }
   z-index: 2;
   display: grid;
   place-items: center;
-  background: #09212c;
+  background: #000000;
   transition: opacity 600ms ease;
 }
 .introOverlay.fading { opacity: 0; pointer-events: none; }

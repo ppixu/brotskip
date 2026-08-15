@@ -78,6 +78,7 @@ type OrbitEngine = {
   setTuning: (tuning: Tuning) => void;
   clear: () => void;
   freeze: () => void;
+  setSuspended: (suspended: boolean) => void;
   destroy: () => void;
 };
 
@@ -115,7 +116,7 @@ const SOURCE_RADIUS_PX = 10;
 const SLING_DRAW_PULL_RATIO = 0.30;
 const SLING_THROW_PULL_RATIO = 0.16;
 const POINT_BUDGET = 200_000;
-const POINT_ENERGY = 0.1;
+const POINT_ENERGY = 0.18;
 const HIDDEN_INITIAL_STEPS = 0;
 const CURVE_SEGMENTS = 6;
 const LINE_SEGMENT_BUDGET = 25_000;
@@ -329,15 +330,8 @@ struct VSOut { @builtin(position) position: vec4f, @location(0) uv: vec2f }
 
 const pondShader = /* wgsl */ `
 ${fullscreenVertex}
-struct Pond { aspect: f32, time: f32, pad: vec2f }
-@group(0) @binding(0) var<uniform> pond: Pond;
 @fragment fn pondFs(in: VSOut) -> @location(0) vec4f {
-  let vertical = smoothstep(0.0, 1.0, in.uv.y);
-  let radial = 1.0 - clamp(length((in.uv - 0.5) * vec2f(pond.aspect, 1.0)), 0.0, 1.0);
-  let deep = vec3f(0.0);
-  let near = vec3f(0.002, 0.003, 0.005);
-  let color = mix(deep, near, vertical * 0.55 + radial * 0.22);
-  return vec4f(color, 1.0);
+  return vec4f(0.0, 0.0, 0.0, 1.0);
 }
 `;
 
@@ -370,7 +364,7 @@ ${fullscreenVertex}
 @group(0) @binding(3) var displaySampler: sampler;
 @fragment fn displayFs(in: VSOut) -> @location(0) vec4f {
   let base = textureSample(pondTexture, displaySampler, in.uv).rgb;
-  let raw = textureSample(trailTexture, displaySampler, in.uv).rgb * 3.0;
+  let raw = textureSample(trailTexture, displaySampler, in.uv).rgb * 3.6;
   let mapped = raw / (vec3f(1.0) + raw);
   let glow = pow(clamp(mapped, vec3f(0.0), vec3f(1.0)), vec3f(0.72));
   let lines = textureSample(lineTexture, displaySampler, in.uv).rgb * 1.35;
@@ -458,38 +452,6 @@ function lineFadeRetention(dt: number, persistSeconds: number) {
   if (persistSeconds <= 0) return 0;
   if (clampedDt === 0) return 1;
   return Math.pow(LINE_VISIBLE_FLOOR, clampedDt / persistSeconds);
-}
-
-function strokeBezierPath(target: CanvasRenderingContext2D, points: Array<{ x: number; y: number }>) {
-  if (points.length < 2) return;
-  target.beginPath();
-  target.moveTo(points[0].x, points[0].y);
-  for (let index = 1; index < points.length; index++) {
-    const previous = points[index - 1];
-    const current = points[index];
-    const future = points[index + 1] ?? {
-      x: current.x * 2 - previous.x,
-      y: current.y * 2 - previous.y,
-    };
-    const incomingX = current.x - previous.x;
-    const incomingY = current.y - previous.y;
-    const outgoingX = future.x - current.x;
-    const outgoingY = future.y - current.y;
-    const incomingLength = Math.hypot(incomingX, incomingY);
-    const outgoingLength = Math.hypot(outgoingX, outgoingY);
-    const curveScale = outgoingLength > 1e-5
-      ? Math.min(outgoingLength, incomingLength * 1.5) / outgoingLength
-      : 0;
-    target.bezierCurveTo(
-      previous.x + incomingX / 3,
-      previous.y + incomingY / 3,
-      current.x - outgoingX * curveScale / 3,
-      current.y - outgoingY * curveScale / 3,
-      current.x,
-      current.y,
-    );
-  }
-  target.stroke();
 }
 
 function sanitizeTuning(value: Partial<Tuning> | null | undefined): Tuning {
@@ -631,7 +593,6 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   const lineIndirectBuffer = device.createBuffer({ size: 16, usage: usage.STORAGE | usage.COPY_DST | usage.INDIRECT });
   const paramsBuffer = device.createBuffer({ size: 48, usage: usage.UNIFORM | usage.COPY_DST });
   const styleBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
-  const pondBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
   const fadeBuffer = device.createBuffer({ size: 32, usage: usage.UNIFORM | usage.COPY_DST });
   const lineFadeBuffer = device.createBuffer({ size: 32, usage: usage.UNIFORM | usage.COPY_DST });
   const sampler = device.createSampler({ magFilter: "nearest", minFilter: "nearest" });
@@ -713,6 +674,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   let frame = 0;
   let disposed = false;
   let paused = false;
+  let suspended = false;
   let textures: any[] = [];
   let lineTextures: any[] = [];
   let pondTexture: any = null;
@@ -764,14 +726,9 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       { binding: 2, resource: lineTextures[index].createView() },
       { binding: 3, resource: sampler },
     ] }));
-    device.queue.writeBuffer(pondBuffer, 0, new Float32Array([width / height, 0, 0, 0]));
-    const pondBind = device.createBindGroup({ layout: pondPipeline.getBindGroupLayout(0), entries: [
-      { binding: 0, resource: { buffer: pondBuffer } },
-    ] });
-    const encoder = device.createCommandEncoder();
+    const encoder = device.createCommandEncoder({ label: "orbit-resize" });
     const pondPass = encoder.beginRenderPass({ colorAttachments: [{ view: pondTexture.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } }] });
     pondPass.setPipeline(pondPipeline);
-    pondPass.setBindGroup(0, pondBind);
     pondPass.draw(3);
     pondPass.end();
     for (const texture of textures) {
@@ -791,8 +748,14 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   observer.observe(canvas);
   resize();
 
+  function scheduleDraw() {
+    if (disposed || frame) return;
+    frame = requestAnimationFrame(draw);
+  }
+
   function draw() {
-    if (disposed || gpu.hasFailed() || !textures.length) return;
+    frame = 0;
+    if (disposed || gpu.hasFailed() || !textures.length || suspended) return;
     const now = performance.now();
     const dt = lastDrawTime ? (now - lastDrawTime) / 1000 : 1 / 60;
     lastDrawTime = now;
@@ -824,7 +787,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     device.queue.writeBuffer(lineFadeBuffer, 0, new Float32Array([lineRetention, 0, 0, 0, viewScale, viewScale, offsetX, offsetY]));
     const destination = textures[1 - textureIndex];
     const lineDestination = lineTextures[1 - textureIndex];
-    const encoder = device.createCommandEncoder();
+    const encoder = device.createCommandEncoder({ label: "orbit-draw" });
     const cameraSettling = performance.now() < cameraPausedUntil;
     if (sourceCount > 0 && !paused && !cameraSettling) {
       const compute = encoder.beginComputePass();
@@ -864,9 +827,9 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     device.queue.submit([encoder.finish()]);
     textureIndex = 1 - textureIndex;
     previousView = { ...view };
-    frame = requestAnimationFrame(draw);
+    scheduleDraw();
   }
-  frame = requestAnimationFrame(draw);
+  scheduleDraw();
 
   return {
     spawn(points) {
@@ -899,7 +862,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       nextSource = 0;
       device.queue.writeBuffer(stateBuffer, 0, new Uint8Array(MAX_SOURCES * 48));
       if (!textures.length) return;
-      const encoder = device.createCommandEncoder();
+      const encoder = device.createCommandEncoder({ label: "orbit-clear" });
       for (const texture of textures) {
         const pass = encoder.beginRenderPass({ colorAttachments: [{ view: texture.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
         pass.end();
@@ -912,6 +875,10 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     },
     freeze() {
       paused = true;
+    },
+    setSuspended(value: boolean) {
+      suspended = value;
+      if (!value) scheduleDraw();
     },
     destroy() {
       disposed = true;
@@ -927,7 +894,6 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       lineIndirectBuffer.destroy();
       paramsBuffer.destroy();
       styleBuffer.destroy();
-      pondBuffer.destroy();
       fadeBuffer.destroy();
       lineFadeBuffer.destroy();
     },
@@ -991,6 +957,7 @@ export default function MandelbrotSkipping() {
       engineRef.current = engine;
       engine?.setView(viewRef.current);
       engine?.setTuning(tuningRef.current);
+      if (introActiveRef.current) engine?.setSuspended(true);
     }).catch(() => setGpuError("Orbit renderer could not start. Throwing remains playable."));
     return () => {
       cancelled = true;
@@ -1035,6 +1002,14 @@ export default function MandelbrotSkipping() {
         return;
       }
       introActiveRef.current = true;
+      engineRef.current?.setSuspended(true);
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
+      if (cancelled || gpu.hasFailed()) {
+        introActiveRef.current = false;
+        engineRef.current?.setSuspended(false);
+        fallbackToStaticImage();
+        return;
+      }
       setIntro({
         gpu,
         size,
@@ -1062,6 +1037,7 @@ export default function MandelbrotSkipping() {
 
   const handleIntroDismiss = useCallback(() => {
     introActiveRef.current = false;
+    engineRef.current?.setSuspended(false);
     setIntro(null);
     if (!buddhabrotSourceRef.current) {
       const image = new Image();
@@ -1858,26 +1834,33 @@ export default function MandelbrotSkipping() {
         if (x < 24 || x > width - 24 || y < 24 || y > height - 24) break;
         skips += 1;
         landings.push({ x, y, index: skips, glyph: (shapeOffset + skips - 1) % MAX_SKIPS });
-        break;
+        vz = Math.abs(vz) * 0.56;
+        vx *= 0.79;
+        vy *= 0.79;
+        const remaining = Math.hypot(vx, vy);
+        if (skips >= MAX_SKIPS || vz < minDimension() * 0.045 || remaining < minDimension() * 0.08) break;
+        if (x < -50 || x > width + 50 || y < -50 || y > height + 50) break;
       }
       return landings;
     }
 
-    function rebuildAimOrbitPreview(a: { x: number; y: number }) {
-      if (!previewContext) return;
-      previewContext.clearRect(0, 0, width, height);
-      const landing = predictSkipImpacts(a)[0];
-      if (!landing) return;
-      const tuning = tuningRef.current;
-      const view = viewRef.current;
+    function drawPreviewOrbit(
+      source: { x: number; y: number },
+      startScreen: { x: number; y: number },
+      view: ViewTransform,
+      iterations: number,
+      rgb: readonly [number, number, number],
+      strength: number,
+    ) {
+      if (!previewContext || iterations <= 0) return;
       const viewHalfX = view.halfY * width / Math.max(height, 1);
       const maxHopPx = Math.hypot(width, height) * MAX_HOP_SCREEN_MULTIPLIER;
-      const source = screenToComplex(landing.x, landing.y, width, height, view);
-      const color = SKIP_PREVIEW_COLORS[0];
-      const points: Array<{ x: number; y: number }> = [];
       let zr = 0;
       let zi = 0;
-      for (let step = 0; step < tuning.previewIterations; step++) {
+      previewContext.lineWidth = 0.45;
+      previewContext.lineJoin = "round";
+      previewContext.lineCap = "round";
+      for (let step = 0; step < iterations; step++) {
         const previousR = zr;
         const previousI = zi;
         const nextR = Math.fround(Math.fround(previousR * previousR - previousI * previousI) + source.x);
@@ -1889,25 +1872,70 @@ export default function MandelbrotSkipping() {
         zr = nextR;
         zi = nextI;
         if (hopPx >= maxHopPx || !Number.isFinite(hopPx)) break;
-        if (!points.length) points.push(complexToScreen(previousR, previousI, width, height, view));
-        points.push(complexToScreen(nextR, nextI, width, height, view));
+        const depth = step / Math.max(1, iterations);
+        const alpha = strength * Math.pow(1 - depth, 0.72);
+        const pointAlpha = Math.min(1, alpha * 1.35);
+        const to = complexToScreen(nextR, nextI, width, height, view);
+        if (step === 0) {
+          previewContext.fillStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${pointAlpha})`;
+          previewContext.beginPath();
+          previewContext.arc(startScreen.x, startScreen.y, 1.15, 0, TAU);
+          previewContext.fill();
+          continue;
+        }
+        const from = step === 1
+          ? startScreen
+          : complexToScreen(previousR, previousI, width, height, view);
+        previewContext.strokeStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha})`;
+        previewContext.beginPath();
+        previewContext.moveTo(from.x, from.y);
+        previewContext.lineTo(to.x, to.y);
+        previewContext.stroke();
+        previewContext.fillStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${pointAlpha})`;
+        previewContext.beginPath();
+        previewContext.arc(to.x, to.y, 1.15, 0, TAU);
+        previewContext.fill();
       }
-      previewContext.lineWidth = 1.35;
-      previewContext.lineJoin = "round";
-      previewContext.lineCap = "round";
-      previewContext.strokeStyle = color;
+    }
+
+    function rebuildAimOrbitPreview(a: { x: number; y: number }) {
+      if (!previewContext) return;
+      previewContext.clearRect(0, 0, width, height);
+      const landings = predictSkipImpacts(a);
+      if (!landings.length) return;
+      const tuning = tuningRef.current;
+      const view = viewRef.current;
       previewContext.globalCompositeOperation = "lighter";
-      strokeBezierPath(previewContext, points);
+      for (const landing of landings) {
+        const skipIndex = landing.index;
+        const iterations = Math.max(1, Math.floor(tuning.previewIterations / 2 ** (skipIndex - 1)));
+        const strength = 0.62 / (1 + (skipIndex - 1) * 0.55);
+        const color = SKIP_PREVIEW_COLORS[(skipIndex - 1) % SKIP_PREVIEW_COLORS.length];
+        const match = color.match(/rgba\((\d+),\s*(\d+),\s*(\d+)/);
+        const rgb: [number, number, number] = match
+          ? [Number(match[1]), Number(match[2]), Number(match[3])]
+          : [80, 214, 255];
+        const source = screenToComplex(landing.x, landing.y, width, height, view);
+        drawPreviewOrbit(source, landing, view, iterations, rgb, strength);
+      }
       previewContext.globalCompositeOperation = "source-over";
-      previewContext.fillStyle = color;
-      previewContext.beginPath();
-      previewContext.arc(landing.x, landing.y, 3.2, 0, TAU);
-      previewContext.fill();
-      previewContext.fillStyle = "rgba(8, 18, 24, .86)";
       previewContext.font = "700 8px ui-monospace, monospace";
       previewContext.textAlign = "center";
       previewContext.textBaseline = "middle";
-      previewContext.fillText("1", landing.x, landing.y + 0.5);
+      for (const landing of landings) {
+        const skipIndex = landing.index;
+        const markerStrength = 0.9 / (1 + (skipIndex - 1) * 0.35);
+        const color = SKIP_PREVIEW_COLORS[(skipIndex - 1) % SKIP_PREVIEW_COLORS.length];
+        previewContext.save();
+        previewContext.globalAlpha = markerStrength;
+        previewContext.fillStyle = color;
+        previewContext.beginPath();
+        previewContext.arc(landing.x, landing.y, 3.2, 0, TAU);
+        previewContext.fill();
+        previewContext.restore();
+        previewContext.fillStyle = "rgba(8, 18, 24, .86)";
+        previewContext.fillText(String(skipIndex), landing.x, landing.y + 0.5);
+      }
     }
 
     function drawAimOrbitPreview(a: { x: number; y: number }) {
@@ -2520,7 +2548,7 @@ export default function MandelbrotSkipping() {
               aria-valuetext={`${tuning.previewIterations} iterations`}
               onChange={(event) => updateTuning({ previewIterations: Number(event.target.value) })} />
           </div>
-          <p className="tuningNote">Higher curve starts slower, then ramps harder. Line persist is time to fade. Aim preview draws a short bezier of the first skip.</p>
+          <p className="tuningNote">Higher curve starts slower, then ramps harder. Line persist is time to fade. Aim preview draws each predicted skip from its splash point, halving iterations and brightness each skip.</p>
         </section>
 
         {hud.phase === "result" && (

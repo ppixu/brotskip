@@ -151,7 +151,7 @@ export function createBuddhabrotGenerator(
     if (readbackInFlight || destroyed) return;
     readbackInFlight = true;
     try {
-      const encoder = device.createCommandEncoder();
+      const encoder = device.createCommandEncoder({ label: "buddhabrot-histogram-readback" });
       encoder.copyBufferToBuffer(histogramBuffer, 0, histogramReadback, 0, HISTOGRAM_BINS * 4);
       device.queue.submit([encoder.finish()]);
       await histogramReadback.mapAsync((globalThis as any).GPUMapMode.READ);
@@ -178,7 +178,7 @@ export function createBuddhabrotGenerator(
       writeColorizeParams();
       device.queue.writeBuffer(histogramBuffer, 0, new Uint32Array(HISTOGRAM_BINS));
 
-      const encoder = device.createCommandEncoder();
+      const encoder = device.createCommandEncoder({ label: "buddhabrot-step" });
       const pass = encoder.beginComputePass();
       pass.setPipeline(accumulatePipeline);
       pass.setBindGroup(0, accumulateBind);
@@ -205,7 +205,7 @@ export function createBuddhabrotGenerator(
     },
     blit(context) {
       if (destroyed || gpu.hasFailed()) return false;
-      const encoder = device.createCommandEncoder();
+      const encoder = device.createCommandEncoder({ label: "buddhabrot-blit" });
       const pass = encoder.beginRenderPass({
         colorAttachments: [{
           view: context.getCurrentTexture().createView(),
@@ -247,13 +247,15 @@ export function createBuddhabrotGenerator(
     },
     destroy() {
       destroyed = true;
-      texture.destroy();
-      densityBuffer.destroy();
-      histogramBuffer.destroy();
-      histogramReadback.destroy();
-      accumulateParams.destroy();
-      histogramParams.destroy();
-      colorizeParams.destroy();
+      void device.queue.onSubmittedWorkDone().finally(() => {
+        texture.destroy();
+        densityBuffer.destroy();
+        histogramBuffer.destroy();
+        histogramReadback.destroy();
+        accumulateParams.destroy();
+        histogramParams.destroy();
+        colorizeParams.destroy();
+      });
     },
   };
 }

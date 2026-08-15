@@ -70,7 +70,7 @@ export const histogramShader = /* wgsl */ `
 struct Params { size: u32, pad0: u32, pad1: u32, pad2: u32 }
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read> density: array<u32>;
-@group(0) @binding(2) var<storage, read_write> histogram: array<atomic<u32>>;
+@group(0) @binding(2) var<storage, read_write> bins: array<atomic<u32>>;
 
 @compute @workgroup_size(8, 8)
 fn histogram(@builtin(global_invocation_id) id: vec3u) {
@@ -81,7 +81,7 @@ fn histogram(@builtin(global_invocation_id) id: vec3u) {
   let light = log(1.0 + f32(value));
   let scaled = light / ${HISTOGRAM_MAX_LOG}.0 * ${HISTOGRAM_BINS}.0;
   let bin = min(${HISTOGRAM_BINS}u - 1u, u32(max(scaled, 0.0)));
-  atomicAdd(&histogram[bin], 1u);
+  atomicAdd(&bins[bin], 1u);
 }
 `;
 
