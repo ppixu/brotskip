@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- WebGPU types are not shipped in this browser target. */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { acquireGpu, type GpuContext } from "@/lib/gpu";
 
 type Phase = "ready" | "aiming" | "flying" | "resolving" | "result";
 
@@ -577,27 +578,10 @@ function storeScores(entries: ScoreEntry[]) {
   try { localStorage.setItem(SCORE_KEY, JSON.stringify({ version: 2, entries })); } catch { /* local play still works */ }
 }
 
-async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: string) => void): Promise<OrbitEngine | null> {
-  const gpu = (navigator as Navigator & { gpu?: any }).gpu;
-  if (!gpu) {
-    fail("WebGPU is unavailable. Throwing still works, but orbit trails need a current hardware-accelerated browser.");
-    return null;
-  }
-  const adapter = await gpu.requestAdapter({ powerPreference: "high-performance" });
-  if (!adapter) {
-    fail("No GPU adapter found. Throwing still works in reduced visual mode.");
-    return null;
-  }
-  const device = await adapter.requestDevice();
-  let deviceFailed = false;
-  device.addEventListener("uncapturederror", (event: any) => {
-    deviceFailed = true;
-    console.error("WebGPU validation", event.error?.message || event.error);
-    fail("Orbit renderer hit a GPU validation error.");
-  });
-  device.lost.then(() => { deviceFailed = true; });
+async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Promise<OrbitEngine | null> {
+  const device = gpu.device;
   const context = canvas.getContext("webgpu") as any;
-  const canvasFormat = gpu.getPreferredCanvasFormat();
+  const canvasFormat = gpu.preferredFormat;
   context.configure({ device, format: canvasFormat, alphaMode: "opaque" });
   const usage = (globalThis as any).GPUBufferUsage;
   const textureUsage = (globalThis as any).GPUTextureUsage;
@@ -769,7 +753,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
   resize();
 
   function draw() {
-    if (disposed || deviceFailed || !textures.length) return;
+    if (disposed || gpu.hasFailed() || !textures.length) return;
     const now = performance.now();
     const dt = lastDrawTime ? (now - lastDrawTime) / 1000 : 1 / 60;
     lastDrawTime = now;
@@ -907,7 +891,6 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, fail: (message: stri
       pondBuffer.destroy();
       fadeBuffer.destroy();
       lineFadeBuffer.destroy();
-      device.destroy();
     },
   };
 }
@@ -916,6 +899,7 @@ export default function MandelbrotSkipping() {
   const gpuCanvasRef = useRef<HTMLCanvasElement>(null);
   const gameCanvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<OrbitEngine | null>(null);
+  const gpuPromiseRef = useRef<Promise<GpuContext | null> | null>(null);
   const viewRef = useRef<ViewTransform>({ centerX: POND_CENTER.x, centerY: POND_CENTER.y, halfY: VIEW_HALF_Y });
   const restartRef = useRef<() => void>(() => {});
   const playerNameRef = useRef("YOU");
@@ -946,18 +930,31 @@ export default function MandelbrotSkipping() {
     const canvas = gpuCanvasRef.current;
     if (!canvas) return;
     let cancelled = false;
-    createOrbitEngine(canvas, setGpuError).then((engine) => {
-      if (cancelled) engine?.destroy();
-      else {
-        engineRef.current = engine;
-        engine?.setView(viewRef.current);
-        engine?.setTuning(tuningRef.current);
+    // Assigned synchronously so the Buddhabrot boot effect can await the
+    // same acquisition instead of racing it.
+    const acquisition = acquireGpu(setGpuError);
+    gpuPromiseRef.current = acquisition;
+    acquisition.then(async (acquired) => {
+      if (!acquired) return;
+      if (cancelled) {
+        acquired.destroy();
+        return;
       }
+      const engine = await createOrbitEngine(canvas, acquired);
+      if (cancelled) {
+        engine?.destroy();
+        return;
+      }
+      engineRef.current = engine;
+      engine?.setView(viewRef.current);
+      engine?.setTuning(tuningRef.current);
     }).catch(() => setGpuError("Orbit renderer could not start. Throwing remains playable."));
     return () => {
       cancelled = true;
       engineRef.current?.destroy();
       engineRef.current = null;
+      gpuPromiseRef.current = null;
+      void acquisition.then((acquired) => acquired?.destroy()).catch(() => {});
     };
   }, []);
 
