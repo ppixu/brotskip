@@ -22,6 +22,7 @@ export type GeneratorOptions = {
   size: number;
   totalSamples?: number;
   minDurationMs?: number;
+  maxIterations?: number;
 };
 
 export type BuddhabrotGenerator = {
@@ -43,6 +44,7 @@ export function createBuddhabrotGenerator(
   const { size } = options;
   const pixelCount = size * size;
   const totalSamples = options.totalSamples ?? DEFAULT_SAMPLE_BUDGET[size] ?? 16_000_000;
+  const maxIterations = options.maxIterations ?? MAX_ITERATIONS;
 
   const densityBuffer = device.createBuffer({
     size: pixelCount * 4,
@@ -135,7 +137,7 @@ export function createBuddhabrotGenerator(
 
   function writeAccumulateParams(sampleCount: number) {
     const header = new ArrayBuffer(32);
-    new Uint32Array(header, 0, 4).set([size, chunkIndex + 1, sampleCount, MAX_ITERATIONS]);
+    new Uint32Array(header, 0, 4).set([size, chunkIndex + 1, sampleCount, maxIterations]);
     new Float32Array(header, 16, 4).set([BOUNDS.xMin, BOUNDS.xMax, BOUNDS.yMin, BOUNDS.yMax]);
     device.queue.writeBuffer(accumulateParams, 0, header);
   }

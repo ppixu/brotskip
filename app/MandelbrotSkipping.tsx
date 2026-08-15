@@ -976,6 +976,7 @@ export default function MandelbrotSkipping() {
   const invalidateFlashlightRef = useRef<() => void>(() => {});
   const invalidateGridRef = useRef<() => void>(() => {});
   const introActiveRef = useRef(false);
+  const persistIntroTextureRef = useRef(false);
   const [intro, setIntro] = useState<{ gpu: GpuContext; size: number; reduceMotion: boolean } | null>(null);
   const [gpuError, setGpuError] = useState<string | null>(null);
   const [hud, setHud] = useState<Hud>({ phase: "ready", score: 0, skips: 0, deepest: 0, progress: 0, coverage: 0, spread: 0 });
@@ -1066,6 +1067,7 @@ export default function MandelbrotSkipping() {
         return;
       }
       introActiveRef.current = true;
+      persistIntroTextureRef.current = true;
       engineRef.current?.setSuspended(true);
       await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
       if (cancelled || gpu.hasFailed()) {
@@ -1089,11 +1091,17 @@ export default function MandelbrotSkipping() {
   }, []);
 
   const handleIntroReady = useCallback((bitmap: ImageBitmap, blobPromise: Promise<Blob | null>, size: number) => {
-    buddhabrotSourceRef.current = bitmap;
-    invalidateFlashlightRef.current();
+    const persist = persistIntroTextureRef.current;
+    if (persist || !buddhabrotSourceRef.current) {
+      buddhabrotSourceRef.current = bitmap;
+      invalidateFlashlightRef.current();
+    } else {
+      bitmap.close();
+    }
     // Fire and forget: encoding is slow and play has already started. Use
     // the size generation actually ran at, not a fresh (possibly different)
-    // selectTextureSize(window) call.
+    // selectTextureSize(window) call. Replay must not overwrite a cached pond.
+    if (!persist) return;
     void blobPromise.then((blob) => {
       if (blob) void writeCachedTexture(size, blob, indexedDbStore(window.indexedDB));
     });
@@ -1112,6 +1120,28 @@ export default function MandelbrotSkipping() {
       };
       image.src = "buddhabrot-density.png";
     }
+  }, []);
+
+  const replayOpening = useCallback(() => {
+    if (introActiveRef.current) return;
+    void (async () => {
+      const gpu = await (gpuPromiseRef.current ?? Promise.resolve(null));
+      if (!gpu || gpu.hasFailed() || introActiveRef.current) return;
+      introActiveRef.current = true;
+      persistIntroTextureRef.current = false;
+      engineRef.current?.setSuspended(true);
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
+      if (gpu.hasFailed()) {
+        introActiveRef.current = false;
+        engineRef.current?.setSuspended(false);
+        return;
+      }
+      setIntro({
+        gpu,
+        size: selectTextureSize(window),
+        reduceMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+      });
+    })();
   }, []);
 
   const renameCurrent = useCallback((name: string) => {
@@ -2589,7 +2619,18 @@ export default function MandelbrotSkipping() {
             onDismiss={handleIntroDismiss}
           />
         )}
-        <HowItWorks />
+        <div className="playfieldDock">
+          <button
+            type="button"
+            className="replayOpening"
+            onClick={replayOpening}
+            disabled={Boolean(intro) || Boolean(gpuError)}
+            aria-label="Replay the opening Buddhabrot sequence"
+          >
+            Replay opening
+          </button>
+          <HowItWorks />
+        </div>
       </section>
 
       <aside className={`scoreRail ${hud.phase === "result" ? "hasResult" : ""}`} aria-label="Score and local high scores">
