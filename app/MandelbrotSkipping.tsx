@@ -1078,8 +1078,9 @@ export default function MandelbrotSkipping() {
       gridCanvas.height = Math.round(height * dpr);
       gridContext?.setTransform(dpr, 0, 0, dpr, 0, 0);
       gridDirty = true;
-      flashlightCanvas.width = Math.ceil(width);
-      flashlightCanvas.height = Math.ceil(height);
+      flashlightCanvas.width = Math.round(width * dpr);
+      flashlightCanvas.height = Math.round(height * dpr);
+      flashlightContext?.setTransform(dpr, 0, 0, dpr, 0, 0);
       flashlightDirty = true;
       previewCanvas.width = Math.round(width * dpr);
       previewCanvas.height = Math.round(height * dpr);
@@ -2091,7 +2092,7 @@ export default function MandelbrotSkipping() {
       const topLeft = complexToScreen(BUDDHABROT_BOUNDS.xMin, BUDDHABROT_BOUNDS.yMax, width, height, viewRef.current);
       const bottomRight = complexToScreen(BUDDHABROT_BOUNDS.xMax, BUDDHABROT_BOUNDS.yMin, width, height, viewRef.current);
       target.save();
-      target.imageSmoothingEnabled = false;
+      target.imageSmoothingEnabled = true;
       target.drawImage(buddhabrotImage, topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y);
       target.restore();
     }
@@ -2102,7 +2103,7 @@ export default function MandelbrotSkipping() {
       if (flashlightDirty) {
         flashlightContext.clearRect(0, 0, width, height);
         flashlightContext.save();
-        flashlightContext.filter = "blur(14px)";
+        flashlightContext.filter = `blur(${14 * dpr}px)`;
         const mask = flashlightContext.createLinearGradient(
           geometry.apexX,
           geometry.apexY,
