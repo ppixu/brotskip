@@ -47,6 +47,10 @@ export default function BuddhabrotIntro({
     let dismissTimer: ReturnType<typeof setTimeout> | undefined;
 
     function loop(now: number) {
+      if (gpu.hasFailed()) {
+        onDismiss();
+        return;
+      }
       const elapsed = (now - lastTime) / 1000;
       lastTime = now;
       generator.step(elapsed);
