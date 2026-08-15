@@ -1,9 +1,9 @@
 /** Shared stop rules for GPU trails and CPU scoring. */
 
 export const ESCAPE_RADIUS_SQ = 4;
-export const TINY_HOP_PX = 0.18;
-export const TINY_HOP_STREAK = 40;
-export const OFFSCREEN_STREAK = 80;
+export const TINY_HOP_PX = 0.04;
+export const TINY_HOP_STREAK = 500;
+export const OFFSCREEN_STREAK = 800;
 
 export type OrbitEndInput = {
   magSq: number;
@@ -25,11 +25,10 @@ export function updateOrbitEnd(input: OrbitEndInput): OrbitEndResult {
   const tinyHopStreak = input.hopPx <= TINY_HOP_PX ? input.tinyHopStreak + 1 : 0;
   const invalid = !Number.isFinite(input.hopPx) || !Number.isFinite(input.magSq);
   const escaped = input.magSq > ESCAPE_RADIUS_SQ;
-  const blownOffscreen = input.hopPx >= input.maxHopPx && !input.onScreen;
   const converged = tinyHopStreak >= TINY_HOP_STREAK;
   const gone = offscreenStreak >= OFFSCREEN_STREAK;
   return {
-    resolved: invalid || escaped || blownOffscreen || converged || gone,
+    resolved: invalid || escaped || converged || gone,
     offscreenStreak,
     tinyHopStreak,
   };

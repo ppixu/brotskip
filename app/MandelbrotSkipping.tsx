@@ -137,7 +137,7 @@ const DEFAULT_TUNING: Tuning = {
   skipColors: true,
   coordinateAxes: false,
 };
-const TUNING_KEY = "mandelbrot-skipping:tuning:v2";
+const TUNING_KEY = "mandelbrot-skipping:tuning:v3";
 const SOURCE_RADIUS_PX = 10;
 const SLING_DRAW_PULL_RATIO = 0.30;
 const SLING_THROW_PULL_RATIO = 0.16;
@@ -279,10 +279,8 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     let onScreen = all(abs(clip) <= vec2f(1.02));
     state.offscreenStreak = select(state.offscreenStreak + 1u, 0u, onScreen);
     state.tinyHopStreak = select(0u, state.tinyHopStreak + 1u, hopPx <= ${TINY_HOP_PX} && hopPx == hopPx);
-    let blownOffscreen = hopPx >= length(params.viewport) * ${MAX_HOP_SCREEN_MULTIPLIER}.0 && !onScreen;
     if (
       magSq > ${ESCAPE_RADIUS_SQ}.0
-      || blownOffscreen
       || state.offscreenStreak >= ${OFFSCREEN_STREAK}u
       || state.tinyHopStreak >= ${TINY_HOP_STREAK}u
       || state.step >= params.maxDepth
@@ -498,6 +496,7 @@ function skipTintRgb(skipIndex: number, colored: boolean): [number, number, numb
 }
 
 function formatCompact(value: number) {
+  if (value >= 1_000_000_000) return `${value / 1_000_000_000}B`;
   if (value >= 1_000_000) return `${value / 1_000_000}M`;
   if (value >= 1_000) return `${value / 1_000}K`;
   return String(value);

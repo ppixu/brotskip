@@ -52,6 +52,24 @@ test("a long run of sub-pixel hops resolves as converged", () => {
   assert.equal(streak, TINY_HOP_STREAK);
 });
 
+test("a slow visible spiral keeps iterating", () => {
+  let streak = 0;
+  for (let step = 0; step < 200; step++) {
+    const next = updateOrbitEnd({ ...base, hopPx: 0.12, tinyHopStreak: streak });
+    streak = next.tinyHopStreak;
+    assert.equal(next.resolved, false);
+  }
+});
+
+test("a spiral that grazes off-screen for a while keeps iterating", () => {
+  let streak = 0;
+  for (let step = 0; step < 120; step++) {
+    const next = updateOrbitEnd({ ...base, onScreen: false, offscreenStreak: streak });
+    streak = next.offscreenStreak;
+    assert.equal(next.resolved, false);
+  }
+});
+
 test("a long off-screen run resolves as no longer visible", () => {
   let streak = 0;
   let resolved = false;
@@ -69,7 +87,7 @@ test("returning on-screen clears the off-screen streak", () => {
   assert.equal(next.offscreenStreak, 0);
 });
 
-test("a huge hop off-screen resolves", () => {
+test("a huge hop off-screen still iterates while inside the escape radius", () => {
   const next = updateOrbitEnd({ ...base, onScreen: false, hopPx: 5000 });
-  assert.equal(next.resolved, true);
+  assert.equal(next.resolved, false);
 });
