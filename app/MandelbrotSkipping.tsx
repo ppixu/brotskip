@@ -4,6 +4,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { acquireGpu, type GpuContext } from "@/lib/gpu";
+import BuddhabrotIntro from "./BuddhabrotIntro";
+import {
+  indexedDbStore,
+  readCachedTexture,
+  selectTextureSize,
+  writeCachedTexture,
+} from "@/lib/buddhabrot/cache";
 
 type Phase = "ready" | "aiming" | "flying" | "resolving" | "result";
 
@@ -904,6 +911,10 @@ export default function MandelbrotSkipping() {
   const restartRef = useRef<() => void>(() => {});
   const playerNameRef = useRef("YOU");
   const tuningRef = useRef<Tuning>({ ...DEFAULT_TUNING });
+  const buddhabrotSourceRef = useRef<CanvasImageSource | null>(null);
+  const invalidateFlashlightRef = useRef<() => void>(() => {});
+  const introActiveRef = useRef(false);
+  const [intro, setIntro] = useState<{ gpu: GpuContext; size: number; reduceMotion: boolean } | null>(null);
   const [gpuError, setGpuError] = useState<string | null>(null);
   const [hud, setHud] = useState<Hud>({ phase: "ready", score: 0, skips: 0, deepest: 0, progress: 0, coverage: 0, spread: 0 });
   const [scores, setScores] = useState<ScoreEntry[]>([]);
@@ -956,6 +967,73 @@ export default function MandelbrotSkipping() {
       gpuPromiseRef.current = null;
       void acquisition.then((acquired) => acquired?.destroy()).catch(() => {});
     };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    function adoptSource(source: CanvasImageSource) {
+      if (cancelled) return;
+      buddhabrotSourceRef.current = source;
+      invalidateFlashlightRef.current();
+    }
+
+    function fallbackToStaticImage() {
+      const image = new Image();
+      image.decoding = "async";
+      image.onload = () => adoptSource(image);
+      image.src = "buddhabrot-density.png";
+    }
+
+    async function boot() {
+      const size = selectTextureSize(window);
+      const store = indexedDbStore(window.indexedDB);
+      const cached = await readCachedTexture(size, store);
+      if (cancelled) return;
+      if (cached) {
+        adoptSource(await createImageBitmap(cached));
+        return;
+      }
+      // Await the same acquisition the engine effect started, rather than
+      // requesting a second device or polling for the first.
+      const gpu = await (gpuPromiseRef.current ?? Promise.resolve(null));
+      if (cancelled) return;
+      if (!gpu || gpu.hasFailed()) {
+        fallbackToStaticImage();
+        return;
+      }
+      introActiveRef.current = true;
+      setIntro({
+        gpu,
+        size,
+        reduceMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+      });
+    }
+
+    boot().catch(fallbackToStaticImage);
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleIntroReady = useCallback((bitmap: ImageBitmap, blob: Blob | null) => {
+    buddhabrotSourceRef.current = bitmap;
+    invalidateFlashlightRef.current();
+    if (!blob) return;
+    // Fire and forget: encoding is slow and play has already started.
+    void writeCachedTexture(selectTextureSize(window), blob, indexedDbStore(window.indexedDB));
+  }, []);
+
+  const handleIntroDismiss = useCallback(() => {
+    introActiveRef.current = false;
+    setIntro(null);
+    if (!buddhabrotSourceRef.current) {
+      const image = new Image();
+      image.decoding = "async";
+      image.onload = () => {
+        buddhabrotSourceRef.current = image;
+        invalidateFlashlightRef.current();
+      };
+      image.src = "buddhabrot-density.png";
+    }
   }, []);
 
   const renameCurrent = useCallback((name: string) => {
@@ -1048,17 +1126,10 @@ export default function MandelbrotSkipping() {
     const flashlightContext = flashlightCanvas.getContext("2d");
     const previewCanvas = document.createElement("canvas");
     const previewContext = previewCanvas.getContext("2d");
-    const buddhabrotImage = new Image();
-    let buddhabrotReady = false;
     let flashlightDirty = true;
     let previewKey = "";
 
-    buddhabrotImage.decoding = "async";
-    buddhabrotImage.onload = () => {
-      buddhabrotReady = true;
-      flashlightDirty = true;
-    };
-    buddhabrotImage.src = "buddhabrot-density.png";
+    invalidateFlashlightRef.current = () => { flashlightDirty = true; };
 
     function anchor() { return { x: width * 0.5, y: height * 0.82 }; }
     function minDimension() { return Math.min(width, height); }
@@ -2090,13 +2161,15 @@ export default function MandelbrotSkipping() {
       const bottomRight = complexToScreen(BUDDHABROT_BOUNDS.xMax, BUDDHABROT_BOUNDS.yMin, width, height, viewRef.current);
       target.save();
       target.imageSmoothingEnabled = true;
-      target.drawImage(buddhabrotImage, topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y);
+      const source = buddhabrotSourceRef.current;
+      if (!source) return;
+      target.drawImage(source, topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y);
       target.restore();
     }
 
     function drawFlashlight() {
       const geometry = flashlightGeometry();
-      if (!geometry || !buddhabrotReady || !flashlightContext) return;
+      if (!geometry || !buddhabrotSourceRef.current || !flashlightContext) return;
       if (flashlightDirty) {
         flashlightContext.clearRect(0, 0, width, height);
         flashlightContext.save();
@@ -2313,6 +2386,7 @@ export default function MandelbrotSkipping() {
     }
 
     function onKeyDown(event: KeyboardEvent) {
+      if (introActiveRef.current) return;
       if (event.key === "Escape") cancelAim();
       if ((event.key === " " || event.key === "Enter") && phase === "result") {
         event.preventDefault();
@@ -2342,7 +2416,6 @@ export default function MandelbrotSkipping() {
       canvas.removeEventListener("pointercancel", cancelAim);
       canvas.removeEventListener("wheel", onWheel);
       window.removeEventListener("keydown", onKeyDown);
-      buddhabrotImage.onload = null;
       audio?.close();
     };
   }, []);
@@ -2365,6 +2438,15 @@ export default function MandelbrotSkipping() {
       <section className="playfield" aria-label="Mandelbrot rock skipping game">
         <canvas ref={gpuCanvasRef} className="gpuCanvas" aria-hidden="true" />
         <canvas ref={gameCanvasRef} className="gameCanvas" tabIndex={0} aria-label="Throw ready. Drag the white orb backward and release it across the water" />
+        {intro && (
+          <BuddhabrotIntro
+            gpu={intro.gpu}
+            size={intro.size}
+            reduceMotion={intro.reduceMotion}
+            onReady={handleIntroReady}
+            onDismiss={handleIntroDismiss}
+          />
+        )}
       </section>
 
       <aside className={`scoreRail ${hud.phase === "result" ? "hasResult" : ""}`} aria-label="Score and local high scores">
