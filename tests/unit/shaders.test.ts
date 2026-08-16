@@ -58,6 +58,8 @@ test("opening and flashlight hide orbit lines, go grayscale, and throw overlappi
   assert.match(source, /introRocks/);
   assert.match(source, /INTRO_THROW_STAGGER_MS/);
   assert.match(source, /INTRO_THROWS_PER_WAVE/);
+  assert.match(source, /INTRO_ROCK_DRAW_EVERY/);
+  assert.match(source, /body\.draw/);
   assert.match(source, /introLaunchOrigin/);
   assert.doesNotMatch(source, /function throwIntroRock\(\) \{\s*const a = anchor\(\);/);
   assert.doesNotMatch(source, /if \(phase === "flying" \|\| phase === "resolving" \|\| phase === "aiming"\) return;/);

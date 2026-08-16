@@ -30,6 +30,7 @@ import {
   INTRO_SOURCE_DOTS,
   INTRO_THROW_STAGGER_MS,
   INTRO_THROWS_PER_WAVE,
+  INTRO_ROCK_DRAW_EVERY,
   PLAY_ATMOSPHERE,
   introLaunchOrigin,
   flashlightSkipLandings,
@@ -149,6 +150,7 @@ type FlyingRock = {
   shotId: number;
   shapeOffset: number;
   path: Array<{ x: number; y: number }>;
+  draw: boolean;
 };
 
 const GLYPH_COUNT = 7;
@@ -2094,6 +2096,8 @@ export default function MandelbrotSkipping() {
       const launchPull = pondScale() * SLING_THROW_PULL_RATIO * rawPower;
       const dx = Math.cos(angle);
       const dy = Math.sin(angle);
+      const throwIndex = introThrowsRef.current;
+      introThrowsRef.current += 1;
       shotId = (shotId + 17) | 0;
       introRocks.push({
         x: origin.x - dx * launchPull,
@@ -2107,8 +2111,9 @@ export default function MandelbrotSkipping() {
         bounceAge: 10,
         plannedSkips: 3,
         shotId,
-        shapeOffset: introThrowsRef.current % GLYPH_COUNT,
+        shapeOffset: throwIndex % GLYPH_COUNT,
         path: [{ x: origin.x - dx * launchPull, y: origin.y - dy * launchPull }],
+        draw: throwIndex % INTRO_ROCK_DRAW_EVERY === 0,
       });
     }
 
@@ -2127,7 +2132,7 @@ export default function MandelbrotSkipping() {
         body.spin += Math.hypot(body.vx, body.vy) * dt * 0.016;
         body.bounceAge += dt;
         const last = body.path[body.path.length - 1];
-        if (!last || Math.hypot(body.x - last.x, body.y - last.y) >= 3) {
+        if (body.draw && (!last || Math.hypot(body.x - last.x, body.y - last.y) >= 3)) {
           body.path.push({ x: body.x, y: body.y });
         }
         let alive = true;
@@ -2164,7 +2169,7 @@ export default function MandelbrotSkipping() {
           }
         }
         if (alive) next.push(body);
-        else introTrails.push({ path: body.path, born: now });
+        else if (body.draw) introTrails.push({ path: body.path, born: now });
       }
       introRocks = next;
     }
@@ -2568,7 +2573,9 @@ export default function MandelbrotSkipping() {
 
     function drawRock(now: number) {
       if (introActiveRef.current) {
-        for (const body of introRocks) drawIntroTrajectory(body.path, 0.16);
+        for (const body of introRocks) {
+          if (body.draw) drawIntroTrajectory(body.path, 0.16);
+        }
         introTrails = introTrails.filter((trail) => now - trail.born < 1800);
         for (const trail of introTrails) {
           drawIntroTrajectory(trail.path, 0.08 * Math.max(0, 1 - (now - trail.born) / 1800));
@@ -2759,7 +2766,6 @@ export default function MandelbrotSkipping() {
       engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
       engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
       for (let index = 0; index < INTRO_THROWS_PER_WAVE; index++) throwIntroRock();
-      introThrowsRef.current += INTRO_THROWS_PER_WAVE;
       if (!introReady) {
         setIntro({ progress: Math.min(1, (now - introSettleAt) / INTRO_SETTLE_MS) });
       }

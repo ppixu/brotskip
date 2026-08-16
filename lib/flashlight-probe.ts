@@ -6,6 +6,7 @@ export const FLASHLIGHT_PLANNED_SKIPS = 3;
 export const FLASHLIGHT_HALF_ANGLE = 0.29;
 export const INTRO_THROWS_PER_WAVE = 16;
 export const INTRO_THROW_STAGGER_MS = 45;
+export const INTRO_ROCK_DRAW_EVERY = 50;
 export const INTRO_SOURCE_DOTS = 6;
 export const INTRO_MAX_DEPTH = 20_000;
 export const INTRO_SETTLE_MS = 5400;
@@ -40,7 +41,7 @@ export const PLAY_ATMOSPHERE: OrbitAtmosphere = {
 export const INTRO_ATMOSPHERE: OrbitAtmosphere = {
   drawLines: false,
   grayscale: true,
-  energy: 0.05,
+  energy: 0.14,
   hiddenSteps: 24,
 };
 

@@ -12,6 +12,7 @@ import {
   INTRO_SOURCE_DOTS,
   INTRO_THROW_STAGGER_MS,
   INTRO_THROWS_PER_WAVE,
+  INTRO_ROCK_DRAW_EVERY,
   PLAY_ATMOSPHERE,
   introLaunchOrigin,
   pointInFlashlightCone,
@@ -72,6 +73,7 @@ test("opening throws a dense simultaneous volley instead of a few sequential sto
   assert.ok(INTRO_THROWS_PER_WAVE >= 12);
   assert.ok(INTRO_THROW_STAGGER_MS <= 50);
   assert.equal(INTRO_SOURCE_DOTS, 6);
+  assert.equal(INTRO_ROCK_DRAW_EVERY, 50);
 });
 
 test("opening throws rocks from random points instead of the throw stone", () => {
@@ -104,7 +106,8 @@ test("intro and flashlight atmospheres drop lines, stay gray, and keep the cone 
   assert.equal(FLASHLIGHT_ATMOSPHERE.drawLines, false);
   assert.equal(FLASHLIGHT_ATMOSPHERE.grayscale, true);
   assert.ok(FLASHLIGHT_ATMOSPHERE.energy <= PLAY_ATMOSPHERE.energy * 0.2);
-  assert.ok(INTRO_ATMOSPHERE.energy <= PLAY_ATMOSPHERE.energy * 0.4);
+  assert.ok(INTRO_ATMOSPHERE.energy >= PLAY_ATMOSPHERE.energy * 0.7);
+  assert.ok(INTRO_ATMOSPHERE.energy <= PLAY_ATMOSPHERE.energy);
   assert.ok(INTRO_ATMOSPHERE.energy > FLASHLIGHT_ATMOSPHERE.energy);
   assert.ok(FLASHLIGHT_ATMOSPHERE.hiddenSteps >= 8);
   assert.ok(INTRO_ATMOSPHERE.hiddenSteps >= 8);
