@@ -83,6 +83,7 @@ test("opening keeps iterating a dim background Buddhabrot after the volley", () 
 test("intro and flashlight atmospheres drop lines, stay gray, and keep the cone dim", () => {
   assert.equal(PLAY_ATMOSPHERE.drawLines, true);
   assert.equal(PLAY_ATMOSPHERE.grayscale, false);
+  assert.equal(PLAY_ATMOSPHERE.hiddenSteps, 0);
   assert.equal(INTRO_ATMOSPHERE.drawLines, false);
   assert.equal(INTRO_ATMOSPHERE.grayscale, true);
   assert.equal(FLASHLIGHT_ATMOSPHERE.drawLines, false);
@@ -90,6 +91,7 @@ test("intro and flashlight atmospheres drop lines, stay gray, and keep the cone 
   assert.ok(FLASHLIGHT_ATMOSPHERE.energy <= PLAY_ATMOSPHERE.energy * 0.2);
   assert.ok(INTRO_ATMOSPHERE.energy <= PLAY_ATMOSPHERE.energy * 0.4);
   assert.ok(INTRO_ATMOSPHERE.energy > FLASHLIGHT_ATMOSPHERE.energy);
+  assert.ok(FLASHLIGHT_ATMOSPHERE.hiddenSteps >= 8);
 });
 
 test("source allocation wraps inside the live cap", () => {

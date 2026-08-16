@@ -64,6 +64,8 @@ test("opening and flashlight hide orbit lines, go grayscale, and throw overlappi
   assert.match(source, /drawIntroTrajectory/);
   assert.match(source, /playfieldThrowControl/);
   assert.doesNotMatch(source, /if \(now - introSettleAt >= INTRO_SETTLE_MS\) endOpeningRef\.current\(\)/);
+  assert.match(source, /params\.hiddenSteps/);
+  assert.match(source, /state\.step > u32\(params\.hiddenSteps\)/);
 });
 
 test("opening waits for a Play tap and gameplay rethrow sits on the throw stone", () => {

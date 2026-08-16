@@ -228,7 +228,7 @@ struct Params {
   rotateRight: f32,
   accelerationCurve: f32,
   atlasMode: f32,
-  pad: f32,
+  hiddenSteps: f32,
   bounds: vec4f,
 }
 struct OrbitPoint { position: vec2f, depth: f32, pad: f32 }
@@ -306,13 +306,13 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     let depthColor = log2(f32(state.step) + 1.0) / 25.6;
     let inAtlas = all(abs(toAtlasClip(z)) <= vec2f(1.0));
     if (inAtlas || all(abs(clip) <= vec2f(1.0))) {
-      if (state.step > ${HIDDEN_INITIAL_STEPS}u) {
+      if (state.step > u32(params.hiddenSteps)) {
         let slot = atomicAdd(&drawArgs.vertexCount, 1u);
         if (slot < ${POINT_BUDGET}u) {
           vertices[slot] = OrbitPoint(z, depthColor, state.reserved.x);
         }
       }
-      if (state.step > ${HIDDEN_INITIAL_STEPS + 1}u && (inAtlas || all(abs(previousClip) <= vec2f(1.0))) && i >= firstLineStep) {
+      if (state.step > u32(params.hiddenSteps) + 1u && (inAtlas || all(abs(previousClip) <= vec2f(1.0))) && i >= firstLineStep) {
         let future = vec2f(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + state.c;
         let incomingLength = length(clip - previousClip);
         let control1 = previousZ + (z - previousZ) / 3.0;
@@ -363,7 +363,7 @@ struct Params {
   rotateRight: f32,
   accelerationCurve: f32,
   atlasMode: f32,
-  pad: f32,
+  hiddenSteps: f32,
   bounds: vec4f,
 }
 @group(0) @binding(0) var<uniform> style: Style;
@@ -423,7 +423,7 @@ struct Params {
   rotateRight: f32,
   accelerationCurve: f32,
   atlasMode: f32,
-  pad: f32,
+  hiddenSteps: f32,
   bounds: vec4f,
 }
 @group(0) @binding(0) var<storage, read> segments: array<CurveSegment>;
@@ -863,6 +863,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   let drawLines = PLAY_ATMOSPHERE.drawLines;
   let grayscale = PLAY_ATMOSPHERE.grayscale;
   let pointEnergy = PLAY_ATMOSPHERE.energy;
+  let hiddenSteps = PLAY_ATMOSPHERE.hiddenSteps;
   let lastDrawTime = 0;
 
   const makeAtlas = (format: string) => device.createTexture({
@@ -900,6 +901,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     floats[10] = rotateRight ? 1 : 0;
     floats[11] = accelerationCurve;
     floats[12] = atlasMode;
+    floats[13] = hiddenSteps;
     floats[16] = TRAIL_BOUNDS.xMin;
     floats[17] = TRAIL_BOUNDS.xMax;
     floats[18] = TRAIL_BOUNDS.yMin;
@@ -1078,6 +1080,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       drawLines = atmosphere.drawLines;
       grayscale = atmosphere.grayscale;
       pointEnergy = atmosphere.energy;
+      hiddenSteps = atmosphere.hiddenSteps;
     },
     clear() {
       paused = false;

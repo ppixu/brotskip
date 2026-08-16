@@ -16,24 +16,28 @@ export type OrbitAtmosphere = {
   drawLines: boolean;
   grayscale: boolean;
   energy: number;
+  hiddenSteps: number;
 };
 
 export const PLAY_ATMOSPHERE: OrbitAtmosphere = {
   drawLines: true,
   grayscale: false,
   energy: 0.18,
+  hiddenSteps: 0,
 };
 
 export const INTRO_ATMOSPHERE: OrbitAtmosphere = {
   drawLines: false,
   grayscale: true,
   energy: 0.05,
+  hiddenSteps: 0,
 };
 
 export const FLASHLIGHT_ATMOSPHERE: OrbitAtmosphere = {
   drawLines: false,
   grayscale: true,
   energy: 0.028,
+  hiddenSteps: 24,
 };
 
 export type FlashlightCone = {
