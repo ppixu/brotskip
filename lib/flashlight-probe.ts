@@ -30,12 +30,12 @@ export function introLaunchOrigin(
 export function isMandelbrotInterior(x: number, y: number): boolean {
   const xOffset = x - 0.25;
   const q = xOffset * xOffset + y * y;
-  if (q * (q + xOffset) <= 0.25 * y * y) return true;
+  if (q * (q + xOffset) <= 0.25 * y * y - 0.0005) return true;
   const p2x = x + 1.0;
-  if (p2x * p2x + y * y <= 0.0625) return true;
+  if (p2x * p2x + y * y <= 0.0625 - 0.0005) return true;
   const p3x = x + 0.125;
   const absY = Math.abs(y);
-  if (p3x * p3x + (absY - 0.745) * (absY - 0.745) <= 0.009) return true;
+  if (p3x * p3x + (absY - 0.745) * (absY - 0.745) <= 0.008) return true;
   return false;
 }
 
@@ -44,40 +44,40 @@ export function introNebulaSeed(random: () => number = Math.random) {
     const mode = random();
     let seed: { x: number; y: number };
     if (mode < 0.45) {
-      // Sample slightly exterior to the cardioid boundary (outward normal)
+      // Cardioid boundary with micro-offset (rich thousands-step chaotic orbits)
       const theta = random() * Math.PI * 2;
       const nx = Math.cos(theta) - 0.5 * Math.cos(2 * theta);
       const ny = Math.sin(theta) - 0.5 * Math.sin(2 * theta);
       const nlen = Math.hypot(nx, ny) || 1;
-      const push = 0.008 + random() * 0.055;
+      const push = 0.0008 + random() * 0.0045;
       const cReal = 0.5 * Math.cos(theta) - 0.25 * Math.cos(2 * theta) + (nx / nlen) * push;
       const cImag = 0.5 * Math.sin(theta) - 0.25 * Math.sin(2 * theta) + (ny / nlen) * push;
       seed = { x: cReal, y: cImag };
-    } else if (mode < 0.70) {
-      // Period-2 bulb exterior boundary (r > 0.25)
+    } else if (mode < 0.72) {
+      // Period-2 bulb boundary with micro-offset
       const theta = random() * Math.PI * 2;
-      const rad = 0.25 + 0.008 + random() * 0.055;
+      const rad = 0.25 + 0.0008 + random() * 0.0045;
       seed = {
         x: -1.0 + Math.cos(theta) * rad,
         y: Math.sin(theta) * rad,
       };
     } else if (mode < 0.88) {
-      // Main antenna and filament valley regions
+      // Antenna and filament valleys
       const x = -2.0 + random() * 1.35;
-      const y = (random() - 0.5) * 0.35;
+      const y = (random() - 0.5) * 0.25;
       seed = { x, y };
     } else {
-      // Broad field
+      // Broad domain
       seed = {
-        x: -2.05 + random() * 2.55,
-        y: (random() - 0.5) * 2.7,
+        x: -2.05 + random() * 3.10,
+        y: (random() - 0.5) * 2.70,
       };
     }
     if (!isMandelbrotInterior(seed.x, seed.y)) {
       return seed;
     }
   }
-  return { x: -0.75 + (random() - 0.5) * 0.2, y: 0.15 + (random() - 0.5) * 0.2 };
+  return { x: -0.75 + (random() - 0.5) * 0.15, y: 0.15 + (random() - 0.5) * 0.15 };
 }
 
 export type OrbitAtmosphere = {
