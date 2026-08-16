@@ -317,7 +317,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
         let incomingLength = length(clip - previousClip);
         let control1 = previousZ + (z - previousZ) / 3.0;
         let control2 = z - (future - z) / 3.0;
-        if (incomingLength <= 0.5 || inAtlas) {
+        if (incomingLength <= 0.5 || (inAtlas && length(z - previousZ) <= 0.5)) {
           let lineVertex = atomicAdd(&lineDrawArgs.vertexCount, ${CURVE_SEGMENTS * 2}u);
           let lineSlot = lineVertex / ${CURVE_SEGMENTS * 2}u;
           if (lineSlot < ${LINE_SEGMENT_CAPACITY}u) {

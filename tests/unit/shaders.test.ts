@@ -37,6 +37,8 @@ test("orbit trails accumulate in a complex-plane atlas instead of warping a scre
   assert.match(source, /zoomPixelScale/);
   assert.doesNotMatch(source, /cameraPausedUntil/);
   assert.doesNotMatch(source, /viewChangingUntil/);
+  assert.doesNotMatch(source, /incomingLength <= 0\.5 \|\| inAtlas\)/);
+  assert.match(source, /incomingLength <= 0\.5 \|\| \(inAtlas && length\(z - previousZ\) <= 0\.5\)/);
 });
 
 test("flashlight and opening use live orbit throws instead of a pre-filmed Buddhabrot", () => {
