@@ -12,10 +12,10 @@ not the same system.
 
 Use the real orbit engine for both.
 
-- Opening: auto-throw a simultaneous volley (96 stones, 8 per wave) as dim
-  trajectories plus iteration points. After a 5.4s settle, a Play button in
-  the playfield center starts the game and clears the nebula. Reduce-motion
-  and share links skip this.
+- Opening: keep throwing a simultaneous volley (16 stones per wave) as dim
+  trajectories plus later orbit points until Play. After a 5.4s settle, a
+  Play button in the playfield center starts the game and clears the nebula.
+  Reduce-motion and share links skip this.
 - Flashlight: punch a hole in the dark overlay so live trails show in the
   cone. While aiming, throw invisible light skips into the cone
   (`6` dots, depth `8000`, cap `36` sources). Clear them on release.
@@ -28,8 +28,8 @@ nebula reads as density, not skip-colored paths.
 
 - Hide orbit iteration lines (`drawLines: false`). Gameplay still draws them.
 - Color both as monochrome depth gray, ignoring skip tints.
-- Flashlight skips the first 24 iterates so sacred-shape seeds stay invisible
-  and only later orbit points fill the cone.
+- Flashlight and opening skip the first 24 iterates so sacred-shape seeds
+  stay invisible and only later orbit points fill in.
 - Flashlight point energy is about 15% of play energy so the cone stays
   dim. Opening uses a dim grayscale nebula behind the volley, keeps
   iterating for a short settle, then fades before clearing for play.

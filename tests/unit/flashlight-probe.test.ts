@@ -10,7 +10,6 @@ import {
   INTRO_BACKGROUND_SPAWN_MS,
   INTRO_SETTLE_MS,
   INTRO_SOURCE_DOTS,
-  INTRO_THROW_COUNT,
   INTRO_THROW_STAGGER_MS,
   INTRO_THROWS_PER_WAVE,
   PLAY_ATMOSPHERE,
@@ -69,9 +68,8 @@ test("invisible skip landings hop forward from the apex", () => {
 });
 
 test("opening throws a dense simultaneous volley instead of a few sequential stones", () => {
-  assert.ok(INTRO_THROW_COUNT >= 72);
-  assert.ok(INTRO_THROWS_PER_WAVE >= 6);
-  assert.ok(INTRO_THROW_STAGGER_MS <= 90);
+  assert.ok(INTRO_THROWS_PER_WAVE >= 12);
+  assert.ok(INTRO_THROW_STAGGER_MS <= 50);
   assert.equal(INTRO_SOURCE_DOTS, 6);
 });
 
@@ -92,6 +90,7 @@ test("intro and flashlight atmospheres drop lines, stay gray, and keep the cone 
   assert.ok(INTRO_ATMOSPHERE.energy <= PLAY_ATMOSPHERE.energy * 0.4);
   assert.ok(INTRO_ATMOSPHERE.energy > FLASHLIGHT_ATMOSPHERE.energy);
   assert.ok(FLASHLIGHT_ATMOSPHERE.hiddenSteps >= 8);
+  assert.ok(INTRO_ATMOSPHERE.hiddenSteps >= 8);
 });
 
 test("source allocation wraps inside the live cap", () => {

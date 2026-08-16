@@ -42,7 +42,7 @@ test("orbit trails accumulate in a complex-plane atlas instead of warping a scre
 test("flashlight and opening use live orbit throws instead of a pre-filmed Buddhabrot", () => {
   const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
   assert.match(source, /FLASHLIGHT_SOURCE_CAP/);
-  assert.match(source, /INTRO_THROW_COUNT/);
+  assert.match(source, /INTRO_THROWS_PER_WAVE/);
   assert.doesNotMatch(source, /createBuddhabrotGenerator/);
   assert.doesNotMatch(source, /drawMappedBuddhabrot/);
   assert.doesNotMatch(source, /buddhabrot-density/);
@@ -64,6 +64,7 @@ test("opening and flashlight hide orbit lines, go grayscale, and throw overlappi
   assert.match(source, /drawIntroTrajectory/);
   assert.match(source, /playfieldThrowControl/);
   assert.doesNotMatch(source, /if \(now - introSettleAt >= INTRO_SETTLE_MS\) endOpeningRef\.current\(\)/);
+  assert.doesNotMatch(source, /introThrowsRef\.current >= INTRO_THROW_COUNT/);
   assert.match(source, /params\.hiddenSteps/);
   assert.match(source, /state\.step > u32\(params\.hiddenSteps\)/);
 });

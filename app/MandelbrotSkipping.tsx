@@ -28,7 +28,6 @@ import {
   INTRO_MAX_DEPTH,
   INTRO_SETTLE_MS,
   INTRO_SOURCE_DOTS,
-  INTRO_THROW_COUNT,
   INTRO_THROW_STAGGER_MS,
   INTRO_THROWS_PER_WAVE,
   PLAY_ATMOSPHERE,
@@ -2713,7 +2712,7 @@ export default function MandelbrotSkipping() {
     }
 
     function spawnIntroBackgroundOrbits(now: number) {
-      if (!introActiveRef.current || introFadingRef.current || introReady) return;
+      if (!introActiveRef.current || introFadingRef.current) return;
       if (lastIntroBackground !== 0 && now - lastIntroBackground < INTRO_BACKGROUND_SPAWN_MS) return;
       lastIntroBackground = now;
       const origin = {
@@ -2744,24 +2743,24 @@ export default function MandelbrotSkipping() {
 
     function maybeOpeningThrow(now: number) {
       if (!introActiveRef.current || introFadingRef.current) return;
-      if (introThrowsRef.current >= INTRO_THROW_COUNT) {
-        if (introRocks.length > 0) return;
-        if (!introSettleAt) introSettleAt = now;
-        if (!introReady && now - introSettleAt >= INTRO_SETTLE_MS) {
+      if (!introSettleAt) introSettleAt = now;
+      if (!introReady) {
+        const progress = Math.min(1, (now - introSettleAt) / INTRO_SETTLE_MS);
+        if (progress >= 1) {
           introReady = true;
           setIntro({ progress: 1, ready: true });
         }
-        return;
       }
       if (lastIntroLaunch !== 0 && now - lastIntroLaunch < INTRO_THROW_STAGGER_MS) return;
       lastIntroLaunch = now;
       spectatorRef.current = true;
       engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
       engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
-      const wave = Math.min(INTRO_THROWS_PER_WAVE, INTRO_THROW_COUNT - introThrowsRef.current);
-      for (let index = 0; index < wave; index++) throwIntroRock();
-      introThrowsRef.current += wave;
-      setIntro((current) => current ? { progress: introThrowsRef.current / INTRO_THROW_COUNT } : current);
+      for (let index = 0; index < INTRO_THROWS_PER_WAVE; index++) throwIntroRock();
+      introThrowsRef.current += INTRO_THROWS_PER_WAVE;
+      if (!introReady) {
+        setIntro({ progress: Math.min(1, (now - introSettleAt) / INTRO_SETTLE_MS) });
+      }
     }
 
     function loop(now: number) {
