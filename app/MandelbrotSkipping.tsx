@@ -38,6 +38,11 @@ import {
   viewCenterKeepingFocus,
   type ViewTransform,
 } from "@/lib/view-map";
+import {
+  parseThrowShare,
+  throwShareUrl,
+  type SharedThrow,
+} from "@/lib/throw-share";
 
 type Phase = "ready" | "aiming" | "flying" | "resolving" | "result";
 
@@ -977,7 +982,17 @@ export default function MandelbrotSkipping() {
   const invalidateGridRef = useRef<() => void>(() => {});
   const introActiveRef = useRef(false);
   const persistIntroTextureRef = useRef(false);
+  const currentShareRef = useRef<SharedThrow | null>(null);
+  const pendingShareRef = useRef<SharedThrow | null | undefined>(undefined);
+  const playThrowRef = useRef<((shot: SharedThrow, fromLink?: boolean) => void) | null>(null);
+  const spectatorRef = useRef(false);
+  const savedTuningRef = useRef<Tuning | null>(null);
+  const throwAgainRef = useRef<() => void>(() => {});
   const [intro, setIntro] = useState<{ gpu: GpuContext; size: number; reduceMotion: boolean } | null>(null);
+  const [pondReady, setPondReady] = useState(false);
+  const [hasShare, setHasShare] = useState(false);
+  const [watchingShare, setWatchingShare] = useState(false);
+  const [shareStatus, setShareStatus] = useState("");
   const [gpuError, setGpuError] = useState<string | null>(null);
   const [hud, setHud] = useState<Hud>({ phase: "ready", score: 0, skips: 0, deepest: 0, progress: 0, coverage: 0, spread: 0 });
   const [scores, setScores] = useState<ScoreEntry[]>([]);
@@ -1056,6 +1071,7 @@ export default function MandelbrotSkipping() {
       if (cancelled) return;
       if (cached) {
         adoptSource(await createImageBitmap(cached));
+        if (!cancelled) setPondReady(true);
         return;
       }
       // Await the same acquisition the engine effect started, rather than
@@ -1064,6 +1080,7 @@ export default function MandelbrotSkipping() {
       if (cancelled) return;
       if (!gpu || gpu.hasFailed()) {
         fallbackToStaticImage();
+        if (!cancelled) setPondReady(true);
         return;
       }
       introActiveRef.current = true;
@@ -1074,6 +1091,7 @@ export default function MandelbrotSkipping() {
         introActiveRef.current = false;
         engineRef.current?.setSuspended(false);
         fallbackToStaticImage();
+        if (!cancelled) setPondReady(true);
         return;
       }
       setIntro({
@@ -1086,6 +1104,7 @@ export default function MandelbrotSkipping() {
     boot().catch((error: unknown) => {
       console.warn("[buddhabrot] boot failed; falling back to static image", error);
       fallbackToStaticImage();
+      if (!cancelled) setPondReady(true);
     });
     return () => { cancelled = true; };
   }, []);
@@ -1111,6 +1130,7 @@ export default function MandelbrotSkipping() {
     introActiveRef.current = false;
     engineRef.current?.setSuspended(false);
     setIntro(null);
+    setPondReady(true);
     if (!buddhabrotSourceRef.current) {
       const image = new Image();
       image.decoding = "async";
@@ -1143,6 +1163,27 @@ export default function MandelbrotSkipping() {
       });
     })();
   }, []);
+
+  useEffect(() => {
+    if (!pondReady || intro) return;
+    if (pendingShareRef.current === undefined) {
+      pendingShareRef.current = parseThrowShare(window.location);
+    }
+    const shot = pendingShareRef.current;
+    if (!shot) return;
+    let timer = 0;
+    const attempt = () => {
+      if (pendingShareRef.current !== shot) return;
+      if (!playThrowRef.current) {
+        timer = window.setTimeout(attempt, 50);
+        return;
+      }
+      pendingShareRef.current = null;
+      playThrowRef.current(shot, true);
+    };
+    timer = window.setTimeout(attempt, 400);
+    return () => window.clearTimeout(timer);
+  }, [pondReady, intro]);
 
   const renameCurrent = useCallback((name: string) => {
     const clean = name.toUpperCase().replace(/[^A-Z0-9 _-]/g, "").slice(0, 12);
@@ -1686,6 +1727,55 @@ export default function MandelbrotSkipping() {
     }
     restartRef.current = resetRound;
 
+    function launchRock(angle: number, rawPower: number) {
+      const a = anchor();
+      const dx = Math.cos(angle);
+      const dy = Math.sin(angle);
+      const power = rawPower * rawPower * (3 - 2 * rawPower);
+      const speed = minDimension() * (0.32 + 0.56 * power);
+      const launchPull = minDimension() * SLING_THROW_PULL_RATIO * rawPower;
+      const maxPull = minDimension() * SLING_DRAW_PULL_RATIO;
+      pull = { x: a.x - dx * maxPull * rawPower, y: a.y - dy * maxPull * rawPower };
+      rock.x = a.x - dx * launchPull;
+      rock.y = a.y - dy * launchPull;
+      rock.vx = dx * speed;
+      rock.vy = dy * speed;
+      rock.vz = minDimension() * (0.38 + 0.20 * power);
+      rock.z = 1;
+      rock.spin = 0;
+      rock.skips = 0;
+      rock.bounceAge = 10;
+      phase = "flying";
+      tone(170, 0.12, 0.07);
+      flashlightDirty = true;
+      updateHud(true);
+    }
+
+    function playSharedThrow(shot: SharedThrow, fromLink = false) {
+      spectatorRef.current = true;
+      if (fromLink) setWatchingShare(true);
+      currentShareRef.current = shot;
+      setHasShare(true);
+      if (!savedTuningRef.current) savedTuningRef.current = loadTuning();
+      const next = sanitizeTuning({
+        ...tuningRef.current,
+        rotateRight: shot.rotateRight,
+        sourceDots: shot.sourceDots,
+      });
+      tuningRef.current = next;
+      setTuning(next);
+      engineRef.current?.setTuning(next);
+      invalidateGridRef.current();
+      invalidateFlashlightRef.current();
+      applyView(shot.view);
+      resetRound();
+      shapeOffset = shot.glyph;
+      shotId = shot.seed;
+      plannedSkips = shot.skips;
+      launchRock(shot.angle, shot.power);
+    }
+    playThrowRef.current = playSharedThrow;
+
     function spawnImpact(x: number, y: number, now: number) {
       const index = rock.skips;
       const mapped = screenToComplex(x, y, width, height, viewRef.current, tuningRef.current.rotateRight);
@@ -1738,18 +1828,25 @@ export default function MandelbrotSkipping() {
         ? orbitScores.reduce((sum, orbit) => sum + orbitShape(orbit).spread, 0) / orbitScores.length
         : 0;
       const id = `${Date.now()}-${shotId}`;
-      setCurrentResultId(id);
-      const entry: ScoreEntry = {
-        id, name: playerNameRef.current || "YOU", score: total, deepest, skips: rock.skips,
-        coverage, spread, createdAt: new Date().toISOString(),
-      };
-      setScores((previous) => {
-        const next = [...previous, entry]
-          .sort((a, b) => b.score - a.score || b.deepest - a.deepest || a.createdAt.localeCompare(b.createdAt))
-          .slice(0, 10);
-        storeScores(next);
-        return next;
-      });
+      if (!spectatorRef.current) {
+        setCurrentResultId(id);
+        const entry: ScoreEntry = {
+          id, name: playerNameRef.current || "YOU", score: total, deepest, skips: rock.skips,
+          coverage, spread, createdAt: new Date().toISOString(),
+        };
+        setScores((previous) => {
+          const next = [...previous, entry]
+            .sort((a, b) => b.score - a.score || b.deepest - a.deepest || a.createdAt.localeCompare(b.createdAt))
+            .slice(0, 10);
+          storeScores(next);
+          return next;
+        });
+      } else {
+        setCurrentResultId(null);
+      }
+      if (currentShareRef.current) {
+        history.replaceState(null, "", throwShareUrl(window.location.href, currentShareRef.current));
+      }
       setHud({ phase, score: total, skips: rock.skips, deepest, progress: 1, coverage, spread });
       tone(720, 0.18, 0.07);
     }
@@ -2519,18 +2616,23 @@ export default function MandelbrotSkipping() {
       }
       const maxPull = minDimension() * SLING_DRAW_PULL_RATIO;
       const rawPower = Math.min(1, length / maxPull);
-      const power = rawPower * rawPower * (3 - 2 * rawPower);
-      const speed = minDimension() * (.32 + .56 * power);
-      const launchPull = minDimension() * SLING_THROW_PULL_RATIO * rawPower;
-      rock.x = a.x - dx / length * launchPull;
-      rock.y = a.y - dy / length * launchPull;
-      rock.vx = dx / length * speed;
-      rock.vy = dy / length * speed;
-      rock.vz = minDimension() * (.38 + .20 * power);
-      rock.z = 1;
-      phase = "flying";
-      tone(170, .12, .07);
-      updateHud(true);
+      const angle = Math.atan2(dy, dx);
+      spectatorRef.current = false;
+      setWatchingShare(false);
+      savedTuningRef.current = null;
+      currentShareRef.current = {
+        version: 1,
+        view: { ...viewRef.current },
+        rotateRight: tuningRef.current.rotateRight,
+        angle,
+        power: rawPower,
+        skips: plannedSkips,
+        glyph: shapeOffset,
+        seed: shotId,
+        sourceDots: tuningRef.current.sourceDots,
+      };
+      setHasShare(true);
+      launchRock(angle, rawPower);
     }
 
     function cancelAim() {
@@ -2562,7 +2664,7 @@ export default function MandelbrotSkipping() {
       if (event.key === "Escape") cancelAim();
       if ((event.key === " " || event.key === "Enter") && phase === "result") {
         event.preventDefault();
-        resetRound();
+        throwAgainRef.current();
       }
       if (event.key === "+" || event.key === "=") zoomAt(width * 0.5, height * 0.5, 0.8);
       if (event.key === "-" || event.key === "_") zoomAt(width * 0.5, height * 0.5, 1.25);
@@ -2589,6 +2691,7 @@ export default function MandelbrotSkipping() {
       canvas.removeEventListener("wheel", onWheel);
       window.removeEventListener("keydown", onKeyDown);
       audio?.close();
+      playThrowRef.current = null;
     };
   }, []);
 
@@ -2601,9 +2704,55 @@ export default function MandelbrotSkipping() {
   const depthIndex = Math.max(0, DEPTH_OPTIONS.indexOf(tuning.maxDepth as typeof DEPTH_OPTIONS[number]));
 
   const resetAndFocusCanvas = () => {
+    spectatorRef.current = false;
+    setWatchingShare(false);
+    if (savedTuningRef.current) {
+      const saved = savedTuningRef.current;
+      savedTuningRef.current = null;
+      tuningRef.current = saved;
+      setTuning(saved);
+      storeTuning(saved);
+      engineRef.current?.setTuning(saved);
+      invalidateGridRef.current();
+      invalidateFlashlightRef.current();
+    }
     restartRef.current();
     requestAnimationFrame(() => gameCanvasRef.current?.focus());
   };
+  throwAgainRef.current = resetAndFocusCanvas;
+
+  const replayThrow = () => {
+    const shot = currentShareRef.current;
+    if (!shot || intro) return;
+    playThrowRef.current?.(shot);
+  };
+
+  const shareThrow = () => {
+    const shot = currentShareRef.current;
+    if (!shot) return;
+    const url = throwShareUrl(window.location.href, shot);
+    history.replaceState(null, "", url);
+    void (async () => {
+      try {
+        if (navigator.share) {
+          await navigator.share({ title: "Mandelbrot Skipping", url });
+          return;
+        }
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") return;
+      }
+      try {
+        await navigator.clipboard.writeText(url);
+        setShareStatus("Copied");
+        window.setTimeout(() => setShareStatus(""), 1600);
+      } catch {
+        setShareStatus("Copy the address bar");
+        window.setTimeout(() => setShareStatus(""), 2400);
+      }
+    })();
+  };
+
+  const throwBusy = hud.phase === "flying" || hud.phase === "resolving" || Boolean(intro);
 
   return (
     <main className="gameShell">
@@ -2639,6 +2788,26 @@ export default function MandelbrotSkipping() {
           <strong className="liveNumber">{formatNumber(hud.score)}</strong>
           <span className="liveMeta">{hud.skips} skips · {hud.deepest ? formatNumber(hud.deepest) : "0"} deep · {hud.coverage} cells · {Math.round(hud.spread * 100)}% spread</span>
           <span className="liveProgress"><i style={{ width: `${Math.max(2, hud.progress * 100)}%` }} /></span>
+          <div className="throwShareRow">
+            <button
+              type="button"
+              className="rethrowButton"
+              onClick={replayThrow}
+              disabled={!hasShare || throwBusy}
+              aria-label="Replay this throw"
+            >
+              Replay throw
+            </button>
+            <button
+              type="button"
+              className="rethrowButton"
+              onClick={shareThrow}
+              disabled={!hasShare}
+              aria-label="Copy a link to this throw"
+            >
+              {shareStatus || "Share throw"}
+            </button>
+          </div>
           {(hud.phase === "flying" || hud.phase === "resolving") && (
             <button className="rethrowButton" onClick={resetAndFocusCanvas} aria-label="Cancel this throw and rethrow">Rethrow</button>
           )}
@@ -2709,10 +2878,16 @@ export default function MandelbrotSkipping() {
 
         {hud.phase === "result" && (
           <section className="railResult" aria-label="Throw result">
-            <div className="resultEyebrow">{scores[0]?.id === currentResultId ? "New local best" : "Throw complete"}</div>
+            <div className="resultEyebrow">{
+              watchingShare ? "Shared throw"
+                : scores[0]?.id === currentResultId ? "New local best"
+                  : "Throw complete"
+            }</div>
             <div className="resultStats">{hud.skips} exact paths · {formatNumber(hud.deepest)} deep · {hud.coverage} distinct cells · {Math.round(hud.spread * 100)}% spread.</div>
             <div className="nameRow">
-              <input className="nameInput" aria-label="High score name" value={playerName} maxLength={12} onChange={(event) => renameCurrent(event.target.value)} />
+              {currentResultId ? (
+                <input className="nameInput" aria-label="High score name" value={playerName} maxLength={12} onChange={(event) => renameCurrent(event.target.value)} />
+              ) : null}
               <button className="throwButton" onClick={resetAndFocusCanvas}>Throw again</button>
             </div>
           </section>

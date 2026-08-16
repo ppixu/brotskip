@@ -28,6 +28,8 @@ test("server-renders Mandelbrot Skipping", async () => {
   assert.match(html, /Coordinate axes/);
   assert.match(html, /Rotate 90° right/);
   assert.match(html, /Replay opening/);
+  assert.match(html, /Share throw/);
+  assert.match(html, /Replay throw/);
   assert.match(html, /How does this work/);
   assert.match(html, /1\. Iteration/);
   assert.match(html, /Iteration means/);

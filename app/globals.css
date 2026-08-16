@@ -247,6 +247,17 @@ button, input { font: inherit; }
   color: white;
   outline: none;
 }
+.rethrowButton:disabled {
+  opacity: .42;
+  cursor: not-allowed;
+}
+.throwShareRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 13px;
+}
+.throwShareRow .rethrowButton { margin-top: 0; }
 
 .tuningPanel {
   flex: none;
