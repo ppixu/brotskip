@@ -2701,24 +2701,22 @@ export default function MandelbrotSkipping() {
         const point = complexToScreen(ripple.cr, ripple.ci, width, height, viewRef.current, tuningRef.current.rotateRight);
         const age = now - ripple.born;
         const t = age / RIPPLE_LIFETIME;
+        if (t <= 0 || t >= 1) continue;
         const maxRadius = Math.max(36, minDimension() * 0.14);
-        const rings = 3;
-        for (let ring = 0; ring < rings; ring++) {
-          const delay = ring * 0.13;
-          const rt = (t - delay) / (1 - delay);
-          if (rt <= 0 || rt > 1) continue;
-          const radius = 4 + Math.pow(rt, 0.72) * maxRadius;
-          const envelope = Math.sin(rt * Math.PI) * Math.pow(1 - rt, 0.75);
-          const alpha = Math.max(0, envelope * 0.58 * (1 - ring * 0.22));
-          if (alpha <= 0.005) continue;
-          ctx.save();
-          ctx.strokeStyle = `rgba(148, 236, 255, ${alpha.toFixed(3)})`;
-          ctx.lineWidth = Math.max(0.6, 1.4 * (1 - rt * 0.6));
-          ctx.beginPath();
-          ctx.arc(point.x, point.y, radius, 0, TAU);
-          ctx.stroke();
-          ctx.restore();
-        }
+        const radius = 4 + Math.pow(t, 0.72) * maxRadius;
+        const envelope = Math.sin(t * Math.PI) * Math.pow(1 - t, 0.75);
+        const baseGain = introActiveRef.current ? 0.52 : 0.28;
+        const alpha = Math.max(0, envelope * baseGain);
+        if (alpha <= 0.005) continue;
+        ctx.save();
+        ctx.strokeStyle = introActiveRef.current
+          ? `rgba(148, 236, 255, ${alpha.toFixed(3)})`
+          : `rgba(130, 215, 235, ${alpha.toFixed(3)})`;
+        ctx.lineWidth = Math.max(0.6, (introActiveRef.current ? 1.3 : 1.0) * (1 - t * 0.6));
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, radius, 0, TAU);
+        ctx.stroke();
+        ctx.restore();
       }
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
