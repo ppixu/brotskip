@@ -1,62 +1,23 @@
 export type Complex = { re: number; im: number };
 
-export type ExplainPart = {
-  title: string;
-  body: string;
-  film: "iterate" | "escape" | "stack";
-  formula?: string;
-};
-
-/** Seeds that escape quickly so a short looping film can show the hop. */
-export const DEMO_SEEDS: Complex[] = [
-  { re: -0.64, im: 0.39 },
-  { re: 0.32, im: 0.47 },
-  { re: -0.24, im: 0.71 },
-];
-
-/** Well-spaced hops for the “what is iteration” film. */
-export const ITERATE_SEED: Complex = { re: -0.4, im: 0.95 };
-
-/** Flies off the right side of the map after a few hops. */
-export const ESCAPE_SEED: Complex = { re: -0.7, im: 0.69 };
-
-/** A point that hops forever inside the circle — used to show “stays”. */
-export const TRAPPED_SEED: Complex = { re: -0.2, im: 0.55 };
-
-/** Escaping splash points stacked into a tiny nebula. */
-export const STACK_SEEDS: Complex[] = [
-  { re: -0.64, im: 0.39 },
-  { re: 0.32, im: 0.47 },
-  { re: -0.24, im: 0.71 },
-  { re: -1.36, im: 0.33 },
-  { re: -0.92, im: 0.51 },
-  { re: -0.7, im: 0.69 },
-  { re: -0.48, im: 0.87 },
-  { re: -1.14, im: 0.51 },
-  { re: -0.64, im: -0.39 },
-  { re: -0.92, im: -0.51 },
-  { re: -0.7, im: -0.69 },
-  { re: 0.32, im: -0.47 },
-];
-
-export const EXPLAIN_PARTS: ExplainPart[] = [
-  {
-    title: "1. Iteration",
-    film: "iterate",
-    formula: "z → z² + c",
-    body: "Iteration means repeating the same small step. Start at the center. Each hop squares your position, then adds the splash. That hop is one iteration.",
+export const BUDDHABROT_EXPLAIN = {
+  trigger: "Buddhabrot",
+  title: "Buddhabrot",
+  formula: "z → z² + c",
+  paragraphs: [
+    "The Buddhabrot is a density map of Mandelbrot trajectories that escape. Start at 0, then keep applying z → z² + c. If that orbit flies off to infinity, every hop is counted. Stack enough of those escaping paths and the glow takes the shape of a seated Buddha — the resemblance that gave Melinda Green’s 1993 rendering its name.",
+    "Points that stay trapped are discarded, so the Mandelbrot set itself stays dark. Raise the iteration limit and the picture thins into finer filaments: only the longest escapes remain, as in the animation.",
+  ],
+  gif: {
+    file: "buddhabrot-iterations.gif",
+    alt: "Buddhabrot forming as the maximum iteration count increases",
+    credit: "Tacodude7729 / Wikimedia Commons",
+    license: "CC BY-SA 4.0",
+    licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/",
+    sourceUrl: "https://commons.wikimedia.org/wiki/File:BuddhabrotIterationAnimation7729.gif",
+    articleUrl: "https://en.wikipedia.org/wiki/Buddhabrot",
   },
-  {
-    title: "2. Escape",
-    film: "escape",
-    body: "If the hops fly past the circle, the path has escaped — it never comes back. Other splash points hop in a tiny loop and stay on the map forever.",
-  },
-  {
-    title: "3. The nebula",
-    film: "stack",
-    body: "The Buddhabrot paints every hop of the paths that escape. Stack thousands of those trails and the glow appears. Paths that never leave stay dark.",
-  },
-];
+} as const;
 
 export function squarePlus(z: Complex, c: Complex): Complex {
   return {
@@ -78,14 +39,4 @@ export function escapingOrbit(c: Complex, maxSteps = 64): Complex[] {
     if (magnitudeSq(z) > 4) break;
   }
   return points;
-}
-
-/** Backing-store size so the film stays sharp on retina and when CSS stretches it. */
-export function canvasBackingSize(cssWidth: number, cssHeight: number, devicePixelRatio: number) {
-  const dpr = Math.max(2, Number(devicePixelRatio) || 1);
-  return {
-    width: Math.max(1, Math.round(cssWidth * dpr)),
-    height: Math.max(1, Math.round(cssHeight * dpr)),
-    dpr,
-  };
 }

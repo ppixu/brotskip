@@ -30,12 +30,13 @@ test("server-renders Mandelbrot Skipping", async () => {
   assert.match(html, /Replay opening/);
   assert.match(html, /Share throw/);
   assert.match(html, /Replay throw/);
-  assert.match(html, /How does this work/);
-  assert.match(html, /1\. Iteration/);
-  assert.match(html, /Iteration means/);
-  assert.match(html, /2\. Escape/);
-  assert.match(html, /3\. The nebula/);
+  assert.match(html, />Buddhabrot</);
+  assert.match(html, /buddhabrot-iterations\.gif/);
+  assert.match(html, /Melinda Green/);
   assert.match(html, /z → z² \+ c/);
+  assert.match(html, /CC BY-SA 4\.0/);
+  assert.doesNotMatch(html, /How does this work/);
+  assert.doesNotMatch(html, /Iteration means/);
   assert.doesNotMatch(html, /waterGrain|resultCard|gameTitle|hudPill/);
   assert.doesNotMatch(html, /introOverlay|introCanvas/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/i);

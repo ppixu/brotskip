@@ -191,21 +191,11 @@ button, input { font: inherit; }
 .howItWorksFilm {
   display: block;
   width: 100%;
-  height: 104px;
+  height: auto;
   margin: 0 0 8px;
   border-radius: 8px;
   background: #071014;
   image-rendering: auto;
-}
-.howItWorksPart { margin: 0 0 12px; }
-.howItWorksPart:last-child { margin: 0; }
-.howItWorksPart h3 {
-  margin: 0 0 6px;
-  color: #dffbff;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: .08em;
-  text-transform: uppercase;
 }
 .howItWorksFormula {
   margin: -2px 0 6px;
@@ -214,8 +204,18 @@ button, input { font: inherit; }
   font-size: 11px;
   font-weight: 650;
 }
+.howItWorksCredit {
+  color: #7f9aa4;
+  font-size: 10px;
+  line-height: 1.4;
+}
 .howItWorksPanel p { margin: 0 0 8px; }
 .howItWorksPanel p:last-child { margin: 0; }
+.howItWorksPanel a {
+  color: #c5e7ef;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 .howItWorksPanel i { color: #dffbff; font-style: normal; font-weight: 650; }
 
 .scoreRail {
