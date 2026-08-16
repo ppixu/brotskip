@@ -7,12 +7,6 @@ import { acquireGpu, type GpuContext } from "@/lib/gpu";
 import BuddhabrotIntro from "./BuddhabrotIntro";
 import HowItWorks from "./HowItWorks";
 import {
-  indexedDbStore,
-  readCachedTexture,
-  selectTextureSize,
-  writeCachedTexture,
-} from "@/lib/buddhabrot/cache";
-import {
   ESCAPE_RADIUS_SQ,
   OFFSCREEN_STREAK,
   TINY_HOP_PX,
@@ -20,6 +14,19 @@ import {
   updateOrbitEnd,
 } from "@/lib/orbit-end";
 import { MAX_SKIPS, MIN_SKIPS, sampleSkipCount } from "@/lib/skip-count";
+import { allocateSources } from "@/lib/orbit-sources";
+import {
+  FLASHLIGHT_HALF_ANGLE,
+  FLASHLIGHT_MAX_DEPTH,
+  FLASHLIGHT_PLANNED_SKIPS,
+  FLASHLIGHT_SOURCE_CAP,
+  FLASHLIGHT_SOURCE_DOTS,
+  FLASHLIGHT_SPAWN_MS,
+  INTRO_MAX_DEPTH,
+  INTRO_THROW_COUNT,
+  flashlightSkipLandings,
+  sampleRayInCone,
+} from "@/lib/flashlight-probe";
 import {
   acceleratedSteps,
   BASE_STEPS_PER_SOURCE,
@@ -109,7 +116,7 @@ type Tuning = {
 };
 
 type OrbitEngine = {
-  spawn: (points: Array<{ x: number; y: number }>, skipIndex: number) => void;
+  spawn: (points: Array<{ x: number; y: number }>, skipIndex: number, cap?: number) => void;
   setView: (view: ViewTransform) => void;
   setTuning: (tuning: Tuning) => void;
   clear: () => void;
@@ -1009,7 +1016,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   scheduleDraw();
 
   return {
-    spawn(points, skipIndex) {
+    spawn(points, skipIndex, cap = MAX_SOURCES) {
       paused = false;
       const states = new Float32Array(points.length * 12);
       const uintStates = new Uint32Array(states.buffer);
@@ -1020,10 +1027,10 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
         states[offset + 4] = skipIndex;
         uintStates[offset + 7] = 1;
       });
-      if (nextSource + points.length > MAX_SOURCES) nextSource = 0;
-      device.queue.writeBuffer(stateBuffer, nextSource * 48, states.buffer, states.byteOffset, states.byteLength);
-      nextSource = (nextSource + points.length) % MAX_SOURCES;
-      sourceCount = Math.min(MAX_SOURCES, sourceCount + points.length);
+      const slot = allocateSources(nextSource, sourceCount, points.length, cap);
+      device.queue.writeBuffer(stateBuffer, slot.start * 48, states.buffer, states.byteOffset, states.byteLength);
+      nextSource = slot.nextSource;
+      sourceCount = slot.sourceCount;
     },
     setView(nextView) {
       view = { ...nextView };
@@ -1086,18 +1093,19 @@ export default function MandelbrotSkipping() {
   const restartRef = useRef<() => void>(() => {});
   const playerNameRef = useRef("YOU");
   const tuningRef = useRef<Tuning>({ ...DEFAULT_TUNING });
-  const buddhabrotSourceRef = useRef<CanvasImageSource | null>(null);
   const invalidateFlashlightRef = useRef<() => void>(() => {});
   const invalidateGridRef = useRef<() => void>(() => {});
   const introActiveRef = useRef(false);
-  const persistIntroTextureRef = useRef(false);
+  const introThrowsRef = useRef(0);
+  const endOpeningRef = useRef<() => void>(() => {});
   const currentShareRef = useRef<SharedThrow | null>(null);
   const pendingShareRef = useRef<SharedThrow | null | undefined>(undefined);
   const playThrowRef = useRef<((shot: SharedThrow, fromLink?: boolean) => void) | null>(null);
   const spectatorRef = useRef(false);
   const savedTuningRef = useRef<Tuning | null>(null);
   const throwAgainRef = useRef<() => void>(() => {});
-  const [intro, setIntro] = useState<{ gpu: GpuContext; size: number; reduceMotion: boolean } | null>(null);
+  const [intro, setIntro] = useState<{ progress: number } | null>(null);
+  const [introFading, setIntroFading] = useState(false);
   const [pondReady, setPondReady] = useState(false);
   const [hasShare, setHasShare] = useState(false);
   const [watchingShare, setWatchingShare] = useState(false);
@@ -1148,7 +1156,6 @@ export default function MandelbrotSkipping() {
       engineRef.current = engine;
       engine?.setView(viewRef.current);
       engine?.setTuning(tuningRef.current);
-      if (introActiveRef.current) engine?.setSuspended(true);
     }).catch(() => setGpuError("Orbit renderer could not start. Throwing remains playable."));
     return () => {
       cancelled = true;
@@ -1160,119 +1167,39 @@ export default function MandelbrotSkipping() {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-
-    function adoptSource(source: CanvasImageSource) {
-      if (cancelled) return;
-      buddhabrotSourceRef.current = source;
-      invalidateFlashlightRef.current();
-    }
-
-    function fallbackToStaticImage() {
-      const image = new Image();
-      image.decoding = "async";
-      image.onload = () => adoptSource(image);
-      image.src = "buddhabrot-density.png";
-    }
-
-    async function boot() {
-      const size = selectTextureSize(window);
-      const store = indexedDbStore(window.indexedDB);
-      const cached = await readCachedTexture(size, store);
-      if (cancelled) return;
-      if (cached) {
-        adoptSource(await createImageBitmap(cached));
-        if (!cancelled) setPondReady(true);
-        return;
-      }
-      // Await the same acquisition the engine effect started, rather than
-      // requesting a second device or polling for the first.
-      const gpu = await (gpuPromiseRef.current ?? Promise.resolve(null));
-      if (cancelled) return;
-      if (!gpu || gpu.hasFailed()) {
-        fallbackToStaticImage();
-        if (!cancelled) setPondReady(true);
-        return;
-      }
-      introActiveRef.current = true;
-      persistIntroTextureRef.current = true;
-      engineRef.current?.setSuspended(true);
-      await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
-      if (cancelled || gpu.hasFailed()) {
-        introActiveRef.current = false;
-        engineRef.current?.setSuspended(false);
-        fallbackToStaticImage();
-        if (!cancelled) setPondReady(true);
-        return;
-      }
-      setIntro({
-        gpu,
-        size,
-        reduceMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-      });
-    }
-
-    boot().catch((error: unknown) => {
-      console.warn("[buddhabrot] boot failed; falling back to static image", error);
-      fallbackToStaticImage();
-      if (!cancelled) setPondReady(true);
-    });
-    return () => { cancelled = true; };
-  }, []);
-
-  const handleIntroReady = useCallback((bitmap: ImageBitmap, blobPromise: Promise<Blob | null>, size: number) => {
-    const persist = persistIntroTextureRef.current;
-    if (persist || !buddhabrotSourceRef.current) {
-      buddhabrotSourceRef.current = bitmap;
-      invalidateFlashlightRef.current();
-    } else {
-      bitmap.close();
-    }
-    // Fire and forget: encoding is slow and play has already started. Use
-    // the size generation actually ran at, not a fresh (possibly different)
-    // selectTextureSize(window) call. Replay must not overwrite a cached pond.
-    if (!persist) return;
-    void blobPromise.then((blob) => {
-      if (blob) void writeCachedTexture(size, blob, indexedDbStore(window.indexedDB));
-    });
-  }, []);
-
-  const handleIntroDismiss = useCallback(() => {
-    introActiveRef.current = false;
-    engineRef.current?.setSuspended(false);
-    setIntro(null);
+    const share = parseThrowShare(window.location);
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     setPondReady(true);
-    if (!buddhabrotSourceRef.current) {
-      const image = new Image();
-      image.decoding = "async";
-      image.onload = () => {
-        buddhabrotSourceRef.current = image;
-        invalidateFlashlightRef.current();
-      };
-      image.src = "buddhabrot-density.png";
-    }
+    if (share || reduceMotion) return;
+    introActiveRef.current = true;
+    spectatorRef.current = true;
+    introThrowsRef.current = 0;
+    setIntro({ progress: 0 });
   }, []);
+
+  const finishOpening = useCallback(() => {
+    introActiveRef.current = false;
+    spectatorRef.current = false;
+    introThrowsRef.current = 0;
+    engineRef.current?.setTuning(tuningRef.current);
+    restartRef.current();
+    setIntroFading(true);
+    window.setTimeout(() => {
+      setIntro(null);
+      setIntroFading(false);
+    }, 600);
+  }, []);
+  endOpeningRef.current = finishOpening;
 
   const replayOpening = useCallback(() => {
     if (introActiveRef.current) return;
-    void (async () => {
-      const gpu = await (gpuPromiseRef.current ?? Promise.resolve(null));
-      if (!gpu || gpu.hasFailed() || introActiveRef.current) return;
-      introActiveRef.current = true;
-      persistIntroTextureRef.current = false;
-      engineRef.current?.setSuspended(true);
-      await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
-      if (gpu.hasFailed()) {
-        introActiveRef.current = false;
-        engineRef.current?.setSuspended(false);
-        return;
-      }
-      setIntro({
-        gpu,
-        size: selectTextureSize(window),
-        reduceMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-      });
-    })();
+    introActiveRef.current = true;
+    spectatorRef.current = true;
+    introThrowsRef.current = 0;
+    engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
+    restartRef.current();
+    setIntroFading(false);
+    setIntro({ progress: 0 });
   }, []);
 
   useEffect(() => {
@@ -1388,11 +1315,10 @@ export default function MandelbrotSkipping() {
     const gridCanvas = document.createElement("canvas");
     const gridContext = gridCanvas.getContext("2d");
     let gridDirty = true;
-    const flashlightCanvas = document.createElement("canvas");
-    const flashlightContext = flashlightCanvas.getContext("2d");
     const previewCanvas = document.createElement("canvas");
     const previewContext = previewCanvas.getContext("2d");
     let flashlightDirty = true;
+    let lastFlashlightSpawn = 0;
     let previewKey = "";
 
     invalidateFlashlightRef.current = () => { flashlightDirty = true; };
@@ -1414,10 +1340,6 @@ export default function MandelbrotSkipping() {
       gridCanvas.height = Math.round(height * dpr);
       gridContext?.setTransform(dpr, 0, 0, dpr, 0, 0);
       gridDirty = true;
-      flashlightCanvas.width = Math.round(width * dpr);
-      flashlightCanvas.height = Math.round(height * dpr);
-      flashlightContext?.setTransform(dpr, 0, 0, dpr, 0, 0);
-      flashlightDirty = true;
       previewCanvas.width = Math.round(width * dpr);
       previewCanvas.height = Math.round(height * dpr);
       previewContext?.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1843,6 +1765,10 @@ export default function MandelbrotSkipping() {
     restartRef.current = resetRound;
 
     function launchRock(angle: number, rawPower: number) {
+      if (!introActiveRef.current) {
+        engineRef.current?.clear();
+        engineRef.current?.setTuning(tuningRef.current);
+      }
       const a = anchor();
       const dx = Math.cos(angle);
       const dy = Math.sin(angle);
@@ -1901,21 +1827,25 @@ export default function MandelbrotSkipping() {
       const sources = impactSources(
         x, y, width, height, viewRef.current, tuningRef.current.sourceDots, glyph, tuningRef.current.rotateRight,
       );
-      impacts.push({ cr: source.x, ci: source.y, born: now, index });
       ripples.push({ cr: source.x, ci: source.y, born: now, index });
-      for (const orbitSource of sources) {
-        orbitScores.push({
-          zr: 0, zi: 0,
-          cr: orbitSource.x, ci: orbitSource.y, depth: 0, shownDepth: 0,
-          skip: index, glyph, stepDistance: 0, distanceContraction: 0, resolved: false, score: 0,
-          offscreenStreak: 0, tinyHopStreak: 0,
-          cells: new Uint32Array(COVERAGE_WORDS), distinct: 0,
-          sumX: 0, sumY: 0, sumXX: 0, sumYY: 0, sumXY: 0,
-        });
+      if (!introActiveRef.current) {
+        impacts.push({ cr: source.x, ci: source.y, born: now, index });
+        for (const orbitSource of sources) {
+          orbitScores.push({
+            zr: 0, zi: 0,
+            cr: orbitSource.x, ci: orbitSource.y, depth: 0, shownDepth: 0,
+            skip: index, glyph, stepDistance: 0, distanceContraction: 0, resolved: false, score: 0,
+            offscreenStreak: 0, tinyHopStreak: 0,
+            cells: new Uint32Array(COVERAGE_WORDS), distinct: 0,
+            sumX: 0, sumY: 0, sumXX: 0, sumYY: 0, sumXY: 0,
+          });
+        }
       }
       engineRef.current?.spawn(sources, index);
-      tone(320 + index * 62, 0.1, 0.06);
-      if ("vibrate" in navigator) navigator.vibrate?.(12);
+      if (!introActiveRef.current) {
+        tone(320 + index * 62, 0.1, 0.06);
+        if ("vibrate" in navigator) navigator.vibrate?.(12);
+      }
       updateHud(true);
     }
 
@@ -1929,7 +1859,7 @@ export default function MandelbrotSkipping() {
     function finishRound() {
       if (phase === "result") return;
       phase = "result";
-      engineRef.current?.freeze();
+      if (!introActiveRef.current) engineRef.current?.freeze();
       orbitScores.forEach((orbit) => {
         if (!orbit.resolved) {
           orbit.resolved = true;
@@ -2507,7 +2437,7 @@ export default function MandelbrotSkipping() {
       const directionX = dx / length;
       const directionY = dy / length;
       const range = Math.hypot(width, height) * 1.18;
-      const halfAngle = .29;
+      const halfAngle = FLASHLIGHT_HALF_ANGLE;
       const cosine = Math.cos(halfAngle);
       const sine = Math.sin(halfAngle);
       return {
@@ -2533,61 +2463,18 @@ export default function MandelbrotSkipping() {
       target.closePath();
     }
 
-    function drawMappedBuddhabrot(target: CanvasRenderingContext2D) {
-      const rotateRight = tuningRef.current.rotateRight;
-      const topLeft = complexToScreen(TRAIL_BOUNDS.xMin, TRAIL_BOUNDS.yMax, width, height, viewRef.current, false);
-      const bottomRight = complexToScreen(TRAIL_BOUNDS.xMax, TRAIL_BOUNDS.yMin, width, height, viewRef.current, false);
-      const source = buddhabrotSourceRef.current;
-      if (!source) return;
-      target.save();
-      if (rotateRight) {
-        target.translate(width / 2, height / 2);
-        target.rotate(Math.PI / 2);
-        target.translate(-width / 2, -height / 2);
-      }
-      target.imageSmoothingEnabled = true;
-      target.drawImage(source, topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y);
-      target.restore();
-    }
-
     function drawFlashlight() {
       const geometry = flashlightGeometry();
-      if (!geometry || !buddhabrotSourceRef.current || !flashlightContext) return;
+      if (!geometry) return;
       ctx.save();
       ctx.fillStyle = "rgba(0, 0, 0, .88)";
       ctx.fillRect(0, 0, width, height);
-      ctx.restore();
-      if (flashlightDirty) {
-        flashlightContext.clearRect(0, 0, width, height);
-        flashlightContext.save();
-        flashlightContext.filter = `blur(${14 * dpr}px)`;
-        const mask = flashlightContext.createLinearGradient(
-          geometry.apexX,
-          geometry.apexY,
-          geometry.apexX + geometry.directionX * geometry.range,
-          geometry.apexY + geometry.directionY * geometry.range,
-        );
-        mask.addColorStop(0, "rgba(255, 255, 255, .72)");
-        mask.addColorStop(.055, "rgba(255, 255, 255, .96)");
-        mask.addColorStop(.30, "rgba(255, 255, 255, .62)");
-        mask.addColorStop(.62, "rgba(255, 255, 255, .22)");
-        mask.addColorStop(.84, "rgba(255, 255, 255, .06)");
-        mask.addColorStop(1, "rgba(255, 255, 255, 0)");
-        flashlightContext.fillStyle = mask;
-        traceFlashlightCone(flashlightContext, geometry);
-        flashlightContext.fill();
-        flashlightContext.restore();
-        flashlightContext.globalCompositeOperation = "source-in";
-        drawMappedBuddhabrot(flashlightContext);
-        flashlightContext.globalCompositeOperation = "source-over";
-        flashlightDirty = false;
-      }
-
-      ctx.save();
-      ctx.globalCompositeOperation = "screen";
-      ctx.imageSmoothingEnabled = false;
-      ctx.globalAlpha = .28;
-      ctx.drawImage(flashlightCanvas, 0, 0, width, height);
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.fillStyle = "#ffffff";
+      ctx.filter = `blur(${8 * dpr}px)`;
+      traceFlashlightCone(ctx, geometry);
+      ctx.fill();
+      ctx.filter = "none";
       ctx.restore();
 
       ctx.save();
@@ -2611,12 +2498,58 @@ export default function MandelbrotSkipping() {
     function render(now: number) {
       ctx.clearRect(0, 0, width, height);
       const a = anchor();
-      drawScientificGrid();
       drawFlashlight();
+      drawScientificGrid();
       drawPrediction(a);
       drawAimOrbitPreview(a);
       drawEffects(now);
       drawRock();
+    }
+
+    function spawnFlashlightSkips(now: number) {
+      if (phase !== "aiming" || introActiveRef.current) return;
+      const geometry = flashlightGeometry();
+      if (!geometry) return;
+      if (lastFlashlightSpawn !== 0 && now - lastFlashlightSpawn < FLASHLIGHT_SPAWN_MS) return;
+      lastFlashlightSpawn = now;
+      const ray = sampleRayInCone(geometry, Math.random);
+      const landings = flashlightSkipLandings({
+        x: geometry.apexX,
+        y: geometry.apexY,
+        angle: ray.angle,
+        power: 0.48 + Math.random() * 0.3,
+        pondScale: pondScale(),
+        width,
+        height,
+        plannedSkips: FLASHLIGHT_PLANNED_SKIPS,
+      });
+      engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: FLASHLIGHT_MAX_DEPTH });
+      const glyph = (shapeOffset + rock.skips) % GLYPH_COUNT;
+      for (const landing of landings) {
+        const sources = impactSources(
+          landing.x, landing.y, width, height, viewRef.current,
+          FLASHLIGHT_SOURCE_DOTS, glyph, tuningRef.current.rotateRight,
+        );
+        engineRef.current?.spawn(sources, landing.index, FLASHLIGHT_SOURCE_CAP);
+      }
+    }
+
+    function maybeOpeningThrow() {
+      if (!introActiveRef.current) return;
+      if (phase === "flying" || phase === "resolving" || phase === "aiming") return;
+      if (introThrowsRef.current >= INTRO_THROW_COUNT) {
+        endOpeningRef.current();
+        return;
+      }
+      spectatorRef.current = true;
+      plannedSkips = 3;
+      shapeOffset = introThrowsRef.current % GLYPH_COUNT;
+      shotId = (shotId + 17) | 0;
+      engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
+      const angle = -Math.PI / 2 + (Math.random() - 0.5) * 1.35;
+      introThrowsRef.current += 1;
+      setIntro((current) => current ? { progress: introThrowsRef.current / INTRO_THROW_COUNT } : current);
+      launchRock(angle, 0.52 + Math.random() * 0.38);
     }
 
     function loop(now: number) {
@@ -2628,6 +2561,8 @@ export default function MandelbrotSkipping() {
         simulate(fixed, now);
         accumulator -= fixed;
       }
+      maybeOpeningThrow();
+      spawnFlashlightSkips(now);
       advanceOrbits(now, elapsed);
       updateIterationSound(now);
       render(now);
@@ -2676,6 +2611,7 @@ export default function MandelbrotSkipping() {
     }
 
     function onPointerDown(event: PointerEvent) {
+      if (introActiveRef.current) return;
       const point = eventPoint(event);
       pointerId = event.pointerId;
       canvas.setPointerCapture(pointerId);
@@ -2685,6 +2621,7 @@ export default function MandelbrotSkipping() {
         plannedSkips = sampleSkipCount(Math.random);
         previewKey = "";
         flashlightDirty = true;
+        lastFlashlightSpawn = 0;
         pull = point;
         rock.x = point.x;
         rock.y = point.y;
@@ -2744,6 +2681,9 @@ export default function MandelbrotSkipping() {
         phase = "ready";
         rock.x = a.x;
         rock.y = a.y;
+        lastFlashlightSpawn = 0;
+        engineRef.current?.clear();
+        engineRef.current?.setTuning(tuningRef.current);
         updateHud(true);
         return;
       }
@@ -2785,10 +2725,14 @@ export default function MandelbrotSkipping() {
       rock.x = a.x;
       rock.y = a.y;
       flashlightDirty = true;
+      lastFlashlightSpawn = 0;
+      engineRef.current?.clear();
+      engineRef.current?.setTuning(tuningRef.current);
       updateHud(true);
     }
 
     function onWheel(event: WheelEvent) {
+      if (introActiveRef.current) return;
       event.preventDefault();
       const rect = canvas.getBoundingClientRect();
       zoomAt(event.clientX - rect.left, event.clientY - rect.top, Math.exp(event.deltaY * 0.00125));
@@ -2903,11 +2847,8 @@ export default function MandelbrotSkipping() {
         )}
         {intro && (
           <BuddhabrotIntro
-            gpu={intro.gpu}
-            size={intro.size}
-            reduceMotion={intro.reduceMotion}
-            onReady={handleIntroReady}
-            onDismiss={handleIntroDismiss}
+            progress={intro.progress}
+            fading={introFading}
           />
         )}
         <div className="playfieldDock">

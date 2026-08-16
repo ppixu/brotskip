@@ -12,14 +12,9 @@ struct Params {
   sampleCount: u32,
   maxIterations: u32,
   bounds: vec4f,
-  seedCount: u32,
-  jitter: f32,
-  pad0: f32,
-  pad1: f32,
 }
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read_write> density: array<atomic<u32>>;
-@group(0) @binding(2) var<storage, read> seeds: array<vec2f>;
 
 fn hash(input: u32) -> u32 {
   var state = input * 747796405u + 2891336453u;
@@ -36,13 +31,8 @@ fn nextFloat(state: ptr<function, u32>) -> f32 {
 fn accumulate(@builtin(global_invocation_id) id: vec3u) {
   if (id.x >= params.sampleCount) { return; }
   var state = hash(id.x ^ hash(params.seedBase));
-  var cr = mix(params.bounds.x, params.bounds.y, nextFloat(&state));
-  var ci = mix(params.bounds.z, params.bounds.w, nextFloat(&state));
-  if (params.seedCount > 0u) {
-    let seed = seeds[id.x % params.seedCount];
-    cr = seed.x + (nextFloat(&state) * 2.0 - 1.0) * params.jitter;
-    ci = seed.y + (nextFloat(&state) * 2.0 - 1.0) * params.jitter;
-  }
+  let cr = mix(params.bounds.x, params.bounds.y, nextFloat(&state));
+  let ci = mix(params.bounds.z, params.bounds.w, nextFloat(&state));
 
   var zr = 0.0;
   var zi = 0.0;

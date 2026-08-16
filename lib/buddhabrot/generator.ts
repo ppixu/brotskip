@@ -25,15 +25,8 @@ export type GeneratorOptions = {
   maxIterations?: number;
 };
 
-export const DEFAULT_SEED_JITTER = 0.045;
-export const MAX_SEED_CENTERS = 1024;
-
-export type ComplexSeed = { re: number; im: number };
-
 export type BuddhabrotGenerator = {
   step: (deltaSeconds: number) => void;
-  stepAround: (deltaSeconds: number, centers: ComplexSeed[]) => void;
-  accumulateAround: (centers: ComplexSeed[], sampleCount: number) => void;
   progress: () => number;
   isComplete: () => boolean;
   blit: (context: any) => boolean;
@@ -65,11 +58,7 @@ export function createBuddhabrotGenerator(
     size: HISTOGRAM_BINS * 4,
     usage: usage.COPY_DST | usage.MAP_READ,
   });
-  const accumulateParams = device.createBuffer({ size: 48, usage: usage.UNIFORM | usage.COPY_DST });
-  const seedBuffer = device.createBuffer({
-    size: MAX_SEED_CENTERS * 8,
-    usage: usage.STORAGE | usage.COPY_DST,
-  });
+  const accumulateParams = device.createBuffer({ size: 32, usage: usage.UNIFORM | usage.COPY_DST });
   const histogramParams = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
   const colorizeParams = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
 
@@ -109,7 +98,6 @@ export function createBuddhabrotGenerator(
     entries: [
       { binding: 0, resource: { buffer: accumulateParams } },
       { binding: 1, resource: { buffer: densityBuffer } },
-      { binding: 2, resource: { buffer: seedBuffer } },
     ],
   });
   const histogramBind = device.createBindGroup({
@@ -147,50 +135,11 @@ export function createBuddhabrotGenerator(
   // pixels open near-invisible instead of near-opaque at ~80% alpha.
   let cuts = { low: 0.69, high: 3 };
 
-  function writeAccumulateParams(sampleCount: number, seedCount = 0, jitter = 0) {
-    const header = new ArrayBuffer(48);
+  function writeAccumulateParams(sampleCount: number) {
+    const header = new ArrayBuffer(32);
     new Uint32Array(header, 0, 4).set([size, chunkIndex + 1, sampleCount, maxIterations]);
     new Float32Array(header, 16, 4).set([BOUNDS.xMin, BOUNDS.xMax, BOUNDS.yMin, BOUNDS.yMax]);
-    new Uint32Array(header, 32, 1).set([seedCount]);
-    new Float32Array(header, 36, 1).set([jitter]);
     device.queue.writeBuffer(accumulateParams, 0, header);
-  }
-
-  function writeSeeds(centers: ComplexSeed[]) {
-    const capped = centers.slice(0, MAX_SEED_CENTERS);
-    const data = new Float32Array(MAX_SEED_CENTERS * 2);
-    capped.forEach((center, index) => {
-      data[index * 2] = center.re;
-      data[index * 2 + 1] = center.im;
-    });
-    device.queue.writeBuffer(seedBuffer, 0, data);
-    return capped.length;
-  }
-
-  function emit(sampleCount: number, seedCount: number, jitter: number) {
-    if (destroyed || gpu.hasFailed() || sampleCount <= 0 || emitted >= totalSamples) return;
-    const count = Math.min(sampleCount, totalSamples - emitted);
-    writeAccumulateParams(count, seedCount, jitter);
-    writeColorizeParams();
-    device.queue.writeBuffer(histogramBuffer, 0, new Uint32Array(HISTOGRAM_BINS));
-
-    const encoder = device.createCommandEncoder({ label: "buddhabrot-step" });
-    const pass = encoder.beginComputePass();
-    pass.setPipeline(accumulatePipeline);
-    pass.setBindGroup(0, accumulateBind);
-    pass.dispatchWorkgroups(Math.ceil(count / 64));
-    pass.setPipeline(histogramPipeline);
-    pass.setBindGroup(0, histogramBind);
-    pass.dispatchWorkgroups(Math.ceil(size / 8), Math.ceil(size / 8));
-    pass.setPipeline(colorizePipeline);
-    pass.setBindGroup(0, colorizeBind);
-    pass.dispatchWorkgroups(Math.ceil(size / 8), Math.ceil(size / 8));
-    pass.end();
-    device.queue.submit([encoder.finish()]);
-
-    emitted += count;
-    chunkIndex += 1;
-    void readHistogram();
   }
 
   function writeColorizeParams() {
@@ -226,20 +175,29 @@ export function createBuddhabrotGenerator(
         totalSamples,
         minDurationMs: options.minDurationMs,
       });
-      emit(requested, 0, 0);
-    },
-    stepAround(deltaSeconds, centers) {
-      if (!centers.length) return;
-      const requested = samplesForFrame(deltaSeconds, {
-        totalSamples,
-        minDurationMs: options.minDurationMs,
-      });
-      this.accumulateAround(centers, requested);
-    },
-    accumulateAround(centers, sampleCount) {
-      if (!centers.length) return;
-      const seedCount = writeSeeds(centers);
-      emit(sampleCount, seedCount, DEFAULT_SEED_JITTER);
+      const sampleCount = Math.min(requested, totalSamples - emitted);
+      writeAccumulateParams(sampleCount);
+      writeColorizeParams();
+      device.queue.writeBuffer(histogramBuffer, 0, new Uint32Array(HISTOGRAM_BINS));
+
+      const encoder = device.createCommandEncoder({ label: "buddhabrot-step" });
+      const pass = encoder.beginComputePass();
+      pass.setPipeline(accumulatePipeline);
+      pass.setBindGroup(0, accumulateBind);
+      pass.dispatchWorkgroups(Math.ceil(sampleCount / 64));
+      pass.setPipeline(histogramPipeline);
+      pass.setBindGroup(0, histogramBind);
+      pass.dispatchWorkgroups(Math.ceil(size / 8), Math.ceil(size / 8));
+      pass.setPipeline(colorizePipeline);
+      pass.setBindGroup(0, colorizeBind);
+      pass.dispatchWorkgroups(Math.ceil(size / 8), Math.ceil(size / 8));
+      pass.end();
+      device.queue.submit([encoder.finish()]);
+
+      emitted += sampleCount;
+      chunkIndex += 1;
+      // Deliberately not awaited: the next chunk uses whatever cuts have landed.
+      void readHistogram();
     },
     progress() {
       return Math.min(1, emitted / totalSamples);
@@ -297,7 +255,6 @@ export function createBuddhabrotGenerator(
         histogramBuffer.destroy();
         histogramReadback.destroy();
         accumulateParams.destroy();
-        seedBuffer.destroy();
         histogramParams.destroy();
         colorizeParams.destroy();
       });

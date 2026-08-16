@@ -20,12 +20,6 @@ test("colorize shader uses the original muted contrast curve", () => {
   assert.match(shaders.colorizeShader, /if \(contrast < 0\.055\)/);
 });
 
-test("accumulate shader can sample around skip seeds instead of the whole pond", () => {
-  assert.match(shaders.accumulateShader, /seedCount/);
-  assert.match(shaders.accumulateShader, /seeds/);
-  assert.match(shaders.accumulateShader, /jitter/);
-});
-
 test("WGSL shaders do not reuse a binding name as an entry point", () => {
   assert.ok(Object.keys(shaders).includes("histogramShader"));
   for (const [name, source] of Object.entries(shaders)) {
@@ -43,4 +37,13 @@ test("orbit trails accumulate in a complex-plane atlas instead of warping a scre
   assert.match(source, /zoomPixelScale/);
   assert.doesNotMatch(source, /cameraPausedUntil/);
   assert.doesNotMatch(source, /viewChangingUntil/);
+});
+
+test("flashlight and opening use live orbit throws instead of a pre-filmed Buddhabrot", () => {
+  const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
+  assert.match(source, /FLASHLIGHT_SOURCE_CAP/);
+  assert.match(source, /INTRO_THROW_COUNT/);
+  assert.doesNotMatch(source, /createBuddhabrotGenerator/);
+  assert.doesNotMatch(source, /drawMappedBuddhabrot/);
+  assert.doesNotMatch(source, /buddhabrot-density/);
 });
