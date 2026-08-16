@@ -13,9 +13,10 @@ not the same system.
 Use the real orbit engine for both.
 
 - Opening: keep throwing a simultaneous volley (16 stones per wave) as dim
-  trajectories plus later orbit points until Play. After a 5.4s settle, a
-  Play button in the playfield center starts the game and clears the nebula.
-  Reduce-motion and share links skip this.
+  trajectories plus later orbit points until Play. Launch each rock from a
+  random point aiming toward the pond. After a 5.4s settle, a Play button in
+  the playfield center starts the game and clears the nebula. Reduce-motion
+  and share links skip this.
 - Flashlight: punch a hole in the dark overlay so live trails show in the
   cone. While aiming, throw invisible light skips into the cone
   (`6` dots, depth `8000`, cap `36` sources). Clear them on release.

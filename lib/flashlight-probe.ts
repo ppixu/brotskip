@@ -11,6 +11,18 @@ export const INTRO_MAX_DEPTH = 20_000;
 export const INTRO_SETTLE_MS = 5400;
 export const INTRO_BACKGROUND_SPAWN_MS = 120;
 
+export function introLaunchOrigin(
+  width: number,
+  height: number,
+  random: () => number = Math.random,
+) {
+  const margin = 36;
+  return {
+    x: margin + random() * Math.max(8, width - margin * 2),
+    y: margin + random() * Math.max(8, height - margin * 2),
+  };
+}
+
 export type OrbitAtmosphere = {
   drawLines: boolean;
   grayscale: boolean;

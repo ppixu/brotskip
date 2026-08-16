@@ -31,6 +31,7 @@ import {
   INTRO_THROW_STAGGER_MS,
   INTRO_THROWS_PER_WAVE,
   PLAY_ATMOSPHERE,
+  introLaunchOrigin,
   flashlightSkipLandings,
   sampleRayInCone,
   type OrbitAtmosphere,
@@ -2084,8 +2085,9 @@ export default function MandelbrotSkipping() {
     }
 
     function throwIntroRock() {
-      const a = anchor();
-      const angle = -Math.PI / 2 + (Math.random() - 0.5) * 1.55;
+      const origin = introLaunchOrigin(width, height);
+      const angle = Math.atan2(height * 0.5 - origin.y, width * 0.5 - origin.x)
+        + (Math.random() - 0.5) * 1.55;
       const rawPower = 0.48 + Math.random() * 0.42;
       const power = rawPower * rawPower * (3 - 2 * rawPower);
       const speed = pondScale() * (0.32 + 0.56 * power);
@@ -2094,8 +2096,8 @@ export default function MandelbrotSkipping() {
       const dy = Math.sin(angle);
       shotId = (shotId + 17) | 0;
       introRocks.push({
-        x: a.x - dx * launchPull,
-        y: a.y - dy * launchPull,
+        x: origin.x - dx * launchPull,
+        y: origin.y - dy * launchPull,
         vx: dx * speed,
         vy: dy * speed,
         vz: pondScale() * (0.38 + 0.20 * power),
@@ -2106,7 +2108,7 @@ export default function MandelbrotSkipping() {
         plannedSkips: 3,
         shotId,
         shapeOffset: introThrowsRef.current % GLYPH_COUNT,
-        path: [{ x: a.x - dx * launchPull, y: a.y - dy * launchPull }],
+        path: [{ x: origin.x - dx * launchPull, y: origin.y - dy * launchPull }],
       });
     }
 

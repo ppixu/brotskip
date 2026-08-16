@@ -13,6 +13,7 @@ import {
   INTRO_THROW_STAGGER_MS,
   INTRO_THROWS_PER_WAVE,
   PLAY_ATMOSPHERE,
+  introLaunchOrigin,
   pointInFlashlightCone,
   sampleRayInCone,
   flashlightSkipLandings,
@@ -71,6 +72,22 @@ test("opening throws a dense simultaneous volley instead of a few sequential sto
   assert.ok(INTRO_THROWS_PER_WAVE >= 12);
   assert.ok(INTRO_THROW_STAGGER_MS <= 50);
   assert.equal(INTRO_SOURCE_DOTS, 6);
+});
+
+test("opening throws rocks from random points instead of the throw stone", () => {
+  const width = 800;
+  const height = 600;
+  const stone = { x: width * 0.5, y: height * 0.82 };
+  let seed = 1;
+  const random = () => {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    return seed / 2147483648;
+  };
+  const origins = Array.from({ length: 24 }, () => introLaunchOrigin(width, height, random));
+  const unique = new Set(origins.map((origin) => `${origin.x.toFixed(0)},${origin.y.toFixed(0)}`));
+  assert.ok(unique.size >= 16, `only ${unique.size} distinct launch points`);
+  assert.ok(origins.every((origin) => origin.x > 0 && origin.x < width && origin.y > 0 && origin.y < height));
+  assert.ok(origins.some((origin) => Math.hypot(origin.x - stone.x, origin.y - stone.y) > 80));
 });
 
 test("opening keeps iterating a dim background Buddhabrot after the volley", () => {
