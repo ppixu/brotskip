@@ -9,6 +9,8 @@ export const INTRO_THROWS_PER_WAVE = 3;
 export const INTRO_THROW_STAGGER_MS = 80;
 export const INTRO_SOURCE_DOTS = 6;
 export const INTRO_MAX_DEPTH = 20_000;
+export const INTRO_SETTLE_MS = 2400;
+export const INTRO_BACKGROUND_SPAWN_MS = 120;
 
 export type OrbitAtmosphere = {
   drawLines: boolean;
@@ -25,7 +27,7 @@ export const PLAY_ATMOSPHERE: OrbitAtmosphere = {
 export const INTRO_ATMOSPHERE: OrbitAtmosphere = {
   drawLines: false,
   grayscale: true,
-  energy: 0.18,
+  energy: 0.05,
 };
 
 export const FLASHLIGHT_ATMOSPHERE: OrbitAtmosphere = {

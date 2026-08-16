@@ -7,6 +7,8 @@ import {
   FLASHLIGHT_SOURCE_CAP,
   FLASHLIGHT_SOURCE_DOTS,
   INTRO_ATMOSPHERE,
+  INTRO_BACKGROUND_SPAWN_MS,
+  INTRO_SETTLE_MS,
   INTRO_SOURCE_DOTS,
   INTRO_THROW_COUNT,
   INTRO_THROW_STAGGER_MS,
@@ -73,6 +75,11 @@ test("opening throws a dense simultaneous volley instead of a few sequential sto
   assert.equal(INTRO_SOURCE_DOTS, 6);
 });
 
+test("opening keeps iterating a dim background Buddhabrot after the volley", () => {
+  assert.ok(INTRO_SETTLE_MS >= 2000);
+  assert.ok(INTRO_BACKGROUND_SPAWN_MS <= 160);
+});
+
 test("intro and flashlight atmospheres drop lines, stay gray, and keep the cone dim", () => {
   assert.equal(PLAY_ATMOSPHERE.drawLines, true);
   assert.equal(PLAY_ATMOSPHERE.grayscale, false);
@@ -81,6 +88,8 @@ test("intro and flashlight atmospheres drop lines, stay gray, and keep the cone 
   assert.equal(FLASHLIGHT_ATMOSPHERE.drawLines, false);
   assert.equal(FLASHLIGHT_ATMOSPHERE.grayscale, true);
   assert.ok(FLASHLIGHT_ATMOSPHERE.energy <= PLAY_ATMOSPHERE.energy * 0.2);
+  assert.ok(INTRO_ATMOSPHERE.energy <= PLAY_ATMOSPHERE.energy * 0.4);
+  assert.ok(INTRO_ATMOSPHERE.energy > FLASHLIGHT_ATMOSPHERE.energy);
 });
 
 test("source allocation wraps inside the live cap", () => {

@@ -28,4 +28,5 @@ nebula reads as density, not skip-colored paths.
 - Hide orbit iteration lines (`drawLines: false`). Gameplay still draws them.
 - Color both as monochrome depth gray, ignoring skip tints.
 - Flashlight point energy is about 15% of play energy so the cone stays
-  dim. Opening uses full play energy with many overlapping throws.
+  dim. Opening uses a dim grayscale nebula behind the volley, keeps
+  iterating for a short settle, then fades before clearing for play.
