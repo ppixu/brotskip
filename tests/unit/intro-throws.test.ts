@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  GLYPH_COUNT,
   INTRO_MAX_ITERATIONS,
   INTRO_SAMPLE_BUDGET,
+  SACRED_PATH_COUNTS,
   THROW_BOUNDS,
+  complexToIntroCanvas,
+  createIntroRockThrow,
+  introCanvasToComplex,
   introThrowToCanvas,
+  sacredShapeOffset,
   sampleSplash,
 } from "../../lib/buddhabrot/intro-throws.ts";
 import { samplesForFrame } from "../../lib/buddhabrot/pacing.ts";
@@ -43,3 +49,64 @@ test("an intro throw maps an escaping orbit onto the canvas", () => {
   assert.ok(throwTrail.points.length >= 3);
   assert.ok(throwTrail.points.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y)));
 });
+
+test("canvas and complex coordinates round-trip precisely", () => {
+  const size = 512;
+  const coords = [
+    { re: -2.0, im: 1.0 },
+    { re: 0.0, im: 0.0 },
+    { re: 1.0, im: -1.2 },
+    { re: -0.75, im: 0.1 },
+  ];
+  for (const c of coords) {
+    const screen = complexToIntroCanvas(c.re, c.im, size);
+    const roundTrip = introCanvasToComplex(screen.x, screen.y, size);
+    assert.ok(Math.abs(roundTrip.re - c.re) < 1e-6);
+    assert.ok(Math.abs(roundTrip.im - c.im) < 1e-6);
+  }
+});
+
+test("createIntroRockThrow generates rock throws with trajectory and skips", () => {
+  const size = 600;
+  let seed = 42;
+  const pseudoRandom = () => {
+    seed = (seed * 1664525 + 1013904223) % 4294967296;
+    return seed / 4294967296;
+  };
+
+  const rockThrow = createIntroRockThrow(size, pseudoRandom);
+  assert.ok(rockThrow);
+  assert.ok(rockThrow.shape >= 0 && rockThrow.shape < GLYPH_COUNT);
+  assert.ok(rockThrow.duration > 0);
+  assert.ok(rockThrow.trajectory.length >= 2);
+  assert.ok(rockThrow.impacts.length >= 1);
+
+  // Verify all trajectory points are valid numbers
+  for (const pt of rockThrow.trajectory) {
+    assert.ok(Number.isFinite(pt.x) && Number.isFinite(pt.y) && Number.isFinite(pt.z) && Number.isFinite(pt.t));
+  }
+
+  // Verify impacts have valid orbit points originating at the impact location
+  for (const impact of rockThrow.impacts) {
+    assert.ok(impact.x >= 0 && impact.x <= size);
+    assert.ok(impact.y >= 0 && impact.y <= size);
+    assert.ok(impact.t >= 0);
+    assert.ok(impact.orbitPoints.length >= 1);
+    // First point of orbit starts at impact location
+    assert.equal(impact.orbitPoints[0].x, impact.x);
+    assert.equal(impact.orbitPoints[0].y, impact.y);
+  }
+});
+
+test("sacred shapes evaluate cleanly across all glyph definitions", () => {
+  assert.equal(SACRED_PATH_COUNTS.length, GLYPH_COUNT);
+  for (let shape = 0; shape < GLYPH_COUNT; shape++) {
+    const paths = SACRED_PATH_COUNTS[shape];
+    for (let path = 0; path < paths; path++) {
+      const offset = sacredShapeOffset(shape, path, 0.5);
+      assert.ok(Number.isFinite(offset.x));
+      assert.ok(Number.isFinite(offset.y));
+    }
+  }
+});
+

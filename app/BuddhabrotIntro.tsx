@@ -7,9 +7,10 @@ import { createBuddhabrotGenerator } from "@/lib/buddhabrot/generator";
 import {
   INTRO_MAX_ITERATIONS,
   INTRO_SAMPLE_BUDGET,
-  INTRO_THROW_LIFE_MS,
-  INTRO_THROWS_PER_FRAME,
-  introThrowToCanvas,
+  SACRED_PATH_COUNTS,
+  createIntroRockThrow,
+  sacredShapeOffset,
+  type IntroRockThrow,
 } from "@/lib/buddhabrot/intro-throws";
 import type { GpuContext } from "@/lib/gpu";
 
@@ -17,9 +18,25 @@ const FADE_MS = 600;
 // Defense in depth: if toBitmapAndBlob() never settles (createImageBitmap
 // wedging under memory pressure, a half-lost device), don't strand play.
 const COMPLETION_TIMEOUT_MS = 10_000;
-const THROW_GROW_MS = 280;
+const THROW_SPAWN_INTERVAL_MS = 680;
+const ITERATION_LIFE_MS = 1600;
+const RIPPLE_LIFE_MS = 900;
+const TRAIL_FADE_MS = 800;
 
-type LiveThrow = {
+type LiveRockThrow = {
+  throwData: IntroRockThrow;
+  born: number;
+  spinSpeed: number;
+  triggeredImpacts: Set<number>;
+};
+
+type LiveRipple = {
+  x: number;
+  y: number;
+  born: number;
+};
+
+type LiveImpactOrbit = {
   points: Array<{ x: number; y: number }>;
   born: number;
 };
@@ -73,47 +90,196 @@ export default function BuddhabrotIntro({
 
     let frame = 0;
     let lastTime = performance.now();
+    let lastThrowSpawn = 0;
     let finished = false;
     let dismissTimer: ReturnType<typeof setTimeout> | undefined;
     let completionTimer: ReturnType<typeof setTimeout> | undefined;
-    const liveThrows: LiveThrow[] = [];
+
+    let liveThrows: LiveRockThrow[] = [];
+    let liveRipples: LiveRipple[] = [];
+    let liveImpactOrbits: LiveImpactOrbit[] = [];
+
+    function updatePhysicsAndSpawns(now: number) {
+      if (reduceMotion) return;
+
+      // Spawn a new rock throw periodically
+      if (now - lastThrowSpawn > THROW_SPAWN_INTERVAL_MS || lastThrowSpawn === 0) {
+        const throwData = createIntroRockThrow(side, Math.random);
+        const spinSpeed = (Math.random() > 0.5 ? 1 : -1) * (10 + Math.random() * 8);
+        liveThrows.push({
+          throwData,
+          born: now,
+          spinSpeed,
+          triggeredImpacts: new Set(),
+        });
+        lastThrowSpawn = now;
+      }
+
+      // Check for impact events along each rock's trajectory
+      for (const throwEntry of liveThrows) {
+        const flightSec = (now - throwEntry.born) / 1000;
+        for (const impact of throwEntry.throwData.impacts) {
+          if (flightSec >= impact.t && !throwEntry.triggeredImpacts.has(impact.skipIndex)) {
+            throwEntry.triggeredImpacts.add(impact.skipIndex);
+            liveRipples.push({ x: impact.x, y: impact.y, born: now });
+            if (impact.orbitPoints.length >= 2) {
+              liveImpactOrbits.push({ points: impact.orbitPoints, born: now });
+            }
+          }
+        }
+      }
+
+      // Cleanup finished objects
+      liveThrows = liveThrows.filter((t) => now - t.born < (t.throwData.duration * 1000 + TRAIL_FADE_MS));
+      liveRipples = liveRipples.filter((r) => now - r.born < RIPPLE_LIFE_MS);
+      liveImpactOrbits = liveImpactOrbits.filter((o) => now - o.born < ITERATION_LIFE_MS);
+    }
 
     function drawThrows(now: number) {
       if (!throwsContext || !throwsCanvas || reduceMotion) return;
       throwsContext.clearRect(0, 0, throwsCanvas.width, throwsCanvas.height);
       throwsContext.lineCap = "round";
       throwsContext.lineJoin = "round";
-      for (const trail of liveThrows) {
-        const age = now - trail.born;
-        if (age > INTRO_THROW_LIFE_MS || trail.points.length < 2) continue;
-        const fade = 1 - age / INTRO_THROW_LIFE_MS;
-        const grow = Math.min(1, age / THROW_GROW_MS);
-        const count = Math.max(2, Math.floor(trail.points.length * grow));
-        throwsContext.strokeStyle = `rgba(186, 245, 255, ${0.16 + fade * 0.55})`;
-        throwsContext.lineWidth = 1.15;
+
+      // 1. Draw dim iteration lines originating from actual rock skips
+      for (const orbit of liveImpactOrbits) {
+        const age = now - orbit.born;
+        if (age > ITERATION_LIFE_MS || orbit.points.length < 2) continue;
+        const fade = 1 - age / ITERATION_LIFE_MS;
+        const grow = Math.min(1, age / 320);
+        const count = Math.max(2, Math.floor(orbit.points.length * grow));
+        const alpha = 0.03 + fade * 0.09;
+
+        throwsContext.strokeStyle = `rgba(135, 220, 250, ${alpha})`;
+        throwsContext.lineWidth = 0.95;
         throwsContext.beginPath();
-        throwsContext.moveTo(trail.points[0].x, trail.points[0].y);
-        for (let index = 1; index < count; index++) {
-          throwsContext.lineTo(trail.points[index].x, trail.points[index].y);
+        throwsContext.moveTo(orbit.points[0].x, orbit.points[0].y);
+        for (let i = 1; i < count; i++) {
+          throwsContext.lineTo(orbit.points[i].x, orbit.points[i].y);
         }
         throwsContext.stroke();
-        const tip = trail.points[count - 1];
-        throwsContext.fillStyle = `rgba(255, 255, 255, ${0.28 + fade * 0.7})`;
-        throwsContext.beginPath();
-        throwsContext.arc(tip.x, tip.y, 1.4 + fade * 1.2, 0, Math.PI * 2);
-        throwsContext.fill();
       }
-    }
 
-    function spawnThrows(now: number) {
-      if (reduceMotion) return;
-      for (let index = 0; index < INTRO_THROWS_PER_FRAME; index++) {
-        const trail = introThrowToCanvas(Math.random, side);
-        if (!trail) continue;
-        liveThrows.push({ points: trail.points, born: now });
+      // 2. Draw expanding water ripples from rock skips
+      for (const ripple of liveRipples) {
+        const age = (now - ripple.born) / 1000;
+        if (age > RIPPLE_LIFE_MS / 1000) continue;
+        for (let ring = 0; ring < 2; ring++) {
+          const rt = Math.max(0, age - ring * 0.12);
+          const radius = 4 + rt * 34;
+          const alpha = Math.max(0, (0.50 - rt * 0.58) * 0.85);
+          throwsContext.strokeStyle = `rgba(151, 241, 255, ${alpha})`;
+          throwsContext.lineWidth = 1;
+          throwsContext.beginPath();
+          throwsContext.arc(ripple.x, ripple.y, radius, 0, Math.PI * 2);
+          throwsContext.stroke();
+        }
       }
-      while (liveThrows.length && now - liveThrows[0].born > INTRO_THROW_LIFE_MS) {
-        liveThrows.shift();
+
+      // 3. Draw rock trajectories (more visible dashed/glowing lines) and the flying rocks
+      for (const throwEntry of liveThrows) {
+        const flightSec = (now - throwEntry.born) / 1000;
+        const duration = throwEntry.throwData.duration;
+        const pts = throwEntry.throwData.trajectory;
+        if (!pts.length) continue;
+
+        const trailFade = flightSec <= duration
+          ? 1
+          : Math.max(0, 1 - (flightSec - duration) / (TRAIL_FADE_MS / 1000));
+
+        // Draw the full trajectory arc (dashed line signifying flight path)
+        throwsContext.save();
+        throwsContext.strokeStyle = `rgba(205, 245, 255, ${0.44 * trailFade})`;
+        throwsContext.lineWidth = 1.35;
+        throwsContext.setLineDash([5, 6]);
+        throwsContext.beginPath();
+        throwsContext.moveTo(pts[0].x, pts[0].y - pts[0].z * 0.30);
+        for (let i = 1; i < pts.length; i++) {
+          throwsContext.lineTo(pts[i].x, pts[i].y - pts[i].z * 0.30);
+        }
+        throwsContext.stroke();
+        throwsContext.setLineDash([]);
+        throwsContext.restore();
+
+        // If rock is currently in flight, draw its wake, shadow, and rotating glyph
+        if (flightSec <= duration) {
+          // Find current position along trajectory
+          let currentIdx = 0;
+          while (currentIdx < pts.length - 1 && pts[currentIdx + 1].t <= flightSec) {
+            currentIdx++;
+          }
+
+          const p0 = pts[currentIdx];
+          const p1 = pts[Math.min(currentIdx + 1, pts.length - 1)];
+          const span = p1.t - p0.t;
+          const fraction = span > 0 ? Math.min(1, Math.max(0, (flightSec - p0.t) / span)) : 0;
+
+          const rockX = p0.x + (p1.x - p0.x) * fraction;
+          const rockY = p0.y + (p1.y - p0.y) * fraction;
+          const rockZ = p0.z + (p1.z - p0.z) * fraction;
+
+          // Draw trailing wake
+          const wakeStart = Math.max(0, currentIdx - 8);
+          if (currentIdx > wakeStart) {
+            throwsContext.save();
+            throwsContext.strokeStyle = "rgba(255, 255, 255, 0.70)";
+            throwsContext.lineWidth = 1.6;
+            throwsContext.beginPath();
+            throwsContext.moveTo(pts[wakeStart].x, pts[wakeStart].y - pts[wakeStart].z * 0.30);
+            for (let i = wakeStart + 1; i <= currentIdx; i++) {
+              throwsContext.lineTo(pts[i].x, pts[i].y - pts[i].z * 0.30);
+            }
+            throwsContext.lineTo(rockX, rockY - rockZ * 0.30);
+            throwsContext.stroke();
+            throwsContext.restore();
+          }
+
+          // Draw ground shadow on water surface
+          const heightRatio = Math.min(1, rockZ / (side * 0.40));
+          const shadowAlpha = 0.36 * (1 - heightRatio * 0.75);
+          throwsContext.fillStyle = `rgba(0, 4, 9, ${shadowAlpha})`;
+          throwsContext.beginPath();
+          throwsContext.ellipse(rockX, rockY, 8.5, 3.2, 0, 0, Math.PI * 2);
+          throwsContext.fill();
+
+          // Draw elevated spinning rock glyph
+          const lift = rockZ * 0.30;
+          const drawY = rockY - lift;
+          const spinAngle = flightSec * throwEntry.spinSpeed;
+          const shape = throwEntry.throwData.shape;
+          const shapePaths = SACRED_PATH_COUNTS[shape % SACRED_PATH_COUNTS.length];
+          const rockRadius = 8.5;
+
+          throwsContext.save();
+          throwsContext.translate(rockX, drawY);
+          throwsContext.rotate(spinAngle);
+          throwsContext.strokeStyle = "rgba(255, 255, 255, 0.88)";
+          throwsContext.lineWidth = 1.15;
+
+          for (let path = 0; path < shapePaths; path++) {
+            throwsContext.beginPath();
+            for (let s = 0; s <= 32; s++) {
+              const offset = sacredShapeOffset(shape, path, s / 32);
+              if (s === 0) throwsContext.moveTo(offset.x * rockRadius, offset.y * rockRadius);
+              else throwsContext.lineTo(offset.x * rockRadius, offset.y * rockRadius);
+            }
+            throwsContext.stroke();
+          }
+
+          // Inner preview dots
+          throwsContext.fillStyle = "#ffffff";
+          const dotCount = 6;
+          for (let i = 0; i < dotCount; i++) {
+            const path = i % shapePaths;
+            const pathIndex = Math.floor(i / shapePaths);
+            const samplesOnPath = Math.ceil((dotCount - path) / shapePaths);
+            const offset = sacredShapeOffset(shape, path, pathIndex / Math.max(samplesOnPath, 1));
+            throwsContext.beginPath();
+            throwsContext.arc(offset.x * rockRadius, offset.y * rockRadius, 1.05, 0, Math.PI * 2);
+            throwsContext.fill();
+          }
+          throwsContext.restore();
+        }
       }
     }
 
@@ -126,7 +292,7 @@ export default function BuddhabrotIntro({
       lastTime = now;
       generator.step(elapsed);
       generator.blit(context);
-      spawnThrows(now);
+      updatePhysicsAndSpawns(now);
       drawThrows(now);
       setProgress(generator.progress());
       if (generator.isComplete() && !finished) {
@@ -166,3 +332,4 @@ export default function BuddhabrotIntro({
     </div>
   );
 }
+
