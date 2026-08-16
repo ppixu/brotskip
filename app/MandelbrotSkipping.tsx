@@ -1085,7 +1085,10 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     spawnAppend(points, skipIndex, cap = MAX_SOURCES) {
       paused = false;
       const slot = allocateSourcesAppend(sourceCount, points.length, cap);
-      if (slot.added <= 0) return 0;
+      if (slot.added <= 0) {
+        this.spawn(points, skipIndex, cap);
+        return points.length;
+      }
       const batch = points.slice(0, slot.added);
       const states = new Float32Array(batch.length * 12);
       const uintStates = new Uint32Array(states.buffer);
@@ -2656,18 +2659,6 @@ export default function MandelbrotSkipping() {
     function drawRock(now: number) {
       if (introActiveRef.current) {
         let activeDrawn = 0;
-        for (const body of introRocks) {
-          if (body.draw && activeDrawn < 2) {
-            drawIntroTrajectory(body.path, 0.09);
-            activeDrawn += 1;
-          }
-        }
-        introTrails = introTrails.filter((trail) => now - trail.born < INTRO_TRAIL_FADE_MS);
-        for (let i = 0; i < Math.min(2, introTrails.length); i++) {
-          const trail = introTrails[i];
-          const t = Math.min(1, (now - trail.born) / INTRO_TRAIL_FADE_MS);
-          drawIntroTrajectory(trail.path, 0.08 * (1 - t) * (1 - t));
-        }
         return;
       }
       if (phase === "resolving" || phase === "result") return;
@@ -2919,14 +2910,14 @@ export default function MandelbrotSkipping() {
         }
       }
       const inOpeningVolley = introThrowsRef.current < INTRO_THROWS_PER_WAVE * 2;
-      const interval = inOpeningVolley ? INTRO_THROW_STAGGER_MS : 2400;
+      const interval = inOpeningVolley ? 900 : 2400;
       if (lastIntroLaunch !== 0 && now - lastIntroLaunch < interval) return;
       lastIntroLaunch = now;
       spectatorRef.current = true;
       engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
       engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
-      const throwCount = inOpeningVolley ? Math.min(4, INTRO_THROWS_PER_WAVE) : 1;
-      for (let index = 0; index < throwCount; index++) throwIntroRock();
+      throwIntroRock();
+      spawnIntroPondRipple(now);
     }
 
     function loop(now: number) {

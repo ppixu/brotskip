@@ -40,44 +40,44 @@ export function isMandelbrotInterior(x: number, y: number): boolean {
 }
 
 export function introNebulaSeed(random: () => number = Math.random) {
-  for (let attempt = 0; attempt < 8; attempt++) {
+  for (let attempt = 0; attempt < 32; attempt++) {
     const mode = random();
-    let seed: { x: number; y: number };
-    if (mode < 0.45) {
-      // Sample slightly exterior to the cardioid boundary (outward normal)
+    let x: number;
+    let y: number;
+    if (mode < 0.55) {
+      // Focus on the perimeter boundary where rich escaping orbits live
       const theta = random() * Math.PI * 2;
-      const nx = Math.cos(theta) - 0.5 * Math.cos(2 * theta);
-      const ny = Math.sin(theta) - 0.5 * Math.sin(2 * theta);
-      const nlen = Math.hypot(nx, ny) || 1;
-      const push = 0.008 + random() * 0.055;
-      const cReal = 0.5 * Math.cos(theta) - 0.25 * Math.cos(2 * theta) + (nx / nlen) * push;
-      const cImag = 0.5 * Math.sin(theta) - 0.25 * Math.sin(2 * theta) + (ny / nlen) * push;
-      seed = { x: cReal, y: cImag };
-    } else if (mode < 0.70) {
-      // Period-2 bulb exterior boundary (r > 0.25)
-      const theta = random() * Math.PI * 2;
-      const rad = 0.25 + 0.008 + random() * 0.055;
-      seed = {
-        x: -1.0 + Math.cos(theta) * rad,
-        y: Math.sin(theta) * rad,
-      };
-    } else if (mode < 0.88) {
-      // Main antenna and filament valley regions
-      const x = -2.0 + random() * 1.35;
-      const y = (random() - 0.5) * 0.35;
-      seed = { x, y };
+      const r = 0.5 * (1 - Math.cos(theta)) + 0.002 + random() * 0.045;
+      x = 0.25 + r * Math.cos(theta);
+      y = r * Math.sin(theta);
+    } else if (mode < 0.82) {
+      // Antenna / valley region
+      x = -2.0 + random() * 1.4;
+      y = (random() - 0.5) * 0.35;
     } else {
-      // Broad field
-      seed = {
-        x: -2.05 + random() * 2.55,
-        y: (random() - 0.5) * 2.7,
-      };
+      // Broad domain
+      x = -2.05 + random() * 3.10;
+      y = (random() - 0.5) * 2.70;
     }
-    if (!isMandelbrotInterior(seed.x, seed.y)) {
-      return seed;
+    // Fast verification to ensure seed escapes between 10 and 2000 steps
+    let zr = 0;
+    let zi = 0;
+    let escaped = false;
+    for (let n = 1; n <= 2000; n++) {
+      const nextR = zr * zr - zi * zi + x;
+      const nextI = 2 * zr * zi + y;
+      zr = nextR;
+      zi = nextI;
+      if (zr * zr + zi * zi > 4) {
+        if (n >= 10) escaped = true;
+        break;
+      }
+    }
+    if (escaped) {
+      return { x, y };
     }
   }
-  return { x: -0.75 + (random() - 0.5) * 0.2, y: 0.15 + (random() - 0.5) * 0.2 };
+  return { x: -0.75 + (random() - 0.5) * 0.05, y: 0.18 + (random() - 0.5) * 0.05 };
 }
 
 export type OrbitAtmosphere = {
