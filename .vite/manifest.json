@@ -1,0 +1,49 @@
+{
+  "_framework-EwgI_Pa9.js": {
+    "file": "brotskip/_next/static/chunks/framework-EwgI_Pa9.js",
+    "name": "framework",
+    "imports": [
+      "_rolldown-runtime-vU33u7is.js"
+    ]
+  },
+  "_rolldown-runtime-vU33u7is.js": {
+    "file": "brotskip/_next/static/chunks/rolldown-runtime-vU33u7is.js",
+    "name": "rolldown-runtime"
+  },
+  "app/MandelbrotSkipping.tsx": {
+    "file": "brotskip/_next/static/chunks/MandelbrotSkipping-5uFlRL3w.js",
+    "name": "MandelbrotSkipping",
+    "src": "app/MandelbrotSkipping.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_rolldown-runtime-vU33u7is.js",
+      "_framework-EwgI_Pa9.js"
+    ]
+  },
+  "node_modules/vinext/dist/shims/layout-segment-context.js": {
+    "file": "brotskip/_next/static/chunks/layout-segment-context-BzrlhWeg.js",
+    "name": "layout-segment-context",
+    "src": "node_modules/vinext/dist/shims/layout-segment-context.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_rolldown-runtime-vU33u7is.js",
+      "virtual:vinext-app-browser-entry",
+      "_framework-EwgI_Pa9.js"
+    ]
+  },
+  "virtual:vinext-app-browser-entry": {
+    "file": "brotskip/_next/static/chunks/index-Dg5Qj3dC.js",
+    "name": "index",
+    "src": "virtual:vinext-app-browser-entry",
+    "isEntry": true,
+    "imports": [
+      "_rolldown-runtime-vU33u7is.js",
+      "_framework-EwgI_Pa9.js"
+    ],
+    "dynamicImports": [
+      "virtual:vinext-app-browser-entry",
+      "node_modules/vinext/dist/shims/layout-segment-context.js",
+      "app/MandelbrotSkipping.tsx"
+    ]
+  }
+}
