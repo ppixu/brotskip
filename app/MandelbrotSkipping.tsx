@@ -2332,8 +2332,9 @@ export default function MandelbrotSkipping() {
       let skips = 0;
       const gravity = pondScale() * 1.65;
       const dt = 1 / 120;
+      const PREVIEW_PREDICT_SKIPS = 3;
       const landings: Array<{ x: number; y: number; index: number; glyph: number }> = [];
-      for (let step = 0; step < 120 * 20 && skips < plannedSkips; step++) {
+      for (let step = 0; step < 120 * 20 && skips < PREVIEW_PREDICT_SKIPS; step++) {
         x += vx * dt;
         y += vy * dt;
         z += vz * dt;
@@ -2346,7 +2347,7 @@ export default function MandelbrotSkipping() {
         if (x < 24 || x > width - 24 || y < 24 || y > height - 24) break;
         skips += 1;
         landings.push({ x, y, index: skips, glyph: (shapeOffset + skips - 1) % GLYPH_COUNT });
-        const remaining = plannedSkips - skips;
+        const remaining = PREVIEW_PREDICT_SKIPS - skips;
         vz = Math.max(Math.abs(vz) * 0.56, pondScale() * (0.05 + remaining * 0.008));
         vx *= 0.79;
         vy *= 0.79;
@@ -2358,11 +2359,13 @@ export default function MandelbrotSkipping() {
             vy *= minSpeed / speed;
           }
         }
-        if (skips >= plannedSkips) break;
+        if (skips >= PREVIEW_PREDICT_SKIPS) break;
         if (x < -50 || x > width + 50 || y < -50 || y > height + 50) break;
       }
       return landings;
     }
+
+    const PREVIEW_BLUE: readonly [number, number, number] = [75, 175, 235];
 
     function drawPreviewOrbit(
       source: { x: number; y: number },
@@ -2377,7 +2380,7 @@ export default function MandelbrotSkipping() {
       const maxHopPx = Math.hypot(width, height) * MAX_HOP_SCREEN_MULTIPLIER;
       let zr = 0;
       let zi = 0;
-      previewContext.lineWidth = 0.75;
+      previewContext.lineWidth = 0.65;
       previewContext.lineJoin = "round";
       previewContext.lineCap = "round";
       for (let step = 0; step < iterations; step++) {
@@ -2392,27 +2395,27 @@ export default function MandelbrotSkipping() {
         zi = nextI;
         if (hopPx >= maxHopPx || !Number.isFinite(hopPx)) break;
         const depth = step / Math.max(1, iterations);
-        const alpha = strength * Math.pow(1 - depth, 0.38);
-        const pointAlpha = Math.min(1, alpha * 1.1);
+        const alpha = strength * Math.pow(1 - depth, 0.42);
+        const pointAlpha = Math.min(0.55, alpha * 0.85);
         const to = complexToScreen(nextR, nextI, width, height, view, rotateRight);
         if (step === 0) {
-          previewContext.fillStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${pointAlpha})`;
+          previewContext.fillStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${pointAlpha.toFixed(3)})`;
           previewContext.beginPath();
-          previewContext.arc(startScreen.x, startScreen.y, 0.8, 0, TAU);
+          previewContext.arc(startScreen.x, startScreen.y, 0.7, 0, TAU);
           previewContext.fill();
           continue;
         }
         const from = step === 1
           ? startScreen
           : complexToScreen(previousR, previousI, width, height, view, rotateRight);
-        previewContext.strokeStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha})`;
+        previewContext.strokeStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha.toFixed(3)})`;
         previewContext.beginPath();
         previewContext.moveTo(from.x, from.y);
         previewContext.lineTo(to.x, to.y);
         previewContext.stroke();
-        previewContext.fillStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${pointAlpha})`;
+        previewContext.fillStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${pointAlpha.toFixed(3)})`;
         previewContext.beginPath();
-        previewContext.arc(to.x, to.y, 0.8, 0, TAU);
+        previewContext.arc(to.x, to.y, 0.7, 0, TAU);
         previewContext.fill();
       }
     }
@@ -2428,10 +2431,9 @@ export default function MandelbrotSkipping() {
       for (const landing of landings) {
         const skipIndex = landing.index;
         const iterations = Math.max(1, Math.floor(tuning.previewIterations / 2 ** (skipIndex - 1)));
-        const strength = 0.48 / (1 + (skipIndex - 1) * 0.22);
-        const rgb = skipTintRgb(skipIndex, tuning.skipColors);
+        const strength = 0.32 / (1 + (skipIndex - 1) * 0.25);
         const source = screenToComplex(landing.x, landing.y, width, height, view, tuning.rotateRight);
-        drawPreviewOrbit(source, landing, view, iterations, rgb, strength);
+        drawPreviewOrbit(source, landing, view, iterations, PREVIEW_BLUE, strength);
       }
     }
 
@@ -2445,9 +2447,7 @@ export default function MandelbrotSkipping() {
         view.centerY.toFixed(5),
         view.halfY.toFixed(5),
         tuningRef.current.previewIterations,
-        tuningRef.current.skipColors ? "1" : "0",
         tuningRef.current.rotateRight ? "1" : "0",
-        plannedSkips,
         width,
         height,
       ].join(":");
