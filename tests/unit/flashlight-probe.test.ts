@@ -130,7 +130,7 @@ test("intro nebula seeds escape often enough that loading stays live", () => {
   assert.ok(trapped / samples < 0.08, `trapped ${trapped}/${samples} intro seeds past 20k iterates`);
 });
 
-test("intro and flashlight atmospheres drop lines, stay gray, and keep the cone dim", () => {
+test("intro and flashlight atmospheres drop lines, stay gray, and keep play nebula dim", () => {
   assert.equal(PLAY_ATMOSPHERE.drawLines, true);
   assert.equal(PLAY_ATMOSPHERE.grayscale, false);
   assert.equal(PLAY_ATMOSPHERE.hiddenSteps, 0);
@@ -138,9 +138,9 @@ test("intro and flashlight atmospheres drop lines, stay gray, and keep the cone 
   assert.equal(INTRO_ATMOSPHERE.grayscale, true);
   assert.equal(FLASHLIGHT_ATMOSPHERE.drawLines, false);
   assert.equal(FLASHLIGHT_ATMOSPHERE.grayscale, true);
-  assert.ok(FLASHLIGHT_ATMOSPHERE.energy <= PLAY_ATMOSPHERE.energy * 0.2);
-  assert.ok(INTRO_ATMOSPHERE.energy >= PLAY_ATMOSPHERE.energy * 0.7);
-  assert.ok(INTRO_ATMOSPHERE.energy <= PLAY_ATMOSPHERE.energy);
+  assert.ok(PLAY_ATMOSPHERE.energy <= 0.05);
+  assert.ok(PLAY_ATMOSPHERE.energy < INTRO_ATMOSPHERE.energy * 0.5);
+  assert.ok(FLASHLIGHT_ATMOSPHERE.energy <= 0.04);
   assert.ok(INTRO_ATMOSPHERE.energy > FLASHLIGHT_ATMOSPHERE.energy);
   assert.ok(FLASHLIGHT_ATMOSPHERE.hiddenSteps >= 8);
   assert.ok(INTRO_ATMOSPHERE.hiddenSteps <= 2);

@@ -50,6 +50,7 @@ test("flashlight shows a dim cached Buddhabrot in the cone and iterates random s
   assert.match(source, /FLASHLIGHT_EDGE_BLUR_PX/);
   assert.doesNotMatch(source, /spawnFlashlightSkips/);
   assert.doesNotMatch(source, /flashlightSkipLandings\(\{\s*x: geometry\.apexX/);
+  assert.doesNotMatch(source, /traceFlashlightCone\(ctx, geometry\);\s*ctx\.stroke\(\)/);
 });
 
 test("opening and flashlight hide orbit lines, go grayscale, and throw overlapping intro rocks", () => {

@@ -33,6 +33,8 @@ nebula reads as density, not skip-colored paths.
 - Color both as monochrome depth gray, ignoring skip tints.
 - Flashlight skips the first 24 iterates so sacred-shape seeds stay
   invisible. Opening plots from the first iterate so a Buddhabrot can form.
-- Flashlight point energy is about 15% of play energy so the cone stays
-  dim. Opening uses a brighter grayscale nebula behind a sparse volley, keeps
+- Flashlight point energy stays low so the cone stays dim. Gameplay nebula
+  energy is much lower so the background Buddhabrot stays a faint wash.
+  Opening uses a brighter grayscale nebula behind a sparse volley, keeps
   iterating for a short settle, then fades before clearing for play.
+  The aim cone has no stroked rim.

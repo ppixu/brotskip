@@ -90,7 +90,7 @@ export type OrbitAtmosphere = {
 export const PLAY_ATMOSPHERE: OrbitAtmosphere = {
   drawLines: true,
   grayscale: false,
-  energy: 0.18,
+  energy: 0.04,
   hiddenSteps: 0,
 };
 

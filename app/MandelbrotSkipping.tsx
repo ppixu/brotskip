@@ -2774,7 +2774,7 @@ export default function MandelbrotSkipping() {
       target.drawImage(buddhabrotSource, destX, destY, destWidth, destHeight);
     }
 
-    function drawFlashlight(now: number) {
+    function drawFlashlight() {
       if (phase !== "aiming" || introActiveRef.current) return;
       const geometry = flashlightGeometry();
       if (!geometry) return;
@@ -2783,9 +2783,9 @@ export default function MandelbrotSkipping() {
       ctx.save();
       ctx.filter = `blur(${edgeBlur}px)`;
       const beam = ctx.createRadialGradient(apexX, apexY, 0, apexX, apexY, range);
-      beam.addColorStop(0, "rgba(224, 244, 255, 0.16)");
-      beam.addColorStop(0.38, "rgba(180, 226, 252, 0.085)");
-      beam.addColorStop(0.78, "rgba(140, 204, 240, 0.035)");
+      beam.addColorStop(0, "rgba(224, 244, 255, 0.07)");
+      beam.addColorStop(0.38, "rgba(180, 226, 252, 0.035)");
+      beam.addColorStop(0.78, "rgba(140, 204, 240, 0.012)");
       beam.addColorStop(1, "rgba(120, 188, 230, 0)");
       ctx.fillStyle = beam;
       traceFlashlightCone(ctx, geometry);
@@ -2821,21 +2821,6 @@ export default function MandelbrotSkipping() {
         ctx.drawImage(flashlightCanvas, 0, 0, width, height);
         ctx.restore();
       }
-
-      const pulse = (Math.sin(now * 0.006) + 1) * 0.5;
-      const rim = ctx.createLinearGradient(
-        apexX,
-        apexY,
-        apexX + directionX * range,
-        apexY + directionY * range,
-      );
-      rim.addColorStop(0, `rgba(216, 244, 255, ${0.45 + pulse * 0.18})`);
-      rim.addColorStop(0.65, `rgba(164, 222, 252, ${0.26 + pulse * 0.12})`);
-      rim.addColorStop(1, "rgba(140, 204, 240, 0)");
-      ctx.strokeStyle = rim;
-      ctx.lineWidth = 1.1;
-      traceFlashlightCone(ctx, geometry);
-      ctx.stroke();
     }
 
     function render(now: number) {
@@ -2843,7 +2828,7 @@ export default function MandelbrotSkipping() {
       if (gridDirty) rebuildScientificGrid();
       if (gridCanvas) ctx.drawImage(gridCanvas, 0, 0, width, height);
       const a = anchor();
-      drawFlashlight(now);
+      drawFlashlight();
       drawAimOrbitPreview(a);
       drawEffects(now);
       drawRock(now);
