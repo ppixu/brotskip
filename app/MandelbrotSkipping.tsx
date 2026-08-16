@@ -166,7 +166,8 @@ const GLYPH_COUNT = 7;
 const SACRED_PATH_COUNTS = [2, 2, 2, 4, 2, 3, 7] as const;
 const MIN_SOURCE_DOTS = 6;
 const MAX_SOURCE_DOTS = 32;
-const MAX_SOURCES = MAX_SKIPS * MAX_SOURCE_DOTS;
+const MAX_SOURCES = 4096;
+const INTRO_SOURCE_CAP = 2048;
 const SCORE_DEPTH_CAP = DEPTH_OPTIONS[DEPTH_OPTIONS.length - 1];
 const LINE_VISIBLE_FLOOR = 0.05;
 const MIN_LINE_PERSIST = 0.05;
@@ -480,7 +481,7 @@ fn bezier(curve: CurveSegment, t: f32) -> vec2f {
   out.position = vec4f(projectPoint(bezier(curve, t)), 0.0, 1.0);
   out.color = mix(mix(vec3f(0.08, 0.66, 0.86), vec3f(0.78, 1.0, 0.70), depth), skipTint(curve.pad), style.colorMode);
   let directionalFreshness = mix(curve.freshnessStart, curve.freshnessEnd, t);
-  out.alpha = 0.34 * pow(directionalFreshness, 0.65);
+  out.alpha = 0.44 * pow(directionalFreshness, 0.65);
   return out;
 }
 @fragment fn fs(in: VSOut) -> @location(0) vec4f {
@@ -1043,6 +1044,13 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       liveLines.setBindGroup(0, lineBind);
       liveLines.drawIndirect(lineIndirectBuffer, 0);
       liveLines.end();
+      if (drawLines) {
+        const persistentLinePass = encoder.beginRenderPass({ colorAttachments: [{ view: lineDestination.createView(), loadOp: "load", storeOp: "store" }] });
+        persistentLinePass.setPipeline(linePipeline);
+        persistentLinePass.setBindGroup(0, lineAtlasBind);
+        persistentLinePass.drawIndirect(lineIndirectBuffer, 0);
+        persistentLinePass.end();
+      }
     }
     const display = encoder.beginRenderPass({ colorAttachments: [{ view: context.getCurrentTexture().createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } }] });
     display.setPipeline(displayPipeline);
@@ -2227,7 +2235,7 @@ export default function MandelbrotSkipping() {
             body.bounceAge = 0;
             spawnImpact(body.x, body.y, body.skips, body.shapeOffset, now, {
               gpu: false,
-              ripple: body.draw,
+              ripple: body.draw || true,
             });
             const remaining = body.plannedSkips - body.skips;
             body.vz = Math.max(Math.abs(body.vz) * 0.56, pondScale() * (0.05 + remaining * 0.008));
@@ -2254,7 +2262,7 @@ export default function MandelbrotSkipping() {
           }
         }
         if (alive) next.push(body);
-        else if (body.draw) introTrails.push({ path: body.path, born: now });
+        else if (body.draw && introTrails.length < 3) introTrails.push({ path: body.path, born: now });
       }
       introRocks = next;
     }
@@ -2658,13 +2666,18 @@ export default function MandelbrotSkipping() {
 
     function drawRock(now: number) {
       if (introActiveRef.current) {
+        let activeDrawn = 0;
         for (const body of introRocks) {
-          if (body.draw) drawIntroTrajectory(body.path, 0.16);
+          if (body.draw && activeDrawn < 2) {
+            drawIntroTrajectory(body.path, 0.09);
+            activeDrawn += 1;
+          }
         }
         introTrails = introTrails.filter((trail) => now - trail.born < INTRO_TRAIL_FADE_MS);
-        for (const trail of introTrails) {
+        for (let i = 0; i < Math.min(2, introTrails.length); i++) {
+          const trail = introTrails[i];
           const t = Math.min(1, (now - trail.born) / INTRO_TRAIL_FADE_MS);
-          drawIntroTrajectory(trail.path, 0.16 * (1 - t) * (1 - t));
+          drawIntroTrajectory(trail.path, 0.08 * (1 - t) * (1 - t));
         }
         return;
       }
@@ -2673,15 +2686,29 @@ export default function MandelbrotSkipping() {
     }
 
     function drawEffects(now: number) {
-      ripples = ripples.filter((ripple) => now - ripple.born < 1000);
+      const RIPPLE_LIFETIME = 2400;
+      ripples = ripples.filter((ripple) => now - ripple.born < RIPPLE_LIFETIME);
       for (const ripple of ripples) {
         const point = complexToScreen(ripple.cr, ripple.ci, width, height, viewRef.current, tuningRef.current.rotateRight);
-        const t = (now - ripple.born) / 1000;
-        for (let ring = 0; ring < 2; ring++) {
-          const rt = Math.max(0, t - ring * .11);
-          ctx.strokeStyle = `rgba(151, 241, 255, ${Math.max(0, .55 - rt * .55)})`;
-          ctx.lineWidth = 1;
-          ctx.beginPath(); ctx.arc(point.x, point.y, 5 + rt * 34, 0, TAU); ctx.stroke();
+        const age = now - ripple.born;
+        const t = age / RIPPLE_LIFETIME;
+        const maxRadius = Math.max(36, minDimension() * 0.14);
+        const rings = 3;
+        for (let ring = 0; ring < rings; ring++) {
+          const delay = ring * 0.13;
+          const rt = (t - delay) / (1 - delay);
+          if (rt <= 0 || rt > 1) continue;
+          const radius = 4 + Math.pow(rt, 0.72) * maxRadius;
+          const envelope = Math.sin(rt * Math.PI) * Math.pow(1 - rt, 0.75);
+          const alpha = Math.max(0, envelope * 0.58 * (1 - ring * 0.22));
+          if (alpha <= 0.005) continue;
+          ctx.save();
+          ctx.strokeStyle = `rgba(148, 236, 255, ${alpha.toFixed(3)})`;
+          ctx.lineWidth = Math.max(0.6, 1.4 * (1 - rt * 0.6));
+          ctx.beginPath();
+          ctx.arc(point.x, point.y, radius, 0, TAU);
+          ctx.stroke();
+          ctx.restore();
         }
       }
       ctx.textAlign = "center";
@@ -2853,7 +2880,12 @@ export default function MandelbrotSkipping() {
       engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
       engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
       const seeds = Array.from({ length: INTRO_NEBULA_SEEDS_PER_WAVE }, () => introNebulaSeed());
-      engineRef.current?.spawnAppend(seeds, 1);
+      engineRef.current?.spawn(seeds, 1, INTRO_SOURCE_CAP);
+      if (Math.random() < 0.32) {
+        const rippleOrigin = introLaunchOrigin(width, height);
+        const mapped = screenToComplex(rippleOrigin.x, rippleOrigin.y, width, height, viewRef.current, tuningRef.current.rotateRight);
+        ripples.push({ cr: mapped.x, ci: mapped.y, born: now, index: 1 });
+      }
     }
 
     function maybeOpeningThrow(now: number) {
@@ -2866,12 +2898,15 @@ export default function MandelbrotSkipping() {
           setIntro({ progress: 1, ready: true });
         }
       }
-      if (lastIntroLaunch !== 0 && now - lastIntroLaunch < INTRO_THROW_STAGGER_MS) return;
+      const inOpeningVolley = introThrowsRef.current < INTRO_THROWS_PER_WAVE * 2;
+      const interval = inOpeningVolley ? INTRO_THROW_STAGGER_MS : 2400;
+      if (lastIntroLaunch !== 0 && now - lastIntroLaunch < interval) return;
       lastIntroLaunch = now;
       spectatorRef.current = true;
       engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
       engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
-      for (let index = 0; index < INTRO_THROWS_PER_WAVE; index++) throwIntroRock();
+      const throwCount = inOpeningVolley ? Math.min(4, INTRO_THROWS_PER_WAVE) : 1;
+      for (let index = 0; index < throwCount; index++) throwIntroRock();
       if (!introReady) {
         setIntro({ progress: Math.min(1, (now - introSettleAt) / INTRO_SETTLE_MS) });
       }
