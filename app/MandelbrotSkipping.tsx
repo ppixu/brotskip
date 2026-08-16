@@ -1364,7 +1364,7 @@ export default function MandelbrotSkipping() {
     let rock = { x: 0, y: 0, vx: 0, vy: 0, z: 0, vz: 0, spin: 0, skips: 0, bounceAge: 10 };
     let plannedSkips = MIN_SKIPS;
     let impacts: Array<{ cr: number; ci: number; born: number; index: number }> = [];
-    let ripples: Array<{ cr: number; ci: number; born: number; index: number }> = [];
+    let ripples: Array<{ cr: number; ci: number; born: number; index: number; lifetime?: number; maxRadius?: number }> = [];
     let orbitScores: OrbitScore[] = [];
     let audio: AudioContext | null = null;
     let iterationSynth: {
@@ -2653,19 +2653,6 @@ export default function MandelbrotSkipping() {
 
     function drawRock(now: number) {
       if (introActiveRef.current) {
-        let activeDrawn = 0;
-        for (const body of introRocks) {
-          if (body.draw && activeDrawn < 2) {
-            drawIntroTrajectory(body.path, 0.09);
-            activeDrawn += 1;
-          }
-        }
-        introTrails = introTrails.filter((trail) => now - trail.born < INTRO_TRAIL_FADE_MS);
-        for (let i = 0; i < Math.min(2, introTrails.length); i++) {
-          const trail = introTrails[i];
-          const t = Math.min(1, (now - trail.born) / INTRO_TRAIL_FADE_MS);
-          drawIntroTrajectory(trail.path, 0.08 * (1 - t) * (1 - t));
-        }
         return;
       }
       if (phase === "resolving" || phase === "result") return;
@@ -2673,27 +2660,24 @@ export default function MandelbrotSkipping() {
     }
 
     function drawEffects(now: number) {
-      const RIPPLE_LIFETIME = 2400;
-      ripples = ripples.filter((ripple) => now - ripple.born < RIPPLE_LIFETIME);
-      if (introActiveRef.current && ripples.length > 2) {
-        ripples = ripples.slice(-2);
-      }
+      ripples = ripples.filter((ripple) => now - ripple.born < (ripple.lifetime ?? 2400));
       for (const ripple of ripples) {
         const point = complexToScreen(ripple.cr, ripple.ci, width, height, viewRef.current, tuningRef.current.rotateRight);
+        const lifetime = ripple.lifetime ?? 2400;
         const age = now - ripple.born;
-        const t = age / RIPPLE_LIFETIME;
+        const t = age / lifetime;
         if (t <= 0 || t >= 1) continue;
-        const maxRadius = Math.max(36, minDimension() * 0.14);
-        const radius = 4 + Math.pow(t, 0.72) * maxRadius;
-        const envelope = Math.sin(t * Math.PI) * Math.pow(1 - t, 0.75);
-        const baseGain = introActiveRef.current ? 0.52 : 0.28;
+        const maxRadius = ripple.maxRadius ?? Math.max(36, minDimension() * 0.14);
+        const radius = 3 + Math.pow(t, 0.70) * maxRadius;
+        const envelope = Math.sin(t * Math.PI) * Math.pow(1 - t, 1.25);
+        const baseGain = introActiveRef.current ? 0.44 : 0.28;
         const alpha = Math.max(0, envelope * baseGain);
-        if (alpha <= 0.005) continue;
+        if (alpha <= 0.002) continue;
         ctx.save();
         ctx.strokeStyle = introActiveRef.current
-          ? `rgba(148, 236, 255, ${alpha.toFixed(3)})`
+          ? `rgba(240, 245, 255, ${alpha.toFixed(3)})`
           : `rgba(130, 215, 235, ${alpha.toFixed(3)})`;
-        ctx.lineWidth = Math.max(0.6, (introActiveRef.current ? 1.3 : 1.0) * (1 - t * 0.6));
+        ctx.lineWidth = Math.max(0.5, (introActiveRef.current ? 1.1 : 0.85) * (1 - t * 0.5));
         ctx.beginPath();
         ctx.arc(point.x, point.y, radius, 0, TAU);
         ctx.stroke();
@@ -2701,13 +2685,25 @@ export default function MandelbrotSkipping() {
       }
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.font = "700 8px ui-monospace, monospace";
       for (const impact of impacts) {
         const point = complexToScreen(impact.cr, impact.ci, width, height, viewRef.current, tuningRef.current.rotateRight);
         const age = now - impact.born;
-        const alpha = Math.max(0.46, 0.82 - age / 9000);
-        ctx.fillStyle = `rgba(220, 250, 255, ${alpha})`;
-        ctx.fillText(String(impact.index), point.x, point.y + .5);
+        const totalDuration = 8000;
+        if (age < 0 || age >= totalDuration) continue;
+        const t = age / totalDuration;
+        const pop = age < 450 ? 1.0 + Math.sin((age / 450) * Math.PI) * 0.38 : 1.0;
+        const fontSize = Math.round(15 * pop);
+        ctx.font = `800 ${fontSize}px ui-monospace, monospace`;
+        const alpha = Math.max(0, Math.pow(1 - t, 0.85) * 0.92);
+        if (alpha <= 0.01) continue;
+
+        ctx.save();
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = `rgba(0, 16, 28, ${(alpha * 0.85).toFixed(3)})`;
+        ctx.strokeText(String(impact.index), point.x, point.y + 0.5);
+        ctx.fillStyle = `rgba(235, 252, 255, ${alpha.toFixed(3)})`;
+        ctx.fillText(String(impact.index), point.x, point.y + 0.5);
+        ctx.restore();
       }
       ctx.textAlign = "start";
       ctx.textBaseline = "alphabetic";
@@ -2750,35 +2746,32 @@ export default function MandelbrotSkipping() {
     }
 
     function drawMappedBuddhabrot(target: CanvasRenderingContext2D) {
-      const source = buddhabrotSource;
-      if (!source) return;
-      const rotateRight = tuningRef.current.rotateRight;
+      if (!buddhabrotSource) return;
       const topLeft = complexToScreen(TRAIL_BOUNDS.xMin, TRAIL_BOUNDS.yMax, width, height, viewRef.current, false);
       const bottomRight = complexToScreen(TRAIL_BOUNDS.xMax, TRAIL_BOUNDS.yMin, width, height, viewRef.current, false);
-      target.save();
-      if (rotateRight) {
-        target.translate(width / 2, height / 2);
-        target.rotate(Math.PI / 2);
-        target.translate(-width / 2, -height / 2);
-      }
-      target.imageSmoothingEnabled = true;
-      target.globalAlpha = 0.42;
-      target.drawImage(source, topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y);
-      target.restore();
+      const destX = Math.round(Math.min(topLeft.x, bottomRight.x));
+      const destY = Math.round(Math.min(topLeft.y, bottomRight.y));
+      const destWidth = Math.max(1, Math.round(Math.abs(bottomRight.x - topLeft.x)));
+      const destHeight = Math.max(1, Math.round(Math.abs(bottomRight.y - topLeft.y)));
+      target.drawImage(buddhabrotSource, destX, destY, destWidth, destHeight);
     }
 
-    function drawFlashlight() {
+    function drawFlashlight(now: number) {
+      if (phase !== "aiming" || introActiveRef.current) return;
       const geometry = flashlightGeometry();
       if (!geometry) return;
+      const { apexX, apexY, directionX, directionY, range } = geometry;
+      const edgeBlur = FLASHLIGHT_EDGE_BLUR_PX;
       ctx.save();
-      ctx.fillStyle = "rgba(0, 0, 0, .88)";
-      ctx.fillRect(0, 0, width, height);
-      ctx.globalCompositeOperation = "destination-out";
-      ctx.fillStyle = "#ffffff";
-      ctx.filter = `blur(${FLASHLIGHT_EDGE_BLUR_PX * dpr}px)`;
+      ctx.filter = `blur(${edgeBlur}px)`;
+      const beam = ctx.createRadialGradient(apexX, apexY, 0, apexX, apexY, range);
+      beam.addColorStop(0, "rgba(224, 244, 255, 0.16)");
+      beam.addColorStop(0.38, "rgba(180, 226, 252, 0.085)");
+      beam.addColorStop(0.78, "rgba(140, 204, 240, 0.035)");
+      beam.addColorStop(1, "rgba(120, 188, 230, 0)");
+      ctx.fillStyle = beam;
       traceFlashlightCone(ctx, geometry);
       ctx.fill();
-      ctx.filter = "none";
       ctx.restore();
 
       if (buddhabrotSource && flashlightContext) {
@@ -2787,15 +2780,14 @@ export default function MandelbrotSkipping() {
           flashlightContext.save();
           flashlightContext.filter = `blur(${FLASHLIGHT_EDGE_BLUR_PX * dpr}px)`;
           const mask = flashlightContext.createLinearGradient(
-            geometry.apexX,
-            geometry.apexY,
-            geometry.apexX + geometry.directionX * geometry.range,
-            geometry.apexY + geometry.directionY * geometry.range,
+            apexX,
+            apexY,
+            apexX + directionX * range,
+            apexY + directionY * range,
           );
-          mask.addColorStop(0, "rgba(255, 255, 255, .55)");
-          mask.addColorStop(.08, "rgba(255, 255, 255, .92)");
-          mask.addColorStop(.42, "rgba(255, 255, 255, .55)");
-          mask.addColorStop(.78, "rgba(255, 255, 255, .12)");
+          mask.addColorStop(0, "rgba(255, 255, 255, 0.95)");
+          mask.addColorStop(0.42, "rgba(255, 255, 255, 0.65)");
+          mask.addColorStop(0.85, "rgba(255, 255, 255, 0.22)");
           mask.addColorStop(1, "rgba(255, 255, 255, 0)");
           flashlightContext.fillStyle = mask;
           traceFlashlightCone(flashlightContext, geometry);
@@ -2807,36 +2799,34 @@ export default function MandelbrotSkipping() {
           flashlightDirty = false;
         }
         ctx.save();
-        ctx.globalCompositeOperation = "screen";
-        ctx.globalAlpha = 0.34;
+        ctx.globalAlpha = 0.58;
         ctx.drawImage(flashlightCanvas, 0, 0, width, height);
         ctx.restore();
       }
 
-      ctx.save();
-      traceFlashlightCone(ctx, geometry);
-      ctx.clip();
-      const haze = ctx.createLinearGradient(
-        geometry.apexX,
-        geometry.apexY,
-        geometry.apexX + geometry.directionX * geometry.range,
-        geometry.apexY + geometry.directionY * geometry.range,
+      const pulse = (Math.sin(now * 0.006) + 1) * 0.5;
+      const rim = ctx.createLinearGradient(
+        apexX,
+        apexY,
+        apexX + directionX * range,
+        apexY + directionY * range,
       );
-      haze.addColorStop(0, "rgba(184, 230, 220, .032)");
-      haze.addColorStop(.38, "rgba(130, 205, 198, .011)");
-      haze.addColorStop(.78, "rgba(90, 150, 150, 0)");
-      haze.addColorStop(1, "rgba(90, 150, 150, 0)");
-      ctx.fillStyle = haze;
-      ctx.fillRect(0, 0, width, height);
-      ctx.restore();
+      rim.addColorStop(0, `rgba(216, 244, 255, ${0.45 + pulse * 0.18})`);
+      rim.addColorStop(0.65, `rgba(164, 222, 252, ${0.26 + pulse * 0.12})`);
+      rim.addColorStop(1, "rgba(140, 204, 240, 0)");
+      ctx.strokeStyle = rim;
+      ctx.lineWidth = 1.1;
+      traceFlashlightCone(ctx, geometry);
+      ctx.stroke();
     }
 
     function render(now: number) {
       ctx.clearRect(0, 0, width, height);
+      if (gridDirty) rebuildScientificGrid();
+      if (gridCanvas) ctx.drawImage(gridCanvas, 0, 0, width, height);
       const a = anchor();
-      drawFlashlight();
-      if (!introActiveRef.current) drawScientificGrid();
-      drawPrediction(a);
+      drawSling(a);
+      drawFlashlight(now);
       drawAimOrbitPreview(a);
       drawEffects(now);
       drawRock(now);
@@ -2861,6 +2851,32 @@ export default function MandelbrotSkipping() {
       );
     }
 
+    function spawnIntroPondRipple(now: number) {
+      const rippleOrigin = introLaunchOrigin(width, height);
+      const mapped = screenToComplex(rippleOrigin.x, rippleOrigin.y, width, height, viewRef.current, tuningRef.current.rotateRight);
+      const roll = Math.random();
+      let maxRadius: number;
+      let lifetime: number;
+      if (roll < 0.35) {
+        maxRadius = Math.max(18, minDimension() * (0.04 + Math.random() * 0.04));
+        lifetime = 2600 + Math.random() * 800;
+      } else if (roll < 0.75) {
+        maxRadius = Math.max(45, minDimension() * (0.09 + Math.random() * 0.08));
+        lifetime = 3400 + Math.random() * 1000;
+      } else {
+        maxRadius = Math.max(90, minDimension() * (0.18 + Math.random() * 0.14));
+        lifetime = 4600 + Math.random() * 1200;
+      }
+      ripples.push({
+        cr: mapped.x,
+        ci: mapped.y,
+        born: now,
+        index: 1,
+        lifetime,
+        maxRadius,
+      });
+    }
+
     function spawnIntroBackgroundOrbits(now: number) {
       if (!introActiveRef.current || introFadingRef.current) return;
       if (lastIntroBackground !== 0 && now - lastIntroBackground < INTRO_BACKGROUND_SPAWN_MS) return;
@@ -2869,10 +2885,8 @@ export default function MandelbrotSkipping() {
       engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
       const seeds = Array.from({ length: INTRO_NEBULA_SEEDS_PER_WAVE }, () => introNebulaSeed());
       engineRef.current?.spawn(seeds, 1, INTRO_SOURCE_CAP);
-      if (Math.random() < 0.03) {
-        const rippleOrigin = introLaunchOrigin(width, height);
-        const mapped = screenToComplex(rippleOrigin.x, rippleOrigin.y, width, height, viewRef.current, tuningRef.current.rotateRight);
-        ripples.push({ cr: mapped.x, ci: mapped.y, born: now, index: 1 });
+      if (Math.random() < 0.04) {
+        spawnIntroPondRipple(now);
       }
     }
 
@@ -2887,14 +2901,14 @@ export default function MandelbrotSkipping() {
         }
       }
       const inOpeningVolley = introThrowsRef.current < INTRO_THROWS_PER_WAVE * 2;
-      const interval = inOpeningVolley ? INTRO_THROW_STAGGER_MS : 2400;
+      const interval = inOpeningVolley ? 900 : 2400;
       if (lastIntroLaunch !== 0 && now - lastIntroLaunch < interval) return;
       lastIntroLaunch = now;
       spectatorRef.current = true;
       engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
       engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
-      const throwCount = inOpeningVolley ? Math.min(4, INTRO_THROWS_PER_WAVE) : 1;
-      for (let index = 0; index < throwCount; index++) throwIntroRock();
+      introThrowsRef.current += 1;
+      spawnIntroPondRipple(now);
       if (!introReady) {
         setIntro({ progress: Math.min(1, (now - introSettleAt) / INTRO_SETTLE_MS) });
       }
