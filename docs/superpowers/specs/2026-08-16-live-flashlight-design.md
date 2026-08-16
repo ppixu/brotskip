@@ -15,10 +15,10 @@ Use the real orbit engine for both.
 - Opening: keep throwing a simultaneous volley (16 stones per wave) until
   Play, but only draw every 50th rock so trajectories stay sparse. Launch
   each rock from a random point aiming toward the pond. Append random nebula
-  seeds without overwriting live orbits so a Buddhabrot can form until Play.
-  Splash ripples mark pond hits; trajectories ease out. After a 5.4s settle,
-  a Play button in the playfield center starts the game and clears the
-  nebula. Reduce-motion and share links skip this.
+  seeds from just outside the set, without overwriting live orbits, so a
+  Buddhabrot can form until Play. Splash ripples mark pond hits; trajectories
+  ease out. After a 5.4s settle, a Play button in the playfield center starts
+  the game and clears the nebula. Reduce-motion and share links skip this.
 - Flashlight: punch a soft-edged hole in the dark overlay. While aiming,
   show a dim cached Buddhabrot in the cone and iterate random single
   points there (`1` seed, depth `8000`, cap `36` sources). Do not throw

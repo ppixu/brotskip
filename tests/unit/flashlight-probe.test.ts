@@ -18,6 +18,7 @@ import {
   INTRO_MAX_DEPTH,
   PLAY_ATMOSPHERE,
   introLaunchOrigin,
+  introNebulaSeed,
   pointInFlashlightCone,
   sampleRayInCone,
   flashlightSkipLandings,
@@ -101,6 +102,32 @@ test("opening keeps iterating a dim background Buddhabrot after the volley", () 
   assert.ok(INTRO_BACKGROUND_SPAWN_MS <= 160);
   assert.ok(INTRO_MAX_DEPTH >= 500_000);
   assert.ok(INTRO_TRAIL_FADE_MS >= 3500);
+});
+
+test("intro nebula seeds escape often enough that loading stays live", () => {
+  let seed = 1;
+  const random = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  const escapeAt = (c: { x: number; y: number }, max = 20_000) => {
+    let zr = 0;
+    let zi = 0;
+    for (let n = 1; n <= max; n++) {
+      const nextR = zr * zr - zi * zi + c.x;
+      const nextI = 2 * zr * zi + c.y;
+      zr = nextR;
+      zi = nextI;
+      if (zr * zr + zi * zi > 4) return n;
+    }
+    return max + 1;
+  };
+  const samples = 80;
+  let trapped = 0;
+  for (let i = 0; i < samples; i++) {
+    if (escapeAt(introNebulaSeed(random)) > 20_000) trapped += 1;
+  }
+  assert.ok(trapped / samples < 0.08, `trapped ${trapped}/${samples} intro seeds past 20k iterates`);
 });
 
 test("intro and flashlight atmospheres drop lines, stay gray, and keep the cone dim", () => {

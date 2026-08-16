@@ -2655,6 +2655,19 @@ export default function MandelbrotSkipping() {
 
     function drawRock(now: number) {
       if (introActiveRef.current) {
+        let activeDrawn = 0;
+        for (const body of introRocks) {
+          if (body.draw && activeDrawn < 2) {
+            drawIntroTrajectory(body.path, 0.09);
+            activeDrawn += 1;
+          }
+        }
+        introTrails = introTrails.filter((trail) => now - trail.born < INTRO_TRAIL_FADE_MS);
+        for (let i = 0; i < Math.min(2, introTrails.length); i++) {
+          const trail = introTrails[i];
+          const t = Math.min(1, (now - trail.born) / INTRO_TRAIL_FADE_MS);
+          drawIntroTrajectory(trail.path, 0.08 * (1 - t) * (1 - t));
+        }
         return;
       }
       if (phase === "resolving" || phase === "result") return;
@@ -2886,7 +2899,7 @@ export default function MandelbrotSkipping() {
       engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
       engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
       const seeds = Array.from({ length: INTRO_NEBULA_SEEDS_PER_WAVE }, () => introNebulaSeed());
-      engineRef.current?.spawn(seeds, 1, INTRO_SOURCE_CAP);
+      engineRef.current?.spawnAppend(seeds, 1, INTRO_SOURCE_CAP);
       if (Math.random() < 0.04) {
         spawnIntroPondRipple(now);
       }
@@ -2906,14 +2919,14 @@ export default function MandelbrotSkipping() {
         }
       }
       const inOpeningVolley = introThrowsRef.current < INTRO_THROWS_PER_WAVE * 2;
-      const interval = inOpeningVolley ? 900 : 2400;
+      const interval = inOpeningVolley ? INTRO_THROW_STAGGER_MS : 2400;
       if (lastIntroLaunch !== 0 && now - lastIntroLaunch < interval) return;
       lastIntroLaunch = now;
       spectatorRef.current = true;
       engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
       engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
-      introThrowsRef.current += 1;
-      spawnIntroPondRipple(now);
+      const throwCount = inOpeningVolley ? Math.min(4, INTRO_THROWS_PER_WAVE) : 1;
+      for (let index = 0; index < throwCount; index++) throwIntroRock();
     }
 
     function loop(now: number) {
