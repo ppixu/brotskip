@@ -28,3 +28,13 @@ test("WGSL shaders do not reuse a binding name as an entry point", () => {
     assert.deepEqual(overlap, [], `${name} redeclares ${overlap.join(", ")}`);
   }
 });
+
+test("orbit trails accumulate in a complex-plane atlas instead of warping a screen bitmap", () => {
+  const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
+  assert.match(source, /TRAIL_ATLAS_SIZE/);
+  assert.match(source, /atlasMode/);
+  assert.match(source, /reprojectScreenPoint/);
+  assert.match(source, /zoomPixelScale/);
+  assert.doesNotMatch(source, /cameraPausedUntil/);
+  assert.doesNotMatch(source, /viewChangingUntil/);
+});

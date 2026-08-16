@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  TRAIL_BOUNDS,
+  complexToAtlasUv,
   complexToScreen,
+  reprojectScreenPoint,
+  reprojectScreenVelocity,
   screenToComplex,
   trailUvOffset,
+  zoomPixelScale,
 } from "../../lib/view-map.ts";
 
 const view = { centerX: -0.58, centerY: 0, halfY: 0.8 };
@@ -42,4 +47,38 @@ test("unrotated trail offset matches a rightward pan", () => {
   const offset = trailUvOffset(view, next, width, height, false);
   assert.ok(offset.x > 0);
   assert.ok(Math.abs(offset.y) < 1e-12);
+});
+
+test("atlas UV maps pond bounds onto the unit square", () => {
+  const topLeft = complexToAtlasUv(TRAIL_BOUNDS.xMin, TRAIL_BOUNDS.yMax);
+  const bottomRight = complexToAtlasUv(TRAIL_BOUNDS.xMax, TRAIL_BOUNDS.yMin);
+  assert.ok(Math.abs(topLeft.u) < 1e-9);
+  assert.ok(Math.abs(topLeft.v) < 1e-9);
+  assert.ok(Math.abs(bottomRight.u - 1) < 1e-9);
+  assert.ok(Math.abs(bottomRight.v - 1) < 1e-9);
+});
+
+test("reprojecting a screen point after pan keeps the same pond coordinate", () => {
+  const point = { x: 80, y: 150 };
+  const next = { ...view, centerX: view.centerX + 0.35 };
+  const moved = reprojectScreenPoint(point.x, point.y, width, height, view, next, false);
+  const before = screenToComplex(point.x, point.y, width, height, view, false);
+  const after = screenToComplex(moved.x, moved.y, width, height, next, false);
+  assert.ok(Math.abs(before.x - after.x) < 1e-9);
+  assert.ok(Math.abs(before.y - after.y) < 1e-9);
+});
+
+test("reprojecting velocity after zoom keeps the pond-space direction", () => {
+  const next = { ...view, halfY: 0.4 };
+  const moved = reprojectScreenVelocity(100, 100, 30, -10, width, height, view, next, false);
+  const start = reprojectScreenPoint(100, 100, width, height, view, next, false);
+  const oldEnd = screenToComplex(130, 90, width, height, view, false);
+  const newEnd = screenToComplex(start.x + moved.x, start.y + moved.y, width, height, next, false);
+  assert.ok(Math.abs(oldEnd.x - newEnd.x) < 1e-6);
+  assert.ok(Math.abs(oldEnd.y - newEnd.y) < 1e-6);
+});
+
+test("pixel scale at the reference zoom matches min dimension", () => {
+  assert.equal(zoomPixelScale(800, 0.8), 800);
+  assert.ok(Math.abs(zoomPixelScale(800, 0.4) - 1600) < 1e-9);
 });

@@ -4,6 +4,10 @@ export type ViewTransform = {
   halfY: number;
 };
 
+export const TRAIL_BOUNDS = { xMin: -2.2, xMax: 1.2, yMin: -1.5, yMax: 1.5 };
+export const TRAIL_ATLAS_SIZE = 2048;
+export const REFERENCE_VIEW_HALF_Y = 0.8;
+
 export function viewHalfX(view: ViewTransform, width: number, height: number) {
   return view.halfY * width / Math.max(height, 1);
 }
@@ -101,6 +105,50 @@ export function trailUvOffset(
     x: dCenterY / (2 * oldHalfX),
     y: dCenterX / (2 * previous.halfY),
   };
+}
+
+export function complexToAtlasUv(
+  re: number,
+  im: number,
+  bounds = TRAIL_BOUNDS,
+) {
+  return {
+    u: (re - bounds.xMin) / (bounds.xMax - bounds.xMin),
+    v: (bounds.yMax - im) / (bounds.yMax - bounds.yMin),
+  };
+}
+
+export function zoomPixelScale(minDimension: number, halfY: number, referenceHalfY = REFERENCE_VIEW_HALF_Y) {
+  return minDimension * referenceHalfY / Math.max(halfY, 1e-6);
+}
+
+export function reprojectScreenPoint(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  previous: ViewTransform,
+  next: ViewTransform,
+  rotateRight = false,
+) {
+  const pond = screenToComplex(x, y, width, height, previous, rotateRight);
+  return complexToScreen(pond.x, pond.y, width, height, next, rotateRight);
+}
+
+export function reprojectScreenVelocity(
+  x: number,
+  y: number,
+  vx: number,
+  vy: number,
+  width: number,
+  height: number,
+  previous: ViewTransform,
+  next: ViewTransform,
+  rotateRight = false,
+) {
+  const start = reprojectScreenPoint(x, y, width, height, previous, next, rotateRight);
+  const end = reprojectScreenPoint(x + vx, y + vy, width, height, previous, next, rotateRight);
+  return { x: end.x - start.x, y: end.y - start.y };
 }
 
 export function mathBoundsForView(

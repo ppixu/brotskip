@@ -30,12 +30,16 @@ import {
   MIN_ACCELERATION,
 } from "@/lib/orbit-tuning";
 import {
+  TRAIL_ATLAS_SIZE,
+  TRAIL_BOUNDS,
   complexToClip,
   complexToScreen,
   mathBoundsForView,
+  reprojectScreenPoint,
+  reprojectScreenVelocity,
   screenToComplex,
-  trailUvOffset,
   viewCenterKeepingFocus,
+  zoomPixelScale,
   type ViewTransform,
 } from "@/lib/view-map";
 import {
@@ -170,7 +174,6 @@ const POND_CENTER = { x: -0.58, y: 0 };
 const VIEW_HALF_Y = 0.8;
 const SCORE_HALF_X = 1.6;
 const SCORE_HALF_Y = 1.15;
-const BUDDHABROT_BOUNDS = { xMin: -2.2, xMax: 1.2, yMin: -1.5, yMax: 1.5 };
 const MIN_VIEW_HALF_Y = 0.035;
 const MAX_VIEW_HALF_Y = 2.4;
 const SONIC_SCALES = [
@@ -192,6 +195,9 @@ struct Params {
   viewport: vec2f,
   rotateRight: f32,
   accelerationCurve: f32,
+  atlasMode: f32,
+  pad: f32,
+  bounds: vec4f,
 }
 struct OrbitPoint { position: vec2f, depth: f32, pad: f32 }
 struct CurveSegment {
@@ -232,6 +238,13 @@ fn toClip(z: vec2f) -> vec2f {
   let oriented = select(delta, vec2f(delta.y, -delta.x), params.rotateRight > 0.5);
   return oriented / params.viewHalf;
 }
+fn toAtlasClip(z: vec2f) -> vec2f {
+  let span = vec2f(params.bounds.y - params.bounds.x, params.bounds.w - params.bounds.z);
+  return vec2f(
+    (z.x - params.bounds.x) / span.x * 2.0 - 1.0,
+    (z.y - params.bounds.z) / span.y * 2.0 - 1.0
+  );
+}
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) id: vec3u) {
@@ -259,30 +272,25 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     let clip = toClip(z);
     let hopPx = length((clip - previousClip) * params.viewport * 0.5);
     let depthColor = log2(f32(state.step) + 1.0) / 25.6;
-    if (all(abs(clip) <= vec2f(1.0))) {
+    let inAtlas = all(abs(toAtlasClip(z)) <= vec2f(1.0));
+    if (inAtlas || all(abs(clip) <= vec2f(1.0))) {
       if (state.step > ${HIDDEN_INITIAL_STEPS}u) {
         let slot = atomicAdd(&drawArgs.vertexCount, 1u);
         if (slot < ${POINT_BUDGET}u) {
-          vertices[slot] = OrbitPoint(clip, depthColor, state.reserved.x);
+          vertices[slot] = OrbitPoint(z, depthColor, state.reserved.x);
         }
       }
-      if (state.step > ${HIDDEN_INITIAL_STEPS + 1}u && all(abs(previousClip) <= vec2f(1.0)) && i >= firstLineStep) {
+      if (state.step > ${HIDDEN_INITIAL_STEPS + 1}u && (inAtlas || all(abs(previousClip) <= vec2f(1.0))) && i >= firstLineStep) {
         let future = vec2f(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + state.c;
-        let futureClip = toClip(future);
-        let incoming = clip - previousClip;
-        let outgoing = futureClip - clip;
-        let incomingLength = length(incoming);
-        let outgoingLength = length(outgoing);
-        let safeOutgoing = outgoing / max(outgoingLength, 0.00001);
-        let curvedOutgoing = safeOutgoing * min(outgoingLength, incomingLength * 1.5);
-        let control1 = previousClip + incoming / 3.0;
-        let control2 = clip - curvedOutgoing / 3.0;
-        if (incomingLength <= 0.5) {
+        let incomingLength = length(clip - previousClip);
+        let control1 = previousZ + (z - previousZ) / 3.0;
+        let control2 = z - (future - z) / 3.0;
+        if (incomingLength <= 0.5 || inAtlas) {
           let lineVertex = atomicAdd(&lineDrawArgs.vertexCount, ${CURVE_SEGMENTS * 2}u);
           let lineSlot = lineVertex / ${CURVE_SEGMENTS * 2}u;
           if (lineSlot < ${LINE_SEGMENT_CAPACITY}u) {
             lineSegments[lineSlot] = CurveSegment(
-              previousClip, control1, control2, clip,
+              previousZ, control1, control2, z,
               f32(i - firstLineStep) / f32(max(lineCount, 1u)),
               f32(i - firstLineStep + 1u) / f32(max(lineCount, 1u)),
               depthColor, state.reserved.x
@@ -293,7 +301,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     }
     let magSq = dot(z, z);
     let onScreen = all(abs(clip) <= vec2f(1.02));
-    state.offscreenStreak = select(state.offscreenStreak + 1u, 0u, onScreen);
+    state.offscreenStreak = select(state.offscreenStreak + 1u, 0u, inAtlas || onScreen);
     state.tinyHopStreak = select(0u, state.tinyHopStreak + 1u, hopPx <= ${TINY_HOP_PX} && hopPx == hopPx);
     if (
       magSq > ${ESCAPE_RADIUS_SQ}.0
@@ -312,15 +320,42 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
 
 const pointShader = /* wgsl */ `
 struct Style { alpha: f32, pulse: f32, colorMode: f32, pad: f32 }
+struct Params {
+  sourceCount: u32,
+  batch: u32,
+  maxDepth: u32,
+  lineQuota: u32,
+  center: vec2f,
+  viewHalf: vec2f,
+  viewport: vec2f,
+  rotateRight: f32,
+  accelerationCurve: f32,
+  atlasMode: f32,
+  pad: f32,
+  bounds: vec4f,
+}
 @group(0) @binding(0) var<uniform> style: Style;
+@group(0) @binding(1) var<uniform> params: Params;
 struct VSOut { @builtin(position) position: vec4f, @location(0) color: vec3f }
 fn skipTint(index: f32) -> vec3f {
   let colors = array<vec3f, 7>(${SKIP_TINT_WGSL});
   return colors[u32(max(index, 1.0) - 1.0) % 7u];
 }
+fn projectPoint(z: vec2f) -> vec2f {
+  if (params.atlasMode > 0.5) {
+    let span = vec2f(params.bounds.y - params.bounds.x, params.bounds.w - params.bounds.z);
+    return vec2f(
+      (z.x - params.bounds.x) / span.x * 2.0 - 1.0,
+      (z.y - params.bounds.z) / span.y * 2.0 - 1.0
+    );
+  }
+  let delta = z - params.center;
+  let oriented = select(delta, vec2f(delta.y, -delta.x), params.rotateRight > 0.5);
+  return oriented / params.viewHalf;
+}
 @vertex fn vs(@location(0) position: vec2f, @location(1) depth: f32, @location(2) skip: f32) -> VSOut {
   var out: VSOut;
-  out.position = vec4f(position, 0.0, 1.0);
+  out.position = vec4f(projectPoint(position), 0.0, 1.0);
   let t = clamp(depth, 0.0, 1.0);
   let depthColor = mix(vec3f(0.10, 0.78, 0.92), vec3f(0.92, 1.0, 0.82), t);
   out.color = mix(depthColor, skipTint(skip), style.colorMode);
@@ -343,8 +378,23 @@ struct CurveSegment {
   pad: f32,
 }
 struct Style { alpha: f32, pulse: f32, colorMode: f32, pad: f32 }
+struct Params {
+  sourceCount: u32,
+  batch: u32,
+  maxDepth: u32,
+  lineQuota: u32,
+  center: vec2f,
+  viewHalf: vec2f,
+  viewport: vec2f,
+  rotateRight: f32,
+  accelerationCurve: f32,
+  atlasMode: f32,
+  pad: f32,
+  bounds: vec4f,
+}
 @group(0) @binding(0) var<storage, read> segments: array<CurveSegment>;
 @group(0) @binding(1) var<uniform> style: Style;
+@group(0) @binding(2) var<uniform> params: Params;
 struct VSOut {
   @builtin(position) position: vec4f,
   @location(0) color: vec3f,
@@ -353,6 +403,18 @@ struct VSOut {
 fn skipTint(index: f32) -> vec3f {
   let colors = array<vec3f, 7>(${SKIP_TINT_WGSL});
   return colors[u32(max(index, 1.0) - 1.0) % 7u];
+}
+fn projectPoint(z: vec2f) -> vec2f {
+  if (params.atlasMode > 0.5) {
+    let span = vec2f(params.bounds.y - params.bounds.x, params.bounds.w - params.bounds.z);
+    return vec2f(
+      (z.x - params.bounds.x) / span.x * 2.0 - 1.0,
+      (z.y - params.bounds.z) / span.y * 2.0 - 1.0
+    );
+  }
+  let delta = z - params.center;
+  let oriented = select(delta, vec2f(delta.y, -delta.x), params.rotateRight > 0.5);
+  return oriented / params.viewHalf;
 }
 fn bezier(curve: CurveSegment, t: f32) -> vec2f {
   let u = 1.0 - t;
@@ -370,7 +432,7 @@ fn bezier(curve: CurveSegment, t: f32) -> vec2f {
   let curve = segments[curveIndex];
   let depth = clamp(curve.depth, 0.0, 1.0);
   var out: VSOut;
-  out.position = vec4f(bezier(curve, t), 0.0, 1.0);
+  out.position = vec4f(projectPoint(bezier(curve, t)), 0.0, 1.0);
   out.color = mix(mix(vec3f(0.08, 0.66, 0.86), vec3f(0.78, 1.0, 0.70), depth), skipTint(curve.pad), style.colorMode);
   let directionalFreshness = mix(curve.freshnessStart, curve.freshnessEnd, t);
   out.alpha = 0.34 * pow(directionalFreshness, 0.65);
@@ -392,13 +454,6 @@ struct VSOut { @builtin(position) position: vec4f, @location(0) uv: vec2f }
 }
 `;
 
-const pondShader = /* wgsl */ `
-${fullscreenVertex}
-@fragment fn pondFs(in: VSOut) -> @location(0) vec4f {
-  return vec4f(0.0, 0.0, 0.0, 1.0);
-}
-`;
-
 const fadeShader = /* wgsl */ `
 ${fullscreenVertex}
 @group(0) @binding(0) var previous: texture_2d<f32>;
@@ -408,31 +463,48 @@ struct FadeTransform {
   pad0: f32,
   pad1: f32,
   pad2: f32,
-  uvScale: vec2f,
-  uvOffset: vec2f,
 }
 @group(0) @binding(2) var<uniform> fade: FadeTransform;
 @fragment fn fadeFs(in: VSOut) -> @location(0) vec4f {
-  let sourceUv = (in.uv - 0.5) * fade.uvScale + 0.5 + fade.uvOffset;
-  let sampled = textureSample(previous, trailSampler, clamp(sourceUv, vec2f(0.0), vec2f(1.0)));
-  let inside = all(sourceUv >= vec2f(0.0)) && all(sourceUv <= vec2f(1.0));
-  return select(vec4f(0.0), sampled * fade.retention, inside);
+  return textureSample(previous, trailSampler, in.uv) * fade.retention;
 }
 `;
 
 const displayShader = /* wgsl */ `
 ${fullscreenVertex}
-@group(0) @binding(0) var pondTexture: texture_2d<f32>;
-@group(0) @binding(1) var trailTexture: texture_2d<f32>;
-@group(0) @binding(2) var lineTexture: texture_2d<f32>;
-@group(0) @binding(3) var displaySampler: sampler;
+@group(0) @binding(0) var atlasTexture: texture_2d<f32>;
+@group(0) @binding(1) var atlasLineTexture: texture_2d<f32>;
+@group(0) @binding(2) var liveTexture: texture_2d<f32>;
+@group(0) @binding(3) var liveLineTexture: texture_2d<f32>;
+@group(0) @binding(4) var displaySampler: sampler;
+struct DisplayView {
+  center: vec2f,
+  viewHalf: vec2f,
+  rotateRight: f32,
+  pad: f32,
+  bounds: vec4f,
+}
+@group(0) @binding(5) var<uniform> display: DisplayView;
 @fragment fn displayFs(in: VSOut) -> @location(0) vec4f {
-  let base = textureSample(pondTexture, displaySampler, in.uv).rgb;
-  let raw = textureSample(trailTexture, displaySampler, in.uv).rgb * 3.6;
+  let clip = vec2f(in.uv.x * 2.0 - 1.0, 1.0 - in.uv.y * 2.0);
+  let oriented = clip * display.viewHalf;
+  let delta = select(oriented, vec2f(-oriented.y, oriented.x), display.rotateRight > 0.5);
+  let z = display.center + delta;
+  let span = vec2f(display.bounds.y - display.bounds.x, display.bounds.w - display.bounds.z);
+  let atlasUv = vec2f(
+    (z.x - display.bounds.x) / span.x,
+    (display.bounds.w - z.y) / span.y
+  );
+  let inside = all(atlasUv >= vec2f(0.0)) && all(atlasUv <= vec2f(1.0));
+  let raw = select(vec3f(0.0), textureSample(atlasTexture, displaySampler, atlasUv).rgb, inside) * 3.6;
   let mapped = raw / (vec3f(1.0) + raw);
   let glow = pow(clamp(mapped, vec3f(0.0), vec3f(1.0)), vec3f(0.72));
-  let lines = textureSample(lineTexture, displaySampler, in.uv).rgb * 1.35;
-  return vec4f(base + glow + lines, 1.0);
+  let atlasLines = select(vec3f(0.0), textureSample(atlasLineTexture, displaySampler, atlasUv).rgb, inside) * 1.35;
+  let liveGlow = textureSample(liveTexture, displaySampler, in.uv).rgb * 3.6;
+  let liveMapped = liveGlow / (vec3f(1.0) + liveGlow);
+  let live = pow(clamp(liveMapped, vec3f(0.0), vec3f(1.0)), vec3f(0.72));
+  let liveLines = textureSample(liveLineTexture, displaySampler, in.uv).rgb * 1.35;
+  return vec4f(glow + atlasLines + live + liveLines, 1.0);
 }
 `;
 
@@ -644,15 +716,16 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   const stateBuffer = device.createBuffer({ size: MAX_SOURCES * 48, usage: usage.STORAGE | usage.COPY_DST });
   const indirectBuffer = device.createBuffer({ size: 16, usage: usage.STORAGE | usage.COPY_DST | usage.INDIRECT });
   const lineIndirectBuffer = device.createBuffer({ size: 16, usage: usage.STORAGE | usage.COPY_DST | usage.INDIRECT });
-  const paramsBuffer = device.createBuffer({ size: 48, usage: usage.UNIFORM | usage.COPY_DST });
+  const paramsBuffer = device.createBuffer({ size: 80, usage: usage.UNIFORM | usage.COPY_DST });
+  const paramsAtlasBuffer = device.createBuffer({ size: 80, usage: usage.UNIFORM | usage.COPY_DST });
   const styleBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
-  const fadeBuffer = device.createBuffer({ size: 32, usage: usage.UNIFORM | usage.COPY_DST });
-  const lineFadeBuffer = device.createBuffer({ size: 32, usage: usage.UNIFORM | usage.COPY_DST });
-  const sampler = device.createSampler({ magFilter: "nearest", minFilter: "nearest" });
+  const fadeBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
+  const lineFadeBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
+  const displayViewBuffer = device.createBuffer({ size: 48, usage: usage.UNIFORM | usage.COPY_DST });
+  const sampler = device.createSampler({ magFilter: "linear", minFilter: "linear" });
   const computeModule = device.createShaderModule({ code: computeShader });
   const pointModule = device.createShaderModule({ code: pointShader });
   const lineModule = device.createShaderModule({ code: lineShader });
-  const pondModule = device.createShaderModule({ code: pondShader });
   const fadeModule = device.createShaderModule({ code: fadeShader });
   const displayModule = device.createShaderModule({ code: displayShader });
   const computePipeline = device.createComputePipeline({ layout: "auto", compute: { module: computeModule, entryPoint: "main" } });
@@ -688,11 +761,6 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     }] },
     primitive: { topology: "line-list" },
   });
-  const pondPipeline = device.createRenderPipeline({
-    layout: "auto", vertex: { module: pondModule, entryPoint: "vs" },
-    fragment: { module: pondModule, entryPoint: "pondFs", targets: [{ format: "rgba8unorm" }] },
-    primitive: { topology: "triangle-list" },
-  });
   const fadePipeline = device.createRenderPipeline({
     layout: "auto", vertex: { module: fadeModule, entryPoint: "vs" },
     fragment: { module: fadeModule, entryPoint: "fadeFs", targets: [{ format: "rgba16float" }] },
@@ -718,10 +786,21 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   ] });
   const pointBind = device.createBindGroup({ layout: pointPipeline.getBindGroupLayout(0), entries: [
     { binding: 0, resource: { buffer: styleBuffer } },
+    { binding: 1, resource: { buffer: paramsBuffer } },
+  ] });
+  const pointAtlasBind = device.createBindGroup({ layout: pointPipeline.getBindGroupLayout(0), entries: [
+    { binding: 0, resource: { buffer: styleBuffer } },
+    { binding: 1, resource: { buffer: paramsAtlasBuffer } },
   ] });
   const lineBind = device.createBindGroup({ layout: linePipeline.getBindGroupLayout(0), entries: [
     { binding: 0, resource: { buffer: lineSegmentBuffer } },
     { binding: 1, resource: { buffer: styleBuffer } },
+    { binding: 2, resource: { buffer: paramsBuffer } },
+  ] });
+  const lineAtlasBind = device.createBindGroup({ layout: linePipeline.getBindGroupLayout(0), entries: [
+    { binding: 0, resource: { buffer: lineSegmentBuffer } },
+    { binding: 1, resource: { buffer: styleBuffer } },
+    { binding: 2, resource: { buffer: paramsAtlasBuffer } },
   ] });
 
   let sourceCount = 0;
@@ -730,9 +809,10 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   let disposed = false;
   let paused = false;
   let suspended = false;
-  let textures: any[] = [];
-  let lineTextures: any[] = [];
-  let pondTexture: any = null;
+  let atlasTextures: any[] = [];
+  let atlasLineTextures: any[] = [];
+  let liveTexture: any = null;
+  let liveLineTexture: any = null;
   let fadeBinds: any[] = [];
   let lineFadeBinds: any[] = [];
   let displayBinds: any[] = [];
@@ -740,8 +820,6 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   let width = 0;
   let height = 0;
   let view: ViewTransform = { centerX: POND_CENTER.x, centerY: POND_CENTER.y, halfY: VIEW_HALF_Y };
-  let previousView: ViewTransform = { ...view };
-  let cameraPausedUntil = 0;
   let maxDepth = DEFAULT_TUNING.maxDepth;
   let accelerationCurve = DEFAULT_TUNING.acceleration;
   let linePersist = DEFAULT_TUNING.linePersist;
@@ -749,56 +827,92 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   let rotateRight = DEFAULT_TUNING.rotateRight;
   let lastDrawTime = 0;
 
-  const makeTexture = (format: string, usages: number) => device.createTexture({ size: [width, height], format, usage: usages });
+  const makeAtlas = (format: string) => device.createTexture({
+    size: [TRAIL_ATLAS_SIZE, TRAIL_ATLAS_SIZE],
+    format,
+    usage: textureUsage.RENDER_ATTACHMENT | textureUsage.TEXTURE_BINDING,
+  });
+  const makeScreen = (format: string) => device.createTexture({
+    size: [width, height],
+    format,
+    usage: textureUsage.RENDER_ATTACHMENT | textureUsage.TEXTURE_BINDING,
+  });
+
+  function clearTextures(encoder: any, list: any[]) {
+    for (const texture of list) {
+      const pass = encoder.beginRenderPass({ colorAttachments: [{ view: texture.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
+      pass.end();
+    }
+  }
+
+  function writeParams(buffer: any, atlasMode: number) {
+    const bytes = new ArrayBuffer(80);
+    const ints = new Uint32Array(bytes);
+    const floats = new Float32Array(bytes);
+    ints[0] = sourceCount;
+    ints[1] = Math.max(1, Math.floor(POINT_BUDGET / Math.max(sourceCount, 1)));
+    ints[2] = maxDepth;
+    ints[3] = Math.max(1, Math.floor(LINE_SEGMENT_BUDGET / Math.max(sourceCount, 1)));
+    floats[4] = view.centerX;
+    floats[5] = view.centerY;
+    floats[6] = view.halfY * width / Math.max(height, 1);
+    floats[7] = view.halfY;
+    floats[8] = width;
+    floats[9] = height;
+    floats[10] = rotateRight ? 1 : 0;
+    floats[11] = accelerationCurve;
+    floats[12] = atlasMode;
+    floats[16] = TRAIL_BOUNDS.xMin;
+    floats[17] = TRAIL_BOUNDS.xMax;
+    floats[18] = TRAIL_BOUNDS.yMin;
+    floats[19] = TRAIL_BOUNDS.yMax;
+    device.queue.writeBuffer(buffer, 0, bytes);
+  }
 
   function resize() {
     const rect = canvas.getBoundingClientRect();
-    const pixelRatio = 1;
-    const nextWidth = Math.max(1, Math.round(rect.width * pixelRatio));
-    const nextHeight = Math.max(1, Math.round(rect.height * pixelRatio));
-    if (nextWidth === width && nextHeight === height) return;
+    const nextWidth = Math.max(1, Math.round(rect.width));
+    const nextHeight = Math.max(1, Math.round(rect.height));
+    const first = !atlasTextures.length;
+    if (!first && nextWidth === width && nextHeight === height) return;
     width = nextWidth;
     height = nextHeight;
     canvas.width = width;
     canvas.height = height;
-    textures.forEach((texture) => texture.destroy());
-    lineTextures.forEach((texture) => texture.destroy());
-    pondTexture?.destroy();
-    textures = [0, 1].map(() => makeTexture("rgba16float", textureUsage.RENDER_ATTACHMENT | textureUsage.TEXTURE_BINDING));
-    lineTextures = [0, 1].map(() => makeTexture("rgba8unorm", textureUsage.RENDER_ATTACHMENT | textureUsage.TEXTURE_BINDING));
-    pondTexture = makeTexture("rgba8unorm", textureUsage.RENDER_ATTACHMENT | textureUsage.TEXTURE_BINDING);
-    fadeBinds = textures.map((texture) => device.createBindGroup({ layout: fadePipeline.getBindGroupLayout(0), entries: [
+    liveTexture?.destroy();
+    liveLineTexture?.destroy();
+    liveTexture = makeScreen("rgba16float");
+    liveLineTexture = makeScreen("rgba8unorm");
+    if (first) {
+      atlasTextures = [0, 1].map(() => makeAtlas("rgba16float"));
+      atlasLineTextures = [0, 1].map(() => makeAtlas("rgba8unorm"));
+      fadeBinds = atlasTextures.map((texture) => device.createBindGroup({ layout: fadePipeline.getBindGroupLayout(0), entries: [
+        { binding: 0, resource: texture.createView() },
+        { binding: 1, resource: sampler },
+        { binding: 2, resource: { buffer: fadeBuffer } },
+      ] }));
+      lineFadeBinds = atlasLineTextures.map((texture) => device.createBindGroup({ layout: lineFadePipeline.getBindGroupLayout(0), entries: [
+        { binding: 0, resource: texture.createView() },
+        { binding: 1, resource: sampler },
+        { binding: 2, resource: { buffer: lineFadeBuffer } },
+      ] }));
+    }
+    displayBinds = atlasTextures.map((texture, index) => device.createBindGroup({ layout: displayPipeline.getBindGroupLayout(0), entries: [
       { binding: 0, resource: texture.createView() },
-      { binding: 1, resource: sampler },
-      { binding: 2, resource: { buffer: fadeBuffer } },
-    ] }));
-    lineFadeBinds = lineTextures.map((texture) => device.createBindGroup({ layout: lineFadePipeline.getBindGroupLayout(0), entries: [
-      { binding: 0, resource: texture.createView() },
-      { binding: 1, resource: sampler },
-      { binding: 2, resource: { buffer: lineFadeBuffer } },
-    ] }));
-    displayBinds = textures.map((texture, index) => device.createBindGroup({ layout: displayPipeline.getBindGroupLayout(0), entries: [
-      { binding: 0, resource: pondTexture.createView() },
-      { binding: 1, resource: texture.createView() },
-      { binding: 2, resource: lineTextures[index].createView() },
-      { binding: 3, resource: sampler },
+      { binding: 1, resource: atlasLineTextures[index].createView() },
+      { binding: 2, resource: liveTexture.createView() },
+      { binding: 3, resource: liveLineTexture.createView() },
+      { binding: 4, resource: sampler },
+      { binding: 5, resource: { buffer: displayViewBuffer } },
     ] }));
     const encoder = device.createCommandEncoder({ label: "orbit-resize" });
-    const pondPass = encoder.beginRenderPass({ colorAttachments: [{ view: pondTexture.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } }] });
-    pondPass.setPipeline(pondPipeline);
-    pondPass.draw(3);
-    pondPass.end();
-    for (const texture of textures) {
-      const pass = encoder.beginRenderPass({ colorAttachments: [{ view: texture.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
-      pass.end();
+    if (first) {
+      clearTextures(encoder, atlasTextures);
+      clearTextures(encoder, atlasLineTextures);
     }
-    for (const texture of lineTextures) {
-      const pass = encoder.beginRenderPass({ colorAttachments: [{ view: texture.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
-      pass.end();
-    }
+    clearTextures(encoder, [liveTexture, liveLineTexture]);
     device.queue.submit([encoder.finish()]);
-    textureIndex = 0;
-    previousView = { ...view };
+    if (first) textureIndex = 0;
   }
 
   const observer = new ResizeObserver(resize);
@@ -812,40 +926,33 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
 
   function draw() {
     frame = 0;
-    if (disposed || gpu.hasFailed() || !textures.length || suspended) return;
+    if (disposed || gpu.hasFailed() || !atlasTextures.length || suspended) return;
     const now = performance.now();
     const dt = lastDrawTime ? (now - lastDrawTime) / 1000 : 1 / 60;
     lastDrawTime = now;
     const lineRetention = lineFadeRetention(dt, linePersist);
-    const batch = Math.max(1, Math.floor(POINT_BUDGET / Math.max(sourceCount, 1)));
-    const ints = new Uint32Array(12);
-    ints[0] = sourceCount;
-    ints[1] = batch;
-    ints[2] = maxDepth;
-    ints[3] = Math.max(1, Math.floor(LINE_SEGMENT_BUDGET / Math.max(sourceCount, 1)));
-    const floats = new Float32Array(ints.buffer);
-    floats[4] = view.centerX;
-    floats[5] = view.centerY;
-    floats[6] = view.halfY * width / height;
-    floats[7] = view.halfY;
-    floats[8] = width;
-    floats[9] = height;
-    floats[10] = rotateRight ? 1 : 0;
-    floats[11] = accelerationCurve;
-    device.queue.writeBuffer(paramsBuffer, 0, ints);
+    writeParams(paramsBuffer, 0);
+    writeParams(paramsAtlasBuffer, 1);
     device.queue.writeBuffer(styleBuffer, 0, new Float32Array([POINT_ENERGY, 0, skipColors ? 1 : 0, 0]));
     device.queue.writeBuffer(indirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
     device.queue.writeBuffer(lineIndirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
-    const oldHalfX = previousView.halfY * width / height;
-    const viewScale = view.halfY / previousView.halfY;
-    const uvOffset = trailUvOffset(previousView, view, width, height, rotateRight);
-    device.queue.writeBuffer(fadeBuffer, 0, new Float32Array([1, 0, 0, 0, viewScale, viewScale, uvOffset.x, uvOffset.y]));
-    device.queue.writeBuffer(lineFadeBuffer, 0, new Float32Array([lineRetention, 0, 0, 0, viewScale, viewScale, uvOffset.x, uvOffset.y]));
-    const destination = textures[1 - textureIndex];
-    const lineDestination = lineTextures[1 - textureIndex];
+    device.queue.writeBuffer(fadeBuffer, 0, new Float32Array([1, 0, 0, 0]));
+    device.queue.writeBuffer(lineFadeBuffer, 0, new Float32Array([lineRetention, 0, 0, 0]));
+    const displayView = new Float32Array(12);
+    displayView[0] = view.centerX;
+    displayView[1] = view.centerY;
+    displayView[2] = view.halfY * width / Math.max(height, 1);
+    displayView[3] = view.halfY;
+    displayView[4] = rotateRight ? 1 : 0;
+    displayView[8] = TRAIL_BOUNDS.xMin;
+    displayView[9] = TRAIL_BOUNDS.xMax;
+    displayView[10] = TRAIL_BOUNDS.yMin;
+    displayView[11] = TRAIL_BOUNDS.yMax;
+    device.queue.writeBuffer(displayViewBuffer, 0, displayView);
+    const destination = atlasTextures[1 - textureIndex];
+    const lineDestination = atlasLineTextures[1 - textureIndex];
     const encoder = device.createCommandEncoder({ label: "orbit-draw" });
-    const cameraSettling = performance.now() < cameraPausedUntil;
-    if (sourceCount > 0 && !paused && !cameraSettling) {
+    if (sourceCount > 0 && !paused) {
       const compute = encoder.beginComputePass();
       compute.setPipeline(computePipeline);
       compute.setBindGroup(0, computeBind);
@@ -862,18 +969,33 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     lineFade.setBindGroup(0, lineFadeBinds[textureIndex]);
     lineFade.draw(3);
     lineFade.end();
-    if (sourceCount > 0 && !paused && !cameraSettling) {
-      const orbit = encoder.beginRenderPass({ colorAttachments: [{ view: destination.createView(), loadOp: "load", storeOp: "store" }] });
-      orbit.setPipeline(pointPipeline);
-      orbit.setBindGroup(0, pointBind);
-      orbit.setVertexBuffer(0, vertexBuffer);
-      orbit.drawIndirect(indirectBuffer, 0);
-      orbit.end();
-      const lines = encoder.beginRenderPass({ colorAttachments: [{ view: lineDestination.createView(), loadOp: "load", storeOp: "store" }] });
-      lines.setPipeline(linePipeline);
-      lines.setBindGroup(0, lineBind);
-      lines.drawIndirect(lineIndirectBuffer, 0);
-      lines.end();
+    const live = encoder.beginRenderPass({ colorAttachments: [{ view: liveTexture.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
+    live.end();
+    const liveLinesClear = encoder.beginRenderPass({ colorAttachments: [{ view: liveLineTexture.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
+    liveLinesClear.end();
+    if (sourceCount > 0 && !paused) {
+      const atlasPoints = encoder.beginRenderPass({ colorAttachments: [{ view: destination.createView(), loadOp: "load", storeOp: "store" }] });
+      atlasPoints.setPipeline(pointPipeline);
+      atlasPoints.setBindGroup(0, pointAtlasBind);
+      atlasPoints.setVertexBuffer(0, vertexBuffer);
+      atlasPoints.drawIndirect(indirectBuffer, 0);
+      atlasPoints.end();
+      const atlasLines = encoder.beginRenderPass({ colorAttachments: [{ view: lineDestination.createView(), loadOp: "load", storeOp: "store" }] });
+      atlasLines.setPipeline(linePipeline);
+      atlasLines.setBindGroup(0, lineAtlasBind);
+      atlasLines.drawIndirect(lineIndirectBuffer, 0);
+      atlasLines.end();
+      const livePoints = encoder.beginRenderPass({ colorAttachments: [{ view: liveTexture.createView(), loadOp: "load", storeOp: "store" }] });
+      livePoints.setPipeline(pointPipeline);
+      livePoints.setBindGroup(0, pointBind);
+      livePoints.setVertexBuffer(0, vertexBuffer);
+      livePoints.drawIndirect(indirectBuffer, 0);
+      livePoints.end();
+      const liveLines = encoder.beginRenderPass({ colorAttachments: [{ view: liveLineTexture.createView(), loadOp: "load", storeOp: "store" }] });
+      liveLines.setPipeline(linePipeline);
+      liveLines.setBindGroup(0, lineBind);
+      liveLines.drawIndirect(lineIndirectBuffer, 0);
+      liveLines.end();
     }
     const display = encoder.beginRenderPass({ colorAttachments: [{ view: context.getCurrentTexture().createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } }] });
     display.setPipeline(displayPipeline);
@@ -882,7 +1004,6 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     display.end();
     device.queue.submit([encoder.finish()]);
     textureIndex = 1 - textureIndex;
-    previousView = { ...view };
     scheduleDraw();
   }
   scheduleDraw();
@@ -906,40 +1027,24 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     },
     setView(nextView) {
       view = { ...nextView };
-      cameraPausedUntil = performance.now() + 100;
     },
     setTuning(tuning) {
       maxDepth = tuning.maxDepth;
       accelerationCurve = tuning.acceleration;
       linePersist = tuning.linePersist;
       skipColors = tuning.skipColors === true;
-      const nextRotate = tuning.rotateRight === true;
-      if (nextRotate !== rotateRight && textures.length) {
-        const encoder = device.createCommandEncoder({ label: "orbit-rotate-clear" });
-        for (const texture of [...textures, ...lineTextures]) {
-          const pass = encoder.beginRenderPass({ colorAttachments: [{ view: texture.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
-          pass.end();
-        }
-        device.queue.submit([encoder.finish()]);
-        cameraPausedUntil = performance.now() + 80;
-      }
-      rotateRight = nextRotate;
+      rotateRight = tuning.rotateRight === true;
     },
     clear() {
       paused = false;
       sourceCount = 0;
       nextSource = 0;
       device.queue.writeBuffer(stateBuffer, 0, new Uint8Array(MAX_SOURCES * 48));
-      if (!textures.length) return;
+      if (!atlasTextures.length) return;
       const encoder = device.createCommandEncoder({ label: "orbit-clear" });
-      for (const texture of textures) {
-        const pass = encoder.beginRenderPass({ colorAttachments: [{ view: texture.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
-        pass.end();
-      }
-      for (const texture of lineTextures) {
-        const pass = encoder.beginRenderPass({ colorAttachments: [{ view: texture.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
-        pass.end();
-      }
+      clearTextures(encoder, atlasTextures);
+      clearTextures(encoder, atlasLineTextures);
+      clearTextures(encoder, [liveTexture, liveLineTexture].filter(Boolean));
       device.queue.submit([encoder.finish()]);
     },
     freeze() {
@@ -953,18 +1058,21 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       disposed = true;
       cancelAnimationFrame(frame);
       observer.disconnect();
-      textures.forEach((texture) => texture.destroy());
-      lineTextures.forEach((texture) => texture.destroy());
-      pondTexture?.destroy();
+      atlasTextures.forEach((texture) => texture.destroy());
+      atlasLineTextures.forEach((texture) => texture.destroy());
+      liveTexture?.destroy();
+      liveLineTexture?.destroy();
       vertexBuffer.destroy();
       lineSegmentBuffer.destroy();
       stateBuffer.destroy();
       indirectBuffer.destroy();
       lineIndirectBuffer.destroy();
       paramsBuffer.destroy();
+      paramsAtlasBuffer.destroy();
       styleBuffer.destroy();
       fadeBuffer.destroy();
       lineFadeBuffer.destroy();
+      displayViewBuffer.destroy();
     },
   };
 }
@@ -1236,7 +1344,6 @@ export default function MandelbrotSkipping() {
     let shapeOffset = 0;
     let resolveStarted = 0;
     let lastHud = 0;
-    let viewChangingUntil = 0;
     let rock = { x: 0, y: 0, vx: 0, vy: 0, z: 0, vz: 0, spin: 0, skips: 0, bounceAge: 10 };
     let plannedSkips = MIN_SKIPS;
     let impacts: Array<{ cr: number; ci: number; born: number; index: number }> = [];
@@ -1293,6 +1400,7 @@ export default function MandelbrotSkipping() {
 
     function anchor() { return { x: width * 0.5, y: height * 0.82 }; }
     function minDimension() { return Math.min(width, height); }
+    function pondScale() { return zoomPixelScale(minDimension(), viewRef.current.halfY); }
 
     function resize() {
       const rect = canvas.getBoundingClientRect();
@@ -1739,15 +1847,15 @@ export default function MandelbrotSkipping() {
       const dx = Math.cos(angle);
       const dy = Math.sin(angle);
       const power = rawPower * rawPower * (3 - 2 * rawPower);
-      const speed = minDimension() * (0.32 + 0.56 * power);
-      const launchPull = minDimension() * SLING_THROW_PULL_RATIO * rawPower;
+      const speed = pondScale() * (0.32 + 0.56 * power);
+      const launchPull = pondScale() * SLING_THROW_PULL_RATIO * rawPower;
       const maxPull = minDimension() * SLING_DRAW_PULL_RATIO;
       pull = { x: a.x - dx * maxPull * rawPower, y: a.y - dy * maxPull * rawPower };
       rock.x = a.x - dx * launchPull;
       rock.y = a.y - dy * launchPull;
       rock.vx = dx * speed;
       rock.vy = dy * speed;
-      rock.vz = minDimension() * (0.38 + 0.20 * power);
+      rock.vz = pondScale() * (0.38 + 0.20 * power);
       rock.z = 1;
       rock.spin = 0;
       rock.skips = 0;
@@ -1876,11 +1984,6 @@ export default function MandelbrotSkipping() {
         else updateHud();
         return;
       }
-      if (now < viewChangingUntil) {
-        easeShownDepths();
-        updateHud();
-        return;
-      }
       const maxPerOrbit = Math.max(1, Math.floor(POINT_BUDGET / Math.max(orbitScores.length, 1)));
       const view = viewRef.current;
       const rotateRight = tuningRef.current.rotateRight;
@@ -1910,10 +2013,12 @@ export default function MandelbrotSkipping() {
           const clip = complexToClip(nextR, nextI, view, width, height, rotateRight);
           const hopPx = Math.hypot((clip.x - previousClip.x) * width * .5, (clip.y - previousClip.y) * height * .5);
           const onScreen = Math.abs(clip.x) <= 1.02 && Math.abs(clip.y) <= 1.02;
+          const inAtlas = nextR >= TRAIL_BOUNDS.xMin && nextR <= TRAIL_BOUNDS.xMax
+            && nextI >= TRAIL_BOUNDS.yMin && nextI <= TRAIL_BOUNDS.yMax;
           const end = updateOrbitEnd({
             magSq: nextR * nextR + nextI * nextI,
             hopPx,
-            onScreen,
+            onScreen: onScreen || inAtlas,
             offscreenStreak: orbit.offscreenStreak,
             tinyHopStreak: orbit.tinyHopStreak,
             maxHopPx,
@@ -1940,7 +2045,7 @@ export default function MandelbrotSkipping() {
 
     function simulate(dt: number, now: number) {
       if (phase !== "flying") return;
-      const gravity = minDimension() * 1.65;
+      const gravity = pondScale() * 1.65;
       rock.x += rock.vx * dt;
       rock.y += rock.vy * dt;
       rock.z += rock.vz * dt;
@@ -1960,7 +2065,7 @@ export default function MandelbrotSkipping() {
         rock.bounceAge = 0;
         spawnImpact(rock.x, rock.y, now);
         const remaining = plannedSkips - rock.skips;
-        rock.vz = Math.max(Math.abs(rock.vz) * 0.56, minDimension() * (0.05 + remaining * 0.008));
+        rock.vz = Math.max(Math.abs(rock.vz) * 0.56, pondScale() * (0.05 + remaining * 0.008));
         rock.vx *= 0.79;
         rock.vy *= 0.79;
         const jitter = (makeRandom((shotId << 8) ^ rock.skips)() - 0.5) * Math.PI / 60;
@@ -1971,7 +2076,7 @@ export default function MandelbrotSkipping() {
         rock.vx = vx;
         if (remaining > 0) {
           const speed = Math.hypot(rock.vx, rock.vy);
-          const minSpeed = minDimension() * 0.09;
+          const minSpeed = pondScale() * 0.09;
           if (speed > 0 && speed < minSpeed) {
             rock.vx *= minSpeed / speed;
             rock.vy *= minSpeed / speed;
@@ -1993,13 +2098,13 @@ export default function MandelbrotSkipping() {
       const maxPull = minDimension() * SLING_DRAW_PULL_RATIO;
       const rawPower = Math.min(1, length / maxPull);
       const power = rawPower * rawPower * (3 - 2 * rawPower);
-      const speed = minDimension() * (0.32 + 0.56 * power);
+      const speed = pondScale() * (0.32 + 0.56 * power);
       const vx = dx / length * speed;
       const vy = dy / length * speed;
-      const vz = minDimension() * (0.38 + 0.20 * power);
-      const gravity = minDimension() * 1.65;
+      const vz = pondScale() * (0.38 + 0.20 * power);
+      const gravity = pondScale() * 1.65;
       const airtime = 2 * vz / gravity;
-      const launchPull = minDimension() * SLING_THROW_PULL_RATIO * rawPower;
+      const launchPull = pondScale() * SLING_THROW_PULL_RATIO * rawPower;
       const launch = { x: a.x - dx / length * launchPull, y: a.y - dy / length * launchPull };
       const landing = { x: launch.x + vx * airtime, y: launch.y + vy * airtime };
       const curveLift = minDimension() * (.025 + power * .045);
@@ -2032,16 +2137,16 @@ export default function MandelbrotSkipping() {
       const maxPull = minDimension() * SLING_DRAW_PULL_RATIO;
       const rawPower = Math.min(1, length / maxPull);
       const power = rawPower * rawPower * (3 - 2 * rawPower);
-      const speed = minDimension() * (0.32 + 0.56 * power);
-      const launchPull = minDimension() * SLING_THROW_PULL_RATIO * rawPower;
+      const speed = pondScale() * (0.32 + 0.56 * power);
+      const launchPull = pondScale() * SLING_THROW_PULL_RATIO * rawPower;
       let x = a.x - dx / length * launchPull;
       let y = a.y - dy / length * launchPull;
       let vx = dx / length * speed;
       let vy = dy / length * speed;
-      let vz = minDimension() * (0.38 + 0.20 * power);
+      let vz = pondScale() * (0.38 + 0.20 * power);
       let z = 1;
       let skips = 0;
-      const gravity = minDimension() * 1.65;
+      const gravity = pondScale() * 1.65;
       const dt = 1 / 120;
       const landings: Array<{ x: number; y: number; index: number; glyph: number }> = [];
       for (let step = 0; step < 120 * 20 && skips < plannedSkips; step++) {
@@ -2058,12 +2163,12 @@ export default function MandelbrotSkipping() {
         skips += 1;
         landings.push({ x, y, index: skips, glyph: (shapeOffset + skips - 1) % GLYPH_COUNT });
         const remaining = plannedSkips - skips;
-        vz = Math.max(Math.abs(vz) * 0.56, minDimension() * (0.05 + remaining * 0.008));
+        vz = Math.max(Math.abs(vz) * 0.56, pondScale() * (0.05 + remaining * 0.008));
         vx *= 0.79;
         vy *= 0.79;
         if (remaining > 0) {
           const speed = Math.hypot(vx, vy);
-          const minSpeed = minDimension() * 0.09;
+          const minSpeed = pondScale() * 0.09;
           if (speed > 0 && speed < minSpeed) {
             vx *= minSpeed / speed;
             vy *= minSpeed / speed;
@@ -2327,7 +2432,7 @@ export default function MandelbrotSkipping() {
       const radius = 10;
       const nextShape = (shapeOffset + rock.skips) % GLYPH_COUNT;
       const shapePaths = SACRED_PATH_COUNTS[nextShape];
-      const heightT = Math.min(1, rock.z / Math.max(minDimension() * .45, 1));
+      const heightT = Math.min(1, rock.z / Math.max(pondScale() * .45, 1));
       const drawX = Math.round(rock.x * dpr) / dpr;
       const drawY = Math.round((rock.y - lift) * dpr) / dpr;
       const bounce = reduceMotion ? 0 : Math.exp(-rock.bounceAge * 8.5) * Math.cos(rock.bounceAge * 29);
@@ -2430,8 +2535,8 @@ export default function MandelbrotSkipping() {
 
     function drawMappedBuddhabrot(target: CanvasRenderingContext2D) {
       const rotateRight = tuningRef.current.rotateRight;
-      const topLeft = complexToScreen(BUDDHABROT_BOUNDS.xMin, BUDDHABROT_BOUNDS.yMax, width, height, viewRef.current, false);
-      const bottomRight = complexToScreen(BUDDHABROT_BOUNDS.xMax, BUDDHABROT_BOUNDS.yMin, width, height, viewRef.current, false);
+      const topLeft = complexToScreen(TRAIL_BOUNDS.xMin, TRAIL_BOUNDS.yMax, width, height, viewRef.current, false);
+      const bottomRight = complexToScreen(TRAIL_BOUNDS.xMax, TRAIL_BOUNDS.yMin, width, height, viewRef.current, false);
       const source = buddhabrotSourceRef.current;
       if (!source) return;
       target.save();
@@ -2535,8 +2640,27 @@ export default function MandelbrotSkipping() {
     }
 
     function applyView(nextView: ViewTransform) {
+      const previous = viewRef.current;
+      const rotateRight = tuningRef.current.rotateRight;
+      if (phase === "flying" || phase === "aiming") {
+        const nextRock = reprojectScreenPoint(rock.x, rock.y, width, height, previous, nextView, rotateRight);
+        if (phase === "flying") {
+          const velocity = reprojectScreenVelocity(
+            rock.x, rock.y, rock.vx, rock.vy, width, height, previous, nextView, rotateRight,
+          );
+          rock.vx = velocity.x;
+          rock.vy = velocity.y;
+          const heightScale = previous.halfY / Math.max(nextView.halfY, 1e-6);
+          rock.z *= heightScale;
+          rock.vz *= heightScale;
+        }
+        rock.x = nextRock.x;
+        rock.y = nextRock.y;
+        if (phase === "aiming") {
+          pull = reprojectScreenPoint(pull.x, pull.y, width, height, previous, nextView, rotateRight);
+        }
+      }
       viewRef.current = nextView;
-      viewChangingUntil = performance.now() + 100;
       gridDirty = true;
       flashlightDirty = true;
       engineRef.current?.setView(nextView);
