@@ -47,3 +47,16 @@ test("flashlight and opening use live orbit throws instead of a pre-filmed Buddh
   assert.doesNotMatch(source, /drawMappedBuddhabrot/);
   assert.doesNotMatch(source, /buddhabrot-density/);
 });
+
+test("opening and flashlight hide orbit lines, go grayscale, and throw overlapping intro rocks", () => {
+  const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
+  assert.match(source, /setAtmosphere/);
+  assert.match(source, /INTRO_ATMOSPHERE/);
+  assert.match(source, /FLASHLIGHT_ATMOSPHERE/);
+  assert.match(source, /introRocks/);
+  assert.match(source, /INTRO_THROW_STAGGER_MS/);
+  assert.match(source, /INTRO_THROWS_PER_WAVE/);
+  assert.doesNotMatch(source, /if \(phase === "flying" \|\| phase === "resolving" \|\| phase === "aiming"\) return;/);
+  assert.match(source, /mix\(tinted, gray, style\.pulse\)/);
+  assert.match(source, /let lineGain = display.pad;/);
+});

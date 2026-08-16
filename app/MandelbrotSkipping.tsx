@@ -16,16 +16,23 @@ import {
 import { MAX_SKIPS, MIN_SKIPS, sampleSkipCount } from "@/lib/skip-count";
 import { allocateSources } from "@/lib/orbit-sources";
 import {
+  FLASHLIGHT_ATMOSPHERE,
   FLASHLIGHT_HALF_ANGLE,
   FLASHLIGHT_MAX_DEPTH,
   FLASHLIGHT_PLANNED_SKIPS,
   FLASHLIGHT_SOURCE_CAP,
   FLASHLIGHT_SOURCE_DOTS,
   FLASHLIGHT_SPAWN_MS,
+  INTRO_ATMOSPHERE,
   INTRO_MAX_DEPTH,
+  INTRO_SOURCE_DOTS,
   INTRO_THROW_COUNT,
+  INTRO_THROW_STAGGER_MS,
+  INTRO_THROWS_PER_WAVE,
+  PLAY_ATMOSPHERE,
   flashlightSkipLandings,
   sampleRayInCone,
+  type OrbitAtmosphere,
 } from "@/lib/flashlight-probe";
 import {
   acceleratedSteps,
@@ -119,10 +126,26 @@ type OrbitEngine = {
   spawn: (points: Array<{ x: number; y: number }>, skipIndex: number, cap?: number) => void;
   setView: (view: ViewTransform) => void;
   setTuning: (tuning: Tuning) => void;
+  setAtmosphere: (atmosphere: OrbitAtmosphere) => void;
   clear: () => void;
   freeze: () => void;
   setSuspended: (suspended: boolean) => void;
   destroy: () => void;
+};
+
+type FlyingRock = {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  z: number;
+  vz: number;
+  spin: number;
+  skips: number;
+  bounceAge: number;
+  plannedSkips: number;
+  shotId: number;
+  shapeOffset: number;
 };
 
 const GLYPH_COUNT = 7;
@@ -164,7 +187,6 @@ const SOURCE_RADIUS_PX = 10;
 const SLING_DRAW_PULL_RATIO = 0.30;
 const SLING_THROW_PULL_RATIO = 0.16;
 const POINT_BUDGET = 200_000;
-const POINT_ENERGY = 0.18;
 const HIDDEN_INITIAL_STEPS = 0;
 const CURVE_SEGMENTS = 6;
 const LINE_SEGMENT_BUDGET = 25_000;
@@ -365,7 +387,9 @@ fn projectPoint(z: vec2f) -> vec2f {
   out.position = vec4f(projectPoint(position), 0.0, 1.0);
   let t = clamp(depth, 0.0, 1.0);
   let depthColor = mix(vec3f(0.10, 0.78, 0.92), vec3f(0.92, 1.0, 0.82), t);
-  out.color = mix(depthColor, skipTint(skip), style.colorMode);
+  let tinted = mix(depthColor, skipTint(skip), style.colorMode);
+  let gray = vec3f(mix(0.22, 1.0, t));
+  out.color = mix(tinted, gray, style.pulse);
   return out;
 }
 @fragment fn fs(in: VSOut) -> @location(0) vec4f {
@@ -506,11 +530,12 @@ struct DisplayView {
   let raw = select(vec3f(0.0), textureSample(atlasTexture, displaySampler, atlasUv).rgb, inside) * 3.6;
   let mapped = raw / (vec3f(1.0) + raw);
   let glow = pow(clamp(mapped, vec3f(0.0), vec3f(1.0)), vec3f(0.72));
-  let atlasLines = select(vec3f(0.0), textureSample(atlasLineTexture, displaySampler, atlasUv).rgb, inside) * 1.35;
+  let lineGain = display.pad;
+  let atlasLines = select(vec3f(0.0), textureSample(atlasLineTexture, displaySampler, atlasUv).rgb, inside) * 1.35 * lineGain;
   let liveGlow = textureSample(liveTexture, displaySampler, in.uv).rgb * 3.6;
   let liveMapped = liveGlow / (vec3f(1.0) + liveGlow);
   let live = pow(clamp(liveMapped, vec3f(0.0), vec3f(1.0)), vec3f(0.72));
-  let liveLines = textureSample(liveLineTexture, displaySampler, in.uv).rgb * 1.35;
+  let liveLines = textureSample(liveLineTexture, displaySampler, in.uv).rgb * 1.35 * lineGain;
   return vec4f(glow + atlasLines + live + liveLines, 1.0);
 }
 `;
@@ -832,6 +857,9 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   let linePersist = DEFAULT_TUNING.linePersist;
   let skipColors = DEFAULT_TUNING.skipColors;
   let rotateRight = DEFAULT_TUNING.rotateRight;
+  let drawLines = PLAY_ATMOSPHERE.drawLines;
+  let grayscale = PLAY_ATMOSPHERE.grayscale;
+  let pointEnergy = PLAY_ATMOSPHERE.energy;
   let lastDrawTime = 0;
 
   const makeAtlas = (format: string) => device.createTexture({
@@ -859,7 +887,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     ints[0] = sourceCount;
     ints[1] = Math.max(1, Math.floor(POINT_BUDGET / Math.max(sourceCount, 1)));
     ints[2] = maxDepth;
-    ints[3] = Math.max(1, Math.floor(LINE_SEGMENT_BUDGET / Math.max(sourceCount, 1)));
+    ints[3] = drawLines ? Math.max(1, Math.floor(LINE_SEGMENT_BUDGET / Math.max(sourceCount, 1))) : 0;
     floats[4] = view.centerX;
     floats[5] = view.centerY;
     floats[6] = view.halfY * width / Math.max(height, 1);
@@ -940,7 +968,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     const lineRetention = lineFadeRetention(dt, linePersist);
     writeParams(paramsBuffer, 0);
     writeParams(paramsAtlasBuffer, 1);
-    device.queue.writeBuffer(styleBuffer, 0, new Float32Array([POINT_ENERGY, 0, skipColors ? 1 : 0, 0]));
+    device.queue.writeBuffer(styleBuffer, 0, new Float32Array([pointEnergy, grayscale ? 1 : 0, skipColors ? 1 : 0, 0]));
     device.queue.writeBuffer(indirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
     device.queue.writeBuffer(lineIndirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
     device.queue.writeBuffer(fadeBuffer, 0, new Float32Array([1, 0, 0, 0]));
@@ -951,6 +979,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     displayView[2] = view.halfY * width / Math.max(height, 1);
     displayView[3] = view.halfY;
     displayView[4] = rotateRight ? 1 : 0;
+    displayView[5] = drawLines ? 1 : 0;
     displayView[8] = TRAIL_BOUNDS.xMin;
     displayView[9] = TRAIL_BOUNDS.xMax;
     displayView[10] = TRAIL_BOUNDS.yMin;
@@ -1041,6 +1070,11 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       linePersist = tuning.linePersist;
       skipColors = tuning.skipColors === true;
       rotateRight = tuning.rotateRight === true;
+    },
+    setAtmosphere(atmosphere) {
+      drawLines = atmosphere.drawLines;
+      grayscale = atmosphere.grayscale;
+      pointEnergy = atmosphere.energy;
     },
     clear() {
       paused = false;
@@ -1156,6 +1190,10 @@ export default function MandelbrotSkipping() {
       engineRef.current = engine;
       engine?.setView(viewRef.current);
       engine?.setTuning(tuningRef.current);
+      if (introActiveRef.current) {
+        engine?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
+        engine?.setAtmosphere(INTRO_ATMOSPHERE);
+      }
     }).catch(() => setGpuError("Orbit renderer could not start. Throwing remains playable."));
     return () => {
       cancelled = true;
@@ -1181,6 +1219,7 @@ export default function MandelbrotSkipping() {
     introActiveRef.current = false;
     spectatorRef.current = false;
     introThrowsRef.current = 0;
+    engineRef.current?.setAtmosphere(PLAY_ATMOSPHERE);
     engineRef.current?.setTuning(tuningRef.current);
     restartRef.current();
     setIntroFading(true);
@@ -1197,6 +1236,7 @@ export default function MandelbrotSkipping() {
     spectatorRef.current = true;
     introThrowsRef.current = 0;
     engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
+    engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
     restartRef.current();
     setIntroFading(false);
     setIntro({ progress: 0 });
@@ -1319,6 +1359,8 @@ export default function MandelbrotSkipping() {
     const previewContext = previewCanvas.getContext("2d");
     let flashlightDirty = true;
     let lastFlashlightSpawn = 0;
+    let introRocks: FlyingRock[] = [];
+    let lastIntroLaunch = 0;
     let previewKey = "";
 
     invalidateFlashlightRef.current = () => { flashlightDirty = true; };
@@ -1748,6 +1790,8 @@ export default function MandelbrotSkipping() {
       impacts = [];
       ripples = [];
       orbitScores = [];
+      introRocks = [];
+      lastIntroLaunch = 0;
       shapeOffset = Math.floor(Math.random() * GLYPH_COUNT);
       lastShapeCoverage.clear();
       lastAudibleDepth = 0;
@@ -1768,6 +1812,7 @@ export default function MandelbrotSkipping() {
       if (!introActiveRef.current) {
         engineRef.current?.clear();
         engineRef.current?.setTuning(tuningRef.current);
+        engineRef.current?.setAtmosphere(PLAY_ATMOSPHERE);
       }
       const a = anchor();
       const dx = Math.cos(angle);
@@ -1819,13 +1864,13 @@ export default function MandelbrotSkipping() {
     }
     playThrowRef.current = playSharedThrow;
 
-    function spawnImpact(x: number, y: number, now: number) {
-      const index = rock.skips;
+    function spawnImpact(x: number, y: number, index: number, glyphOffset: number, now: number) {
       const mapped = screenToComplex(x, y, width, height, viewRef.current, tuningRef.current.rotateRight);
       const source = { x: Math.fround(mapped.x), y: Math.fround(mapped.y) };
-      const glyph = (shapeOffset + index - 1) % GLYPH_COUNT;
+      const glyph = (glyphOffset + index - 1) % GLYPH_COUNT;
+      const dots = introActiveRef.current ? INTRO_SOURCE_DOTS : tuningRef.current.sourceDots;
       const sources = impactSources(
-        x, y, width, height, viewRef.current, tuningRef.current.sourceDots, glyph, tuningRef.current.rotateRight,
+        x, y, width, height, viewRef.current, dots, glyph, tuningRef.current.rotateRight,
       );
       ripples.push({ cr: source.x, ci: source.y, born: now, index });
       if (!introActiveRef.current) {
@@ -1993,7 +2038,7 @@ export default function MandelbrotSkipping() {
         }
         rock.skips += 1;
         rock.bounceAge = 0;
-        spawnImpact(rock.x, rock.y, now);
+        spawnImpact(rock.x, rock.y, rock.skips, shapeOffset, now);
         const remaining = plannedSkips - rock.skips;
         rock.vz = Math.max(Math.abs(rock.vz) * 0.56, pondScale() * (0.05 + remaining * 0.008));
         rock.vx *= 0.79;
@@ -2017,6 +2062,84 @@ export default function MandelbrotSkipping() {
           startResolving(now);
         }
       }
+    }
+
+    function throwIntroRock() {
+      const a = anchor();
+      const angle = -Math.PI / 2 + (Math.random() - 0.5) * 1.55;
+      const rawPower = 0.48 + Math.random() * 0.42;
+      const power = rawPower * rawPower * (3 - 2 * rawPower);
+      const speed = pondScale() * (0.32 + 0.56 * power);
+      const launchPull = pondScale() * SLING_THROW_PULL_RATIO * rawPower;
+      const dx = Math.cos(angle);
+      const dy = Math.sin(angle);
+      shotId = (shotId + 17) | 0;
+      introRocks.push({
+        x: a.x - dx * launchPull,
+        y: a.y - dy * launchPull,
+        vx: dx * speed,
+        vy: dy * speed,
+        vz: pondScale() * (0.38 + 0.20 * power),
+        z: 1,
+        spin: 0,
+        skips: 0,
+        bounceAge: 10,
+        plannedSkips: 3,
+        shotId,
+        shapeOffset: introThrowsRef.current % GLYPH_COUNT,
+      });
+    }
+
+    function simulateIntroRocks(dt: number, now: number) {
+      if (!introActiveRef.current || !introRocks.length) return;
+      const gravity = pondScale() * 1.65;
+      const next: FlyingRock[] = [];
+      for (const body of introRocks) {
+        body.x += body.vx * dt;
+        body.y += body.vy * dt;
+        body.z += body.vz * dt;
+        body.vz -= gravity * dt;
+        const drag = Math.exp(-0.06 * dt);
+        body.vx *= drag;
+        body.vy *= drag;
+        body.spin += Math.hypot(body.vx, body.vy) * dt * 0.016;
+        body.bounceAge += dt;
+        let alive = true;
+        if (body.z <= 0 && body.vz < 0) {
+          body.z = 0;
+          if (body.x < 24 || body.x > width - 24 || body.y < 24 || body.y > height - 24) {
+            alive = false;
+          } else {
+            body.skips += 1;
+            body.bounceAge = 0;
+            spawnImpact(body.x, body.y, body.skips, body.shapeOffset, now);
+            const remaining = body.plannedSkips - body.skips;
+            body.vz = Math.max(Math.abs(body.vz) * 0.56, pondScale() * (0.05 + remaining * 0.008));
+            body.vx *= 0.79;
+            body.vy *= 0.79;
+            const jitter = (makeRandom((body.shotId << 8) ^ body.skips)() - 0.5) * Math.PI / 60;
+            const cos = Math.cos(jitter);
+            const sin = Math.sin(jitter);
+            const vx = body.vx * cos - body.vy * sin;
+            body.vy = body.vx * sin + body.vy * cos;
+            body.vx = vx;
+            if (remaining > 0) {
+              const speed = Math.hypot(body.vx, body.vy);
+              const minSpeed = pondScale() * 0.09;
+              if (speed > 0 && speed < minSpeed) {
+                body.vx *= minSpeed / speed;
+                body.vy *= minSpeed / speed;
+              }
+            }
+            if (body.skips >= body.plannedSkips ||
+              body.x < -50 || body.x > width + 50 || body.y < -50 || body.y > height + 50) {
+              alive = false;
+            }
+          }
+        }
+        if (alive) next.push(body);
+      }
+      introRocks = next;
     }
 
     function drawPrediction(a: { x: number; y: number }) {
@@ -2356,26 +2479,25 @@ export default function MandelbrotSkipping() {
       ctx.drawImage(gridCanvas, 0, 0, width, height);
     }
 
-    function drawRock() {
-      if (phase === "resolving" || phase === "result") return;
-      const lift = rock.z * 0.30;
+    function drawFlyingRock(body: { x: number; y: number; z: number; spin: number; skips: number; bounceAge: number }, glyphOffset: number) {
+      const lift = body.z * 0.30;
       const radius = 10;
-      const nextShape = (shapeOffset + rock.skips) % GLYPH_COUNT;
+      const nextShape = (glyphOffset + body.skips) % GLYPH_COUNT;
       const shapePaths = SACRED_PATH_COUNTS[nextShape];
-      const heightT = Math.min(1, rock.z / Math.max(pondScale() * .45, 1));
-      const drawX = Math.round(rock.x * dpr) / dpr;
-      const drawY = Math.round((rock.y - lift) * dpr) / dpr;
-      const bounce = reduceMotion ? 0 : Math.exp(-rock.bounceAge * 8.5) * Math.cos(rock.bounceAge * 29);
+      const heightT = Math.min(1, body.z / Math.max(pondScale() * .45, 1));
+      const drawX = Math.round(body.x * dpr) / dpr;
+      const drawY = Math.round((body.y - lift) * dpr) / dpr;
+      const bounce = reduceMotion ? 0 : Math.exp(-body.bounceAge * 8.5) * Math.cos(body.bounceAge * 29);
       const scaleX = 1 + bounce * .11;
       const scaleY = 1 - bounce * .09;
       ctx.save();
       ctx.fillStyle = `rgba(0, 4, 9, ${0.30 * (1 - heightT * 0.72)})`;
-      ctx.beginPath(); ctx.ellipse(drawX, rock.y, 10.5 * (1 + Math.max(0, bounce) * .08), 3.5, 0, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(drawX, body.y, 10.5 * (1 + Math.max(0, bounce) * .08), 3.5, 0, 0, TAU); ctx.fill();
       ctx.restore();
       ctx.save();
       ctx.translate(drawX, drawY);
       ctx.scale(scaleX, scaleY);
-      ctx.rotate(rock.spin * .18);
+      ctx.rotate(body.spin * .18);
       ctx.strokeStyle = "rgba(255, 255, 255, .34)";
       ctx.lineWidth = 1;
       for (let path = 0; path < shapePaths; path++) {
@@ -2388,7 +2510,9 @@ export default function MandelbrotSkipping() {
         ctx.stroke();
       }
       ctx.fillStyle = "#ffffff";
-      const previewDots = Math.max(MIN_SOURCE_DOTS, Math.min(18, tuningRef.current.sourceDots));
+      const previewDots = introActiveRef.current
+        ? INTRO_SOURCE_DOTS
+        : Math.max(MIN_SOURCE_DOTS, Math.min(18, tuningRef.current.sourceDots));
       for (let index = 0; index < previewDots; index++) {
         const path = index % shapePaths;
         const pathIndex = Math.floor(index / shapePaths);
@@ -2399,6 +2523,15 @@ export default function MandelbrotSkipping() {
         ctx.fill();
       }
       ctx.restore();
+    }
+
+    function drawRock() {
+      if (introActiveRef.current) {
+        for (const body of introRocks) drawFlyingRock(body, body.shapeOffset);
+        return;
+      }
+      if (phase === "resolving" || phase === "result") return;
+      drawFlyingRock(rock, shapeOffset);
     }
 
     function drawEffects(now: number) {
@@ -2524,6 +2657,7 @@ export default function MandelbrotSkipping() {
         plannedSkips: FLASHLIGHT_PLANNED_SKIPS,
       });
       engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: FLASHLIGHT_MAX_DEPTH });
+      engineRef.current?.setAtmosphere(FLASHLIGHT_ATMOSPHERE);
       const glyph = (shapeOffset + rock.skips) % GLYPH_COUNT;
       for (const landing of landings) {
         const sources = impactSources(
@@ -2534,22 +2668,21 @@ export default function MandelbrotSkipping() {
       }
     }
 
-    function maybeOpeningThrow() {
+    function maybeOpeningThrow(now: number) {
       if (!introActiveRef.current) return;
-      if (phase === "flying" || phase === "resolving" || phase === "aiming") return;
       if (introThrowsRef.current >= INTRO_THROW_COUNT) {
-        endOpeningRef.current();
+        if (introRocks.length === 0) endOpeningRef.current();
         return;
       }
+      if (lastIntroLaunch !== 0 && now - lastIntroLaunch < INTRO_THROW_STAGGER_MS) return;
+      lastIntroLaunch = now;
       spectatorRef.current = true;
-      plannedSkips = 3;
-      shapeOffset = introThrowsRef.current % GLYPH_COUNT;
-      shotId = (shotId + 17) | 0;
       engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
-      const angle = -Math.PI / 2 + (Math.random() - 0.5) * 1.35;
-      introThrowsRef.current += 1;
+      engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
+      const wave = Math.min(INTRO_THROWS_PER_WAVE, INTRO_THROW_COUNT - introThrowsRef.current);
+      for (let index = 0; index < wave; index++) throwIntroRock();
+      introThrowsRef.current += wave;
       setIntro((current) => current ? { progress: introThrowsRef.current / INTRO_THROW_COUNT } : current);
-      launchRock(angle, 0.52 + Math.random() * 0.38);
     }
 
     function loop(now: number) {
@@ -2559,9 +2692,10 @@ export default function MandelbrotSkipping() {
       const fixed = 1 / 120;
       while (accumulator >= fixed) {
         simulate(fixed, now);
+        simulateIntroRocks(fixed, now);
         accumulator -= fixed;
       }
-      maybeOpeningThrow();
+      maybeOpeningThrow(now);
       spawnFlashlightSkips(now);
       advanceOrbits(now, elapsed);
       updateIterationSound(now);
@@ -2622,6 +2756,8 @@ export default function MandelbrotSkipping() {
         previewKey = "";
         flashlightDirty = true;
         lastFlashlightSpawn = 0;
+        engineRef.current?.setAtmosphere(FLASHLIGHT_ATMOSPHERE);
+        engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: FLASHLIGHT_MAX_DEPTH });
         pull = point;
         rock.x = point.x;
         rock.y = point.y;
@@ -2684,6 +2820,7 @@ export default function MandelbrotSkipping() {
         lastFlashlightSpawn = 0;
         engineRef.current?.clear();
         engineRef.current?.setTuning(tuningRef.current);
+        engineRef.current?.setAtmosphere(PLAY_ATMOSPHERE);
         updateHud(true);
         return;
       }
@@ -2728,6 +2865,7 @@ export default function MandelbrotSkipping() {
       lastFlashlightSpawn = 0;
       engineRef.current?.clear();
       engineRef.current?.setTuning(tuningRef.current);
+      engineRef.current?.setAtmosphere(PLAY_ATMOSPHERE);
       updateHud(true);
     }
 
