@@ -216,6 +216,8 @@ const LEGACY_SCORE_KEY = "mandelbrot-skipping:scores:v1";
 const TAU = Math.PI * 2;
 const POND_CENTER = { x: -0.58, y: 0 };
 const VIEW_HALF_Y = 0.8;
+const INTRO_POND_CENTER = { x: -0.52, y: 0 };
+const INTRO_VIEW_HALF_Y = 1.45;
 const SCORE_HALF_X = 1.6;
 const SCORE_HALF_Y = 1.15;
 const MIN_VIEW_HALF_Y = 0.035;
@@ -866,7 +868,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   let textureIndex = 0;
   let width = 0;
   let height = 0;
-  let view: ViewTransform = { centerX: POND_CENTER.x, centerY: POND_CENTER.y, halfY: VIEW_HALF_Y };
+  let view: ViewTransform = { centerX: INTRO_POND_CENTER.x, centerY: INTRO_POND_CENTER.y, halfY: INTRO_VIEW_HALF_Y };
   let maxDepth = DEFAULT_TUNING.maxDepth;
   let accelerationCurve = DEFAULT_TUNING.acceleration;
   let linePersist = DEFAULT_TUNING.linePersist;
@@ -1162,8 +1164,9 @@ export default function MandelbrotSkipping() {
   const gameCanvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<OrbitEngine | null>(null);
   const gpuPromiseRef = useRef<Promise<GpuContext | null> | null>(null);
-  const viewRef = useRef<ViewTransform>({ centerX: POND_CENTER.x, centerY: POND_CENTER.y, halfY: VIEW_HALF_Y });
+  const viewRef = useRef<ViewTransform>({ centerX: INTRO_POND_CENTER.x, centerY: INTRO_POND_CENTER.y, halfY: INTRO_VIEW_HALF_Y });
   const restartRef = useRef<() => void>(() => {});
+  const applyViewRef = useRef<(nextView: ViewTransform) => void>(() => {});
   const playerNameRef = useRef("YOU");
   const tuningRef = useRef<Tuning>({ ...DEFAULT_TUNING });
   const invalidateFlashlightRef = useRef<() => void>(() => {});
@@ -1267,6 +1270,7 @@ export default function MandelbrotSkipping() {
       introFadingRef.current = false;
       engineRef.current?.setAtmosphere(PLAY_ATMOSPHERE);
       engineRef.current?.setTuning(tuningRef.current);
+      applyViewRef.current({ centerX: POND_CENTER.x, centerY: POND_CENTER.y, halfY: VIEW_HALF_Y });
       restartRef.current();
       setIntro(null);
       setIntroFading(false);
@@ -1282,6 +1286,7 @@ export default function MandelbrotSkipping() {
     introFadingRef.current = false;
     engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
     engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
+    applyViewRef.current({ centerX: INTRO_POND_CENTER.x, centerY: INTRO_POND_CENTER.y, halfY: INTRO_VIEW_HALF_Y });
     restartRef.current();
     setIntroFading(false);
     setIntro({ progress: 0 });
@@ -1973,6 +1978,7 @@ export default function MandelbrotSkipping() {
       launchRock(shot.angle, shot.power);
     }
     playThrowRef.current = playSharedThrow;
+    applyViewRef.current = applyView;
 
     function spawnImpact(x: number, y: number, index: number, glyphOffset: number, now: number, extras?: { gpu?: boolean; ripple?: boolean }) {
       const mapped = screenToComplex(x, y, width, height, viewRef.current, tuningRef.current.rotateRight);
@@ -2235,7 +2241,7 @@ export default function MandelbrotSkipping() {
             body.bounceAge = 0;
             spawnImpact(body.x, body.y, body.skips, body.shapeOffset, now, {
               gpu: false,
-              ripple: body.draw || true,
+              ripple: body.draw,
             });
             const remaining = body.plannedSkips - body.skips;
             body.vz = Math.max(Math.abs(body.vz) * 0.56, pondScale() * (0.05 + remaining * 0.008));
@@ -2688,6 +2694,9 @@ export default function MandelbrotSkipping() {
     function drawEffects(now: number) {
       const RIPPLE_LIFETIME = 2400;
       ripples = ripples.filter((ripple) => now - ripple.born < RIPPLE_LIFETIME);
+      if (introActiveRef.current && ripples.length > 2) {
+        ripples = ripples.slice(-2);
+      }
       for (const ripple of ripples) {
         const point = complexToScreen(ripple.cr, ripple.ci, width, height, viewRef.current, tuningRef.current.rotateRight);
         const age = now - ripple.born;
@@ -2881,7 +2890,7 @@ export default function MandelbrotSkipping() {
       engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
       const seeds = Array.from({ length: INTRO_NEBULA_SEEDS_PER_WAVE }, () => introNebulaSeed());
       engineRef.current?.spawn(seeds, 1, INTRO_SOURCE_CAP);
-      if (Math.random() < 0.32) {
+      if (Math.random() < 0.03) {
         const rippleOrigin = introLaunchOrigin(width, height);
         const mapped = screenToComplex(rippleOrigin.x, rippleOrigin.y, width, height, viewRef.current, tuningRef.current.rotateRight);
         ripples.push({ cr: mapped.x, ci: mapped.y, born: now, index: 1 });
