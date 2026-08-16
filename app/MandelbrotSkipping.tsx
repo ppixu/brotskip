@@ -483,7 +483,7 @@ fn bezier(curve: CurveSegment, t: f32) -> vec2f {
   out.position = vec4f(projectPoint(bezier(curve, t)), 0.0, 1.0);
   out.color = mix(mix(vec3f(0.08, 0.66, 0.86), vec3f(0.78, 1.0, 0.70), depth), skipTint(curve.pad), style.colorMode);
   let directionalFreshness = mix(curve.freshnessStart, curve.freshnessEnd, t);
-  out.alpha = 0.44 * pow(directionalFreshness, 0.65);
+  out.alpha = 0.28 * pow(directionalFreshness, 0.65);
   return out;
 }
 @fragment fn fs(in: VSOut) -> @location(0) vec4f {
@@ -2377,7 +2377,7 @@ export default function MandelbrotSkipping() {
       const maxHopPx = Math.hypot(width, height) * MAX_HOP_SCREEN_MULTIPLIER;
       let zr = 0;
       let zi = 0;
-      previewContext.lineWidth = 0.85;
+      previewContext.lineWidth = 0.75;
       previewContext.lineJoin = "round";
       previewContext.lineCap = "round";
       for (let step = 0; step < iterations; step++) {
@@ -2428,29 +2428,10 @@ export default function MandelbrotSkipping() {
       for (const landing of landings) {
         const skipIndex = landing.index;
         const iterations = Math.max(1, Math.floor(tuning.previewIterations / 2 ** (skipIndex - 1)));
-        const strength = 0.82 / (1 + (skipIndex - 1) * 0.22);
+        const strength = 0.48 / (1 + (skipIndex - 1) * 0.22);
         const rgb = skipTintRgb(skipIndex, tuning.skipColors);
         const source = screenToComplex(landing.x, landing.y, width, height, view, tuning.rotateRight);
         drawPreviewOrbit(source, landing, view, iterations, rgb, strength);
-      }
-      previewContext.globalCompositeOperation = "source-over";
-      previewContext.font = "700 11px ui-monospace, monospace";
-      previewContext.textAlign = "center";
-      previewContext.textBaseline = "middle";
-      for (const landing of landings) {
-        const skipIndex = landing.index;
-        const markerStrength = 0.92 / (1 + (skipIndex - 1) * 0.22);
-        const rgb = skipTintRgb(skipIndex, tuning.skipColors);
-        previewContext.save();
-        previewContext.globalAlpha = markerStrength;
-        previewContext.strokeStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, .9)`;
-        previewContext.lineWidth = 1.35;
-        previewContext.beginPath();
-        previewContext.arc(landing.x, landing.y, 8, 0, TAU);
-        previewContext.stroke();
-        previewContext.fillStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, .92)`;
-        previewContext.fillText(String(skipIndex), landing.x, landing.y + 0.5);
-        previewContext.restore();
       }
     }
 
