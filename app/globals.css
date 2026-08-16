@@ -62,6 +62,56 @@ button, input { font: inherit; }
   align-items: flex-start;
   gap: 8px;
 }
+.replayBanner {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 1;
+  margin: 0;
+  pointer-events: none;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, .7);
+}
+.replayBannerName {
+  display: block;
+  color: #f0e4ff;
+  font-size: 22px;
+  font-weight: 760;
+  letter-spacing: -.03em;
+  line-height: 1.05;
+}
+.replayBannerLabel {
+  display: block;
+  margin-top: 2px;
+  color: #c9b0ea;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+}
+.gameShell.replayMode {
+  --cyan: #c9a0ff;
+  --ink: #f3edff;
+  --muted: #9b88b8;
+  --rail: #07050c;
+}
+.gameShell.replayMode .scoreRail {
+  border-left-color: rgba(196, 150, 255, .16);
+}
+.gameShell.replayMode .gameCanvas:focus-visible {
+  outline-color: rgba(201, 160, 255, .65);
+}
+.gameShell.replayMode .replayOpening,
+.gameShell.replayMode .rethrowButton {
+  border-color: rgba(196, 160, 255, .28);
+  color: #d2c0ee;
+}
+.gameShell.replayMode .replayOpening:hover,
+.gameShell.replayMode .replayOpening:focus-visible,
+.gameShell.replayMode .rethrowButton:hover,
+.gameShell.replayMode .rethrowButton:focus-visible {
+  border-color: rgba(232, 214, 255, .62);
+  color: #f6edff;
+}
 .replayOpening {
   min-height: 32px;
   padding: 0 10px;
@@ -488,6 +538,8 @@ button, input { font: inherit; }
   .scoreList { grid-row: 2 / span 2; }
   .railHint, .railFooter, .gpuNote { display: none; }
   .playfieldDock { left: 10px; bottom: 10px; }
+  .replayBanner { top: 10px; left: 10px; }
+  .replayBannerName { font-size: 18px; }
 }
 
 @media (max-width: 430px) {

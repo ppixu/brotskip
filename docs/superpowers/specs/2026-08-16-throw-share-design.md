@@ -17,8 +17,9 @@ tuning.
 
 ## Snapshot
 
-version, view (centerX, centerY, halfY), rotateRight, aim angle, raw power,
-planned skips, glyph offset, bounce seed, sourceDots.
+version, view, rotateRight, aim, power, skips, glyph, bounce seed, sourceDots,
+and the thrower's name. New links use a packed base64url hash; old underscore
+payloads still decode.
 
 ## Non-goals
 

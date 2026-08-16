@@ -4,6 +4,7 @@ import {
   decodeSharedThrow,
   encodeSharedThrow,
   parseThrowShare,
+  sharePlayerLabel,
   throwShareUrl,
   type SharedThrow,
 } from "../../lib/throw-share.ts";
@@ -18,6 +19,7 @@ const shot: SharedThrow = {
   glyph: 3,
   seed: 42,
   sourceDots: 18,
+  name: "YOU",
 };
 
 test("a shared throw round-trips through the URL payload", () => {
@@ -29,11 +31,26 @@ test("a shared throw round-trips through the URL payload", () => {
   assert.equal(decoded.glyph, 3);
   assert.equal(decoded.seed, 42);
   assert.equal(decoded.sourceDots, 18);
-  assert.ok(Math.abs(decoded.view.centerX - shot.view.centerX) < 1e-5);
-  assert.ok(Math.abs(decoded.view.centerY - shot.view.centerY) < 1e-5);
-  assert.ok(Math.abs(decoded.view.halfY - shot.view.halfY) < 1e-5);
-  assert.ok(Math.abs(decoded.angle - shot.angle) < 1e-5);
-  assert.ok(Math.abs(decoded.power - shot.power) < 1e-5);
+  assert.equal(decoded.name, "YOU");
+  assert.ok(Math.abs(decoded.view.centerX - shot.view.centerX) < 1e-3);
+  assert.ok(Math.abs(decoded.view.centerY - shot.view.centerY) < 1e-3);
+  assert.ok(Math.abs(decoded.view.halfY - shot.view.halfY) < 1e-3);
+  assert.ok(Math.abs(decoded.angle - shot.angle) < 1e-3);
+  assert.ok(Math.abs(decoded.power - shot.power) < 1e-3);
+});
+
+test("the encoded hash stays compact", () => {
+  const encoded = encodeSharedThrow(shot);
+  assert.match(encoded, /^[A-Za-z0-9_-]+$/);
+  assert.ok(encoded.length <= 40, `payload was ${encoded.length} chars: ${encoded}`);
+  assert.ok(encodeSharedThrow({ ...shot, name: "HENQUISTADOR" }).length <= 52);
+});
+
+test("legacy underscore payloads still decode", () => {
+  const decoded = decodeSharedThrow("1_-0.58_0.12_0.8_1_-1.25_0.72_7_3_42_18");
+  assert.ok(decoded);
+  assert.equal(decoded.skips, 7);
+  assert.equal(decoded.name, "YOU");
 });
 
 test("garbage payloads do not decode as a throw", () => {
@@ -45,7 +62,7 @@ test("garbage payloads do not decode as a throw", () => {
 test("the share URL keeps the Pages path and puts the throw in the hash", () => {
   const url = throwShareUrl("https://ppixu.github.io/brotskip/", shot);
   assert.match(url, /^https:\/\/ppixu\.github\.io\/brotskip\/#t=/);
-  assert.deepEqual(parseThrowShare(new URL(url)), decodeSharedThrow(encodeSharedThrow(shot)));
+  assert.equal(encodeSharedThrow(parseThrowShare(new URL(url))!), encodeSharedThrow(shot));
 });
 
 test("query-string throw links still parse", () => {
@@ -53,4 +70,10 @@ test("query-string throw links still parse", () => {
   const parsed = parseThrowShare(new URL(`https://ppixu.github.io/brotskip/?t=${encoded}`));
   assert.ok(parsed);
   assert.equal(parsed.skips, 7);
+  assert.equal(parsed.name, "YOU");
+});
+
+test("share player labels use a possessive name", () => {
+  assert.equal(sharePlayerLabel("you"), "YOU's");
+  assert.equal(sharePlayerLabel("henkka!!"), "HENKKA's");
 });

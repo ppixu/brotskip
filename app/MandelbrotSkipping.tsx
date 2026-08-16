@@ -40,6 +40,7 @@ import {
 } from "@/lib/view-map";
 import {
   parseThrowShare,
+  sharePlayerLabel,
   throwShareUrl,
   type SharedThrow,
 } from "@/lib/throw-share";
@@ -992,6 +993,8 @@ export default function MandelbrotSkipping() {
   const [pondReady, setPondReady] = useState(false);
   const [hasShare, setHasShare] = useState(false);
   const [watchingShare, setWatchingShare] = useState(false);
+  const [replayMode, setReplayMode] = useState(false);
+  const [replayName, setReplayName] = useState("YOU");
   const [shareStatus, setShareStatus] = useState("");
   const [gpuError, setGpuError] = useState<string | null>(null);
   const [hud, setHud] = useState<Hud>({ phase: "ready", score: 0, skips: 0, deepest: 0, progress: 0, coverage: 0, spread: 0 });
@@ -1189,6 +1192,10 @@ export default function MandelbrotSkipping() {
     const clean = name.toUpperCase().replace(/[^A-Z0-9 _-]/g, "").slice(0, 12);
     playerNameRef.current = clean;
     setPlayerName(clean);
+    if (currentShareRef.current) {
+      currentShareRef.current = { ...currentShareRef.current, name: clean || "YOU" };
+    }
+    setReplayName(clean || "YOU");
     const id = currentResultId;
     if (!id) return;
     setScores((previous) => {
@@ -1754,6 +1761,8 @@ export default function MandelbrotSkipping() {
     function playSharedThrow(shot: SharedThrow, fromLink = false) {
       spectatorRef.current = true;
       if (fromLink) setWatchingShare(true);
+      setReplayMode(true);
+      setReplayName(shot.name || "YOU");
       currentShareRef.current = shot;
       setHasShare(true);
       if (!savedTuningRef.current) savedTuningRef.current = loadTuning();
@@ -2619,6 +2628,7 @@ export default function MandelbrotSkipping() {
       const angle = Math.atan2(dy, dx);
       spectatorRef.current = false;
       setWatchingShare(false);
+      setReplayMode(false);
       savedTuningRef.current = null;
       currentShareRef.current = {
         version: 1,
@@ -2630,6 +2640,7 @@ export default function MandelbrotSkipping() {
         glyph: shapeOffset,
         seed: shotId,
         sourceDots: tuningRef.current.sourceDots,
+        name: playerNameRef.current || "YOU",
       };
       setHasShare(true);
       launchRock(angle, rawPower);
@@ -2706,6 +2717,7 @@ export default function MandelbrotSkipping() {
   const resetAndFocusCanvas = () => {
     spectatorRef.current = false;
     setWatchingShare(false);
+    setReplayMode(false);
     if (savedTuningRef.current) {
       const saved = savedTuningRef.current;
       savedTuningRef.current = null;
@@ -2755,10 +2767,16 @@ export default function MandelbrotSkipping() {
   const throwBusy = hud.phase === "flying" || hud.phase === "resolving" || Boolean(intro);
 
   return (
-    <main className="gameShell">
+    <main className={`gameShell ${replayMode ? "replayMode" : ""}`}>
       <section className="playfield" aria-label="Mandelbrot rock skipping game">
         <canvas ref={gpuCanvasRef} className="gpuCanvas" aria-hidden="true" />
         <canvas ref={gameCanvasRef} className="gameCanvas" tabIndex={0} aria-label="Throw ready. Drag the white orb backward and release it across the water" />
+        {replayMode && (
+          <p className="replayBanner" aria-live="polite">
+            <span className="replayBannerName">{sharePlayerLabel(replayName)}</span>
+            <span className="replayBannerLabel">replay</span>
+          </p>
+        )}
         {intro && (
           <BuddhabrotIntro
             gpu={intro.gpu}
@@ -2879,7 +2897,7 @@ export default function MandelbrotSkipping() {
         {hud.phase === "result" && (
           <section className="railResult" aria-label="Throw result">
             <div className="resultEyebrow">{
-              watchingShare ? "Shared throw"
+              watchingShare ? `${sharePlayerLabel(replayName)} throw`
                 : scores[0]?.id === currentResultId ? "New local best"
                   : "Throw complete"
             }</div>
