@@ -82,6 +82,24 @@ test("opening and flashlight hide orbit lines, go grayscale, and throw overlappi
   assert.match(source, /state\.step > u32\(params\.hiddenSteps\)/);
 });
 
+test("the game render loop only calls drawing helpers that exist", () => {
+  const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
+  const renderMatch = source.match(/function render\(now: number\) \{([\s\S]*?)\n    \}\n/);
+  assert.ok(renderMatch, "render() missing");
+  const skip = new Set(["if", "for", "while", "switch", "catch", "function"]);
+  const names = [...renderMatch[1].matchAll(/(?<![\w.])([A-Za-z_][A-Za-z0-9_]*)\(/g)]
+    .map((match) => match[1])
+    .filter((name) => !skip.has(name));
+  assert.ok(names.includes("drawRock"), `render() helpers: ${names.join(", ")}`);
+  for (const name of names) {
+    assert.match(
+      source,
+      new RegExp(String.raw`function ${name}\s*\(`),
+      `${name} is called from render() but is not defined`,
+    );
+  }
+});
+
 test("opening waits for a Play tap and gameplay rethrow sits on the throw stone", () => {
   const intro = readFileSync(new URL("../../app/BuddhabrotIntro.tsx", import.meta.url), "utf8");
   assert.match(intro, /ready/);

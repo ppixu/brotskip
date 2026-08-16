@@ -2659,6 +2659,18 @@ export default function MandelbrotSkipping() {
     function drawRock(now: number) {
       if (introActiveRef.current) {
         let activeDrawn = 0;
+        for (const body of introRocks) {
+          if (body.draw && activeDrawn < 2) {
+            drawIntroTrajectory(body.path, 0.09);
+            activeDrawn += 1;
+          }
+        }
+        introTrails = introTrails.filter((trail) => now - trail.born < INTRO_TRAIL_FADE_MS);
+        for (let i = 0; i < Math.min(2, introTrails.length); i++) {
+          const trail = introTrails[i];
+          const t = Math.min(1, (now - trail.born) / INTRO_TRAIL_FADE_MS);
+          drawIntroTrajectory(trail.path, 0.08 * (1 - t) * (1 - t));
+        }
         return;
       }
       if (phase === "resolving" || phase === "result") return;
@@ -2831,7 +2843,6 @@ export default function MandelbrotSkipping() {
       if (gridDirty) rebuildScientificGrid();
       if (gridCanvas) ctx.drawImage(gridCanvas, 0, 0, width, height);
       const a = anchor();
-      drawSling(a);
       drawFlashlight(now);
       drawAimOrbitPreview(a);
       drawEffects(now);
