@@ -61,4 +61,13 @@ test("opening and flashlight hide orbit lines, go grayscale, and throw overlappi
   assert.match(source, /let lineGain = display.pad;/);
   assert.match(source, /INTRO_SETTLE_MS/);
   assert.match(source, /spawnIntroBackgroundOrbits/);
+  assert.match(source, /drawIntroTrajectory/);
+  assert.match(source, /playfieldThrowControl/);
+  assert.doesNotMatch(source, /if \(now - introSettleAt >= INTRO_SETTLE_MS\) endOpeningRef\.current\(\)/);
+});
+
+test("opening waits for a Play tap and gameplay rethrow sits on the throw stone", () => {
+  const intro = readFileSync(new URL("../../app/BuddhabrotIntro.tsx", import.meta.url), "utf8");
+  assert.match(intro, /ready/);
+  assert.match(intro, />Play</);
 });

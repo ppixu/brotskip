@@ -12,9 +12,10 @@ not the same system.
 
 Use the real orbit engine for both.
 
-- Opening: auto-throw a simultaneous volley (24 stones, 3 per wave) on the
-  playfield. Skip impacts spawn GPU orbits. No generator, cache, or second
-  WebGPU canvas. Then reset for play. Reduce-motion and share links skip this.
+- Opening: auto-throw a simultaneous volley (96 stones, 8 per wave) as dim
+  trajectories plus iteration points. After a 5.4s settle, a Play button in
+  the playfield center starts the game and clears the nebula. Reduce-motion
+  and share links skip this.
 - Flashlight: punch a hole in the dark overlay so live trails show in the
   cone. While aiming, throw invisible light skips into the cone
   (`6` dots, depth `8000`, cap `36` sources). Clear them on release.

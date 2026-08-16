@@ -4,12 +4,12 @@ export const FLASHLIGHT_SOURCE_CAP = 36;
 export const FLASHLIGHT_SPAWN_MS = 240;
 export const FLASHLIGHT_PLANNED_SKIPS = 3;
 export const FLASHLIGHT_HALF_ANGLE = 0.29;
-export const INTRO_THROW_COUNT = 24;
-export const INTRO_THROWS_PER_WAVE = 3;
-export const INTRO_THROW_STAGGER_MS = 80;
+export const INTRO_THROW_COUNT = 96;
+export const INTRO_THROWS_PER_WAVE = 8;
+export const INTRO_THROW_STAGGER_MS = 50;
 export const INTRO_SOURCE_DOTS = 6;
 export const INTRO_MAX_DEPTH = 20_000;
-export const INTRO_SETTLE_MS = 2400;
+export const INTRO_SETTLE_MS = 5400;
 export const INTRO_BACKGROUND_SPAWN_MS = 120;
 
 export type OrbitAtmosphere = {

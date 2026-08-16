@@ -69,14 +69,14 @@ test("invisible skip landings hop forward from the apex", () => {
 });
 
 test("opening throws a dense simultaneous volley instead of a few sequential stones", () => {
-  assert.ok(INTRO_THROW_COUNT >= 24);
-  assert.ok(INTRO_THROWS_PER_WAVE >= 3);
+  assert.ok(INTRO_THROW_COUNT >= 72);
+  assert.ok(INTRO_THROWS_PER_WAVE >= 6);
   assert.ok(INTRO_THROW_STAGGER_MS <= 90);
   assert.equal(INTRO_SOURCE_DOTS, 6);
 });
 
 test("opening keeps iterating a dim background Buddhabrot after the volley", () => {
-  assert.ok(INTRO_SETTLE_MS >= 2000);
+  assert.ok(INTRO_SETTLE_MS >= 5000);
   assert.ok(INTRO_BACKGROUND_SPAWN_MS <= 160);
 });
 

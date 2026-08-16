@@ -148,6 +148,7 @@ type FlyingRock = {
   plannedSkips: number;
   shotId: number;
   shapeOffset: number;
+  path: Array<{ x: number; y: number }>;
 };
 
 const GLYPH_COUNT = 7;
@@ -1141,7 +1142,7 @@ export default function MandelbrotSkipping() {
   const spectatorRef = useRef(false);
   const savedTuningRef = useRef<Tuning | null>(null);
   const throwAgainRef = useRef<() => void>(() => {});
-  const [intro, setIntro] = useState<{ progress: number } | null>(null);
+  const [intro, setIntro] = useState<{ progress: number; ready?: boolean } | null>(null);
   const [introFading, setIntroFading] = useState(false);
   const [pondReady, setPondReady] = useState(false);
   const [hasShare, setHasShare] = useState(false);
@@ -1368,9 +1369,11 @@ export default function MandelbrotSkipping() {
     let flashlightDirty = true;
     let lastFlashlightSpawn = 0;
     let introRocks: FlyingRock[] = [];
+    let introTrails: Array<{ path: Array<{ x: number; y: number }>; born: number }> = [];
     let lastIntroLaunch = 0;
     let lastIntroBackground = 0;
     let introSettleAt = 0;
+    let introReady = false;
     let previewKey = "";
 
     invalidateFlashlightRef.current = () => { flashlightDirty = true; };
@@ -1801,9 +1804,11 @@ export default function MandelbrotSkipping() {
       ripples = [];
       orbitScores = [];
       introRocks = [];
+      introTrails = [];
       lastIntroLaunch = 0;
       lastIntroBackground = 0;
       introSettleAt = 0;
+      introReady = false;
       shapeOffset = Math.floor(Math.random() * GLYPH_COUNT);
       lastShapeCoverage.clear();
       lastAudibleDepth = 0;
@@ -1884,7 +1889,7 @@ export default function MandelbrotSkipping() {
       const sources = impactSources(
         x, y, width, height, viewRef.current, dots, glyph, tuningRef.current.rotateRight,
       );
-      ripples.push({ cr: source.x, ci: source.y, born: now, index });
+      if (!introActiveRef.current) ripples.push({ cr: source.x, ci: source.y, born: now, index });
       if (!introActiveRef.current) {
         impacts.push({ cr: source.x, ci: source.y, born: now, index });
         for (const orbitSource of sources) {
@@ -2099,6 +2104,7 @@ export default function MandelbrotSkipping() {
         plannedSkips: 3,
         shotId,
         shapeOffset: introThrowsRef.current % GLYPH_COUNT,
+        path: [{ x: a.x - dx * launchPull, y: a.y - dy * launchPull }],
       });
     }
 
@@ -2116,6 +2122,10 @@ export default function MandelbrotSkipping() {
         body.vy *= drag;
         body.spin += Math.hypot(body.vx, body.vy) * dt * 0.016;
         body.bounceAge += dt;
+        const last = body.path[body.path.length - 1];
+        if (!last || Math.hypot(body.x - last.x, body.y - last.y) >= 3) {
+          body.path.push({ x: body.x, y: body.y });
+        }
         let alive = true;
         if (body.z <= 0 && body.vz < 0) {
           body.z = 0;
@@ -2150,6 +2160,7 @@ export default function MandelbrotSkipping() {
           }
         }
         if (alive) next.push(body);
+        else introTrails.push({ path: body.path, born: now });
       }
       introRocks = next;
     }
@@ -2537,9 +2548,27 @@ export default function MandelbrotSkipping() {
       ctx.restore();
     }
 
-    function drawRock() {
+    function drawIntroTrajectory(path: Array<{ x: number; y: number }>, alpha: number) {
+      if (path.length < 2 || alpha <= 0) return;
+      ctx.save();
+      ctx.strokeStyle = `rgba(210, 220, 224, ${alpha})`;
+      ctx.lineWidth = 1;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(path[0].x, path[0].y);
+      for (let index = 1; index < path.length; index++) ctx.lineTo(path[index].x, path[index].y);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawRock(now: number) {
       if (introActiveRef.current) {
-        for (const body of introRocks) drawFlyingRock(body, body.shapeOffset);
+        for (const body of introRocks) drawIntroTrajectory(body.path, 0.16);
+        introTrails = introTrails.filter((trail) => now - trail.born < 1800);
+        for (const trail of introTrails) {
+          drawIntroTrajectory(trail.path, 0.08 * Math.max(0, 1 - (now - trail.born) / 1800));
+        }
         return;
       }
       if (phase === "resolving" || phase === "result") return;
@@ -2648,7 +2677,7 @@ export default function MandelbrotSkipping() {
       drawPrediction(a);
       drawAimOrbitPreview(a);
       drawEffects(now);
-      drawRock();
+      drawRock(now);
     }
 
     function spawnFlashlightSkips(now: number) {
@@ -2681,7 +2710,7 @@ export default function MandelbrotSkipping() {
     }
 
     function spawnIntroBackgroundOrbits(now: number) {
-      if (!introActiveRef.current || introFadingRef.current) return;
+      if (!introActiveRef.current || introFadingRef.current || introReady) return;
       if (lastIntroBackground !== 0 && now - lastIntroBackground < INTRO_BACKGROUND_SPAWN_MS) return;
       lastIntroBackground = now;
       const origin = {
@@ -2715,7 +2744,10 @@ export default function MandelbrotSkipping() {
       if (introThrowsRef.current >= INTRO_THROW_COUNT) {
         if (introRocks.length > 0) return;
         if (!introSettleAt) introSettleAt = now;
-        if (now - introSettleAt >= INTRO_SETTLE_MS) endOpeningRef.current();
+        if (!introReady && now - introSettleAt >= INTRO_SETTLE_MS) {
+          introReady = true;
+          setIntro({ progress: 1, ready: true });
+        }
         return;
       }
       if (lastIntroLaunch !== 0 && now - lastIntroLaunch < INTRO_THROW_STAGGER_MS) return;
@@ -3032,7 +3064,19 @@ export default function MandelbrotSkipping() {
           <BuddhabrotIntro
             progress={intro.progress}
             fading={introFading}
+            ready={intro.ready}
+            onPlay={finishOpening}
           />
+        )}
+        {(hud.phase === "flying" || hud.phase === "resolving") && !intro && (
+          <button
+            type="button"
+            className="playfieldThrowControl"
+            onClick={resetAndFocusCanvas}
+            aria-label="Cancel this throw and rethrow"
+          >
+            Rethrow
+          </button>
         )}
         <div className="playfieldDock">
           <button
@@ -3074,9 +3118,6 @@ export default function MandelbrotSkipping() {
               {shareStatus || "Share throw"}
             </button>
           </div>
-          {(hud.phase === "flying" || hud.phase === "resolving") && (
-            <button className="rethrowButton" onClick={resetAndFocusCanvas} aria-label="Cancel this throw and rethrow">Rethrow</button>
-          )}
         </section>
 
         <section className="tuningPanel" aria-label="Orbit tuning">
