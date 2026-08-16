@@ -1418,6 +1418,7 @@ export default function MandelbrotSkipping() {
     let lastIntroBackground = 0;
     let introSettleAt = 0;
     let introReady = false;
+    let lastIntroProgress = 0;
     let previewKey = "";
 
     invalidateFlashlightRef.current = () => { flashlightDirty = true; };
@@ -1907,6 +1908,7 @@ export default function MandelbrotSkipping() {
       lastIntroBackground = 0;
       introSettleAt = 0;
       introReady = false;
+      lastIntroProgress = 0;
       shapeOffset = Math.floor(Math.random() * GLYPH_COUNT);
       lastShapeCoverage.clear();
       lastAudibleDepth = 0;
@@ -2898,6 +2900,9 @@ export default function MandelbrotSkipping() {
         if (progress >= 1) {
           introReady = true;
           setIntro({ progress: 1, ready: true });
+        } else if (now - lastIntroProgress > 40) {
+          lastIntroProgress = now;
+          setIntro({ progress });
         }
       }
       const inOpeningVolley = introThrowsRef.current < INTRO_THROWS_PER_WAVE * 2;
@@ -2909,9 +2914,6 @@ export default function MandelbrotSkipping() {
       engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
       introThrowsRef.current += 1;
       spawnIntroPondRipple(now);
-      if (!introReady) {
-        setIntro({ progress: Math.min(1, (now - introSettleAt) / INTRO_SETTLE_MS) });
-      }
     }
 
     function loop(now: number) {
