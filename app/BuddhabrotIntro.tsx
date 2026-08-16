@@ -3,25 +3,28 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- WebGPU types are not shipped in this browser target. */
 
 import { useEffect, useRef, useState } from "react";
-import { createBuddhabrotGenerator } from "@/lib/buddhabrot/generator";
+import { createBuddhabrotGenerator, MAX_SEED_CENTERS } from "@/lib/buddhabrot/generator";
 import {
   INTRO_MAX_ITERATIONS,
   INTRO_SAMPLE_BUDGET,
   SACRED_PATH_COUNTS,
+  SKIP_TINTS,
   createIntroRockThrow,
   sacredShapeOffset,
   type IntroRockThrow,
 } from "@/lib/buddhabrot/intro-throws";
 import type { GpuContext } from "@/lib/gpu";
+import type { Complex } from "@/lib/buddhabrot/explain";
 
 const FADE_MS = 600;
 // Defense in depth: if toBitmapAndBlob() never settles (createImageBitmap
 // wedging under memory pressure, a half-lost device), don't strand play.
 const COMPLETION_TIMEOUT_MS = 10_000;
 const THROW_SPAWN_INTERVAL_MS = 680;
-const ITERATION_LIFE_MS = 1600;
+const ITERATION_LIFE_MS = 2200;
 const RIPPLE_LIFE_MS = 900;
 const TRAIL_FADE_MS = 800;
+const SKIP_BURST_SAMPLES = 140_000;
 
 type LiveRockThrow = {
   throwData: IntroRockThrow;
@@ -39,6 +42,7 @@ type LiveRipple = {
 type LiveImpactOrbit = {
   points: Array<{ x: number; y: number }>;
   born: number;
+  skipIndex: number;
 };
 
 export default function BuddhabrotIntro({
@@ -98,6 +102,7 @@ export default function BuddhabrotIntro({
     let liveThrows: LiveRockThrow[] = [];
     let liveRipples: LiveRipple[] = [];
     let liveImpactOrbits: LiveImpactOrbit[] = [];
+    let nebulaSeeds: Complex[] = [];
 
     function updatePhysicsAndSpawns(now: number) {
       if (reduceMotion) return;
@@ -122,8 +127,14 @@ export default function BuddhabrotIntro({
           if (flightSec >= impact.t && !throwEntry.triggeredImpacts.has(impact.skipIndex)) {
             throwEntry.triggeredImpacts.add(impact.skipIndex);
             liveRipples.push({ x: impact.x, y: impact.y, born: now });
+            nebulaSeeds = [...nebulaSeeds, ...impact.seeds].slice(-MAX_SEED_CENTERS);
+            generator.accumulateAround(impact.seeds, SKIP_BURST_SAMPLES);
             if (impact.orbitPoints.length >= 2) {
-              liveImpactOrbits.push({ points: impact.orbitPoints, born: now });
+              liveImpactOrbits.push({
+                points: impact.orbitPoints,
+                born: now,
+                skipIndex: impact.skipIndex,
+              });
             }
           }
         }
@@ -141,26 +152,7 @@ export default function BuddhabrotIntro({
       throwsContext.lineCap = "round";
       throwsContext.lineJoin = "round";
 
-      // 1. Draw dim iteration lines originating from actual rock skips
-      for (const orbit of liveImpactOrbits) {
-        const age = now - orbit.born;
-        if (age > ITERATION_LIFE_MS || orbit.points.length < 2) continue;
-        const fade = 1 - age / ITERATION_LIFE_MS;
-        const grow = Math.min(1, age / 320);
-        const count = Math.max(2, Math.floor(orbit.points.length * grow));
-        const alpha = 0.03 + fade * 0.09;
-
-        throwsContext.strokeStyle = `rgba(135, 220, 250, ${alpha})`;
-        throwsContext.lineWidth = 0.95;
-        throwsContext.beginPath();
-        throwsContext.moveTo(orbit.points[0].x, orbit.points[0].y);
-        for (let i = 1; i < count; i++) {
-          throwsContext.lineTo(orbit.points[i].x, orbit.points[i].y);
-        }
-        throwsContext.stroke();
-      }
-
-      // 2. Draw expanding water ripples from rock skips
+      // Ripples and rocks first; iteration paths draw last so they sit on the nebula.
       for (const ripple of liveRipples) {
         const age = (now - ripple.born) / 1000;
         if (age > RIPPLE_LIFE_MS / 1000) continue;
@@ -281,6 +273,27 @@ export default function BuddhabrotIntro({
           throwsContext.restore();
         }
       }
+
+      for (const orbit of liveImpactOrbits) {
+        const age = now - orbit.born;
+        if (age > ITERATION_LIFE_MS || orbit.points.length < 2) continue;
+        const fade = 1 - age / ITERATION_LIFE_MS;
+        const grow = Math.min(1, age / 280);
+        const count = Math.max(2, Math.floor(orbit.points.length * grow));
+        const tint = SKIP_TINTS[(Math.max(1, orbit.skipIndex) - 1) % SKIP_TINTS.length];
+        const alpha = 0.34 + fade * 0.58;
+        throwsContext.beginPath();
+        throwsContext.moveTo(orbit.points[0].x, orbit.points[0].y);
+        for (let i = 1; i < count; i++) {
+          throwsContext.lineTo(orbit.points[i].x, orbit.points[i].y);
+        }
+        throwsContext.strokeStyle = `rgba(8, 18, 28, ${0.55 * fade})`;
+        throwsContext.lineWidth = 3.4;
+        throwsContext.stroke();
+        throwsContext.strokeStyle = `rgba(${tint[0]}, ${tint[1]}, ${tint[2]}, ${alpha})`;
+        throwsContext.lineWidth = 1.7;
+        throwsContext.stroke();
+      }
     }
 
     function loop(now: number) {
@@ -290,9 +303,10 @@ export default function BuddhabrotIntro({
       }
       const elapsed = (now - lastTime) / 1000;
       lastTime = now;
-      generator.step(elapsed);
-      generator.blit(context);
       updatePhysicsAndSpawns(now);
+      if (reduceMotion) generator.step(elapsed);
+      else generator.stepAround(elapsed, nebulaSeeds);
+      generator.blit(context);
       drawThrows(now);
       setProgress(generator.progress());
       if (generator.isComplete() && !finished) {

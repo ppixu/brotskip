@@ -20,6 +20,12 @@ test("colorize shader uses the original muted contrast curve", () => {
   assert.match(shaders.colorizeShader, /if \(contrast < 0\.055\)/);
 });
 
+test("accumulate shader can sample around skip seeds instead of the whole pond", () => {
+  assert.match(shaders.accumulateShader, /seedCount/);
+  assert.match(shaders.accumulateShader, /seeds/);
+  assert.match(shaders.accumulateShader, /jitter/);
+});
+
 test("WGSL shaders do not reuse a binding name as an entry point", () => {
   assert.ok(Object.keys(shaders).includes("histogramShader"));
   for (const [name, source] of Object.entries(shaders)) {

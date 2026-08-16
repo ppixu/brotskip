@@ -13,6 +13,17 @@ export const INTRO_SAMPLE_BUDGET: Record<number, number> = {
 
 export const INTRO_THROWS_PER_FRAME = 3;
 export const INTRO_THROW_LIFE_MS = 1400;
+export const INTRO_SOURCE_RADIUS_PX = 10;
+export const INTRO_SEED_DOTS = 18;
+export const SKIP_TINTS = [
+  [80, 214, 255],
+  [92, 255, 196],
+  [186, 255, 120],
+  [255, 230, 110],
+  [255, 168, 92],
+  [255, 122, 186],
+  [196, 146, 255],
+] as const;
 
 export const GLYPH_COUNT = 7;
 export const SACRED_PATH_COUNTS = [2, 2, 2, 4, 2, 3, 7] as const;
@@ -71,6 +82,64 @@ export function sampleSplash(random: () => number): Complex {
   };
 }
 
+export function sampleEscapingSplash(random: () => number, maxSteps = INTRO_MAX_ITERATIONS) {
+  for (let attempt = 0; attempt < 80; attempt++) {
+    const splash = sampleSplash(random);
+    const orbit = escapingOrbit(splash, maxSteps);
+    if (orbit.length >= 5 && magnitudeSq(orbit[orbit.length - 1]) > 4) {
+      return { ...splash, orbit };
+    }
+  }
+  const splash = { re: -0.7, im: 0.69 };
+  return { ...splash, orbit: escapingOrbit(splash, maxSteps) };
+}
+
+export function impactSeedCloud(
+  x: number,
+  y: number,
+  canvasSize: number,
+  shape: number,
+  count: number,
+): Complex[] {
+  const points: Complex[] = [];
+  const paths = SACRED_PATH_COUNTS[shape % SACRED_PATH_COUNTS.length];
+  for (let index = 0; index < count; index++) {
+    const path = index % paths;
+    const pathIndex = Math.floor(index / paths);
+    const samplesOnPath = Math.ceil((count - path) / paths);
+    const offset = sacredShapeOffset(shape, path, pathIndex / Math.max(samplesOnPath, 1));
+    points.push(introCanvasToComplex(
+      x + offset.x * INTRO_SOURCE_RADIUS_PX,
+      y + offset.y * INTRO_SOURCE_RADIUS_PX,
+      canvasSize,
+    ));
+  }
+  return points;
+}
+
+function nearestEscaping(c: Complex, random: () => number, maxSteps: number) {
+  const tryCandidate = (candidate: Complex) => {
+    const orbit = escapingOrbit(candidate, maxSteps);
+    if (orbit.length >= 5 && magnitudeSq(orbit[orbit.length - 1]) > 4) {
+      return { seed: candidate, orbit };
+    }
+    return null;
+  };
+  const exact = tryCandidate(c);
+  if (exact) return exact;
+  for (let attempt = 0; attempt < 48; attempt++) {
+    const radius = 0.02 + (attempt / 48) * 0.4;
+    const angle = random() * Math.PI * 2;
+    const found = tryCandidate({
+      re: c.re + Math.cos(angle) * radius,
+      im: c.im + Math.sin(angle) * radius,
+    });
+    if (found) return found;
+  }
+  const fallback = sampleEscapingSplash(random, maxSteps);
+  return { seed: { re: fallback.re, im: fallback.im }, orbit: fallback.orbit };
+}
+
 export function complexToIntroCanvas(re: number, im: number, size: number) {
   return {
     x: (re - THROW_BOUNDS.xMin) / (THROW_BOUNDS.xMax - THROW_BOUNDS.xMin) * size,
@@ -91,6 +160,7 @@ export type IntroSkipImpact = {
   t: number; // time in seconds since launch when impact happens
   skipIndex: number;
   complex: Complex;
+  seeds: Complex[];
   orbitPoints: Array<{ x: number; y: number }>;
 };
 
@@ -126,9 +196,10 @@ export function createIntroRockThrow(
     const launchX = canvasSize * (0.18 + random() * 0.64);
     const launchY = canvasSize * (0.86 + random() * 0.10);
 
-    // Target a variety of interesting regions across the Mandelbrot set
-    const targetX = canvasSize * (0.20 + random() * 0.60);
-    const targetY = canvasSize * (0.22 + random() * 0.55);
+    const target = sampleEscapingSplash(random, maxSteps);
+    const aimed = complexToIntroCanvas(target.re, target.im, canvasSize);
+    const targetX = aimed.x;
+    const targetY = aimed.y;
 
     const dx = targetX - launchX;
     const dy = targetY - launchY;
@@ -176,10 +247,12 @@ export function createIntroRockThrow(
         }
 
         skips += 1;
-        const complex = introCanvasToComplex(x, y, canvasSize);
-        const orbit = escapingOrbit(complex, maxSteps);
+        const landed = introCanvasToComplex(x, y, canvasSize);
+        const { seed, orbit } = nearestEscaping(landed, random, maxSteps);
+        const origin = complexToIntroCanvas(seed.re, seed.im, canvasSize);
+        const seeds = [seed, ...impactSeedCloud(x, y, canvasSize, shape, INTRO_SEED_DOTS)];
         const orbitPoints = [
-          { x, y },
+          origin,
           ...orbit.map((pt) => complexToIntroCanvas(pt.re, pt.im, canvasSize)),
         ];
 
@@ -188,7 +261,8 @@ export function createIntroRockThrow(
           y,
           t,
           skipIndex: skips,
-          complex,
+          complex: seed,
+          seeds,
           orbitPoints,
         });
 
@@ -234,13 +308,19 @@ export function createIntroRockThrow(
   }
 
   // Fallback if attempts didn't produce >= 2 impacts
+  const fallbackSeed = sampleEscapingSplash(random, maxSteps);
+  const fallbackOrigin = complexToIntroCanvas(fallbackSeed.re, fallbackSeed.im, canvasSize);
   const fallbackImpact: IntroSkipImpact = {
-    x: canvasSize * 0.5,
-    y: canvasSize * 0.5,
+    x: fallbackOrigin.x,
+    y: fallbackOrigin.y,
     t: 0.3,
     skipIndex: 1,
-    complex: introCanvasToComplex(canvasSize * 0.5, canvasSize * 0.5, canvasSize),
-    orbitPoints: [{ x: canvasSize * 0.5, y: canvasSize * 0.5 }],
+    complex: { re: fallbackSeed.re, im: fallbackSeed.im },
+    seeds: [fallbackSeed, ...impactSeedCloud(fallbackOrigin.x, fallbackOrigin.y, canvasSize, shape, INTRO_SEED_DOTS)],
+    orbitPoints: [
+      fallbackOrigin,
+      ...fallbackSeed.orbit.map((pt) => complexToIntroCanvas(pt.re, pt.im, canvasSize)),
+    ],
   };
 
   return {

@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
+import { magnitudeSq } from "../../lib/buddhabrot/explain.ts";
 import {
   GLYPH_COUNT,
   INTRO_MAX_ITERATIONS,
@@ -8,9 +10,11 @@ import {
   THROW_BOUNDS,
   complexToIntroCanvas,
   createIntroRockThrow,
+  impactSeedCloud,
   introCanvasToComplex,
   introThrowToCanvas,
   sacredShapeOffset,
+  sampleEscapingSplash,
   sampleSplash,
 } from "../../lib/buddhabrot/intro-throws.ts";
 import { samplesForFrame } from "../../lib/buddhabrot/pacing.ts";
@@ -41,6 +45,54 @@ test("splash samples stay inside the Buddhabrot bounds", () => {
     assert.ok(splash.re >= THROW_BOUNDS.xMin && splash.re <= THROW_BOUNDS.xMax);
     assert.ok(splash.im >= THROW_BOUNDS.yMin && splash.im <= THROW_BOUNDS.yMax);
   }
+});
+
+test("escaping splash samples leave the radius-2 circle", () => {
+  let index = 0;
+  const random = () => {
+    index += 1;
+    return (index * 0.17) % 1;
+  };
+  for (let step = 0; step < 8; step++) {
+    const splash = sampleEscapingSplash(random);
+    const orbit = splash.orbit;
+    assert.ok(orbit.length >= 5);
+    assert.ok(magnitudeSq(orbit[orbit.length - 1]) > 4);
+  }
+});
+
+test("a skip seed cloud stays near the splash in the complex plane", () => {
+  const splash = { re: -0.75, im: 0.12 };
+  const screen = complexToIntroCanvas(splash.re, splash.im, 512);
+  const seeds = impactSeedCloud(screen.x, screen.y, 512, 0, 18);
+  assert.equal(seeds.length, 18);
+  for (const seed of seeds) {
+    assert.ok(Math.hypot(seed.re - splash.re, seed.im - splash.im) < 0.12);
+  }
+});
+
+test("rock-throw skips carry escaping seeds for the nebula", () => {
+  let seed = 7;
+  const random = () => {
+    seed = (seed * 1664525 + 1013904223) % 4294967296;
+    return seed / 4294967296;
+  };
+  const rockThrow = createIntroRockThrow(640, random);
+  assert.ok(rockThrow.impacts.length >= 1);
+  for (const impact of rockThrow.impacts) {
+    assert.ok(impact.seeds.length >= 6);
+    assert.ok(impact.orbitPoints.length >= 5);
+    const last = impact.orbitPoints[impact.orbitPoints.length - 1];
+    const complex = introCanvasToComplex(last.x, last.y, 640);
+    assert.ok(magnitudeSq(complex) > 3.5 || impact.orbitPoints.length >= 8);
+  }
+});
+
+test("intro overlay feeds skip seeds into the generator instead of a free nebula", () => {
+  const source = readFileSync(new URL("../../app/BuddhabrotIntro.tsx", import.meta.url), "utf8");
+  assert.match(source, /stepAround/);
+  assert.match(source, /accumulateAround/);
+  assert.match(source, /orbitPoints/);
 });
 
 test("an intro throw maps an escaping orbit onto the canvas", () => {
@@ -92,9 +144,8 @@ test("createIntroRockThrow generates rock throws with trajectory and skips", () 
     assert.ok(impact.y >= 0 && impact.y <= size);
     assert.ok(impact.t >= 0);
     assert.ok(impact.orbitPoints.length >= 1);
-    // First point of orbit starts at impact location
-    assert.equal(impact.orbitPoints[0].x, impact.x);
-    assert.equal(impact.orbitPoints[0].y, impact.y);
+    assert.ok(Math.hypot(impact.orbitPoints[0].x - impact.x, impact.orbitPoints[0].y - impact.y) < size * 0.12);
+    assert.ok(impact.seeds.length >= 6);
   }
 });
 
