@@ -15,14 +15,21 @@ import {
 } from "@/lib/orbit-end";
 import { MAX_SKIPS, MIN_SKIPS, sampleSkipCount } from "@/lib/skip-count";
 import { allocateSources } from "@/lib/orbit-sources";
+import { createBuddhabrotGenerator } from "@/lib/buddhabrot/generator";
+import {
+  indexedDbStore,
+  readCachedTexture,
+  selectTextureSize,
+  writeCachedTexture,
+} from "@/lib/buddhabrot/cache";
 import {
   FLASHLIGHT_ATMOSPHERE,
   FLASHLIGHT_HALF_ANGLE,
   FLASHLIGHT_MAX_DEPTH,
   FLASHLIGHT_PLANNED_SKIPS,
   FLASHLIGHT_SOURCE_CAP,
-  FLASHLIGHT_SOURCE_DOTS,
   FLASHLIGHT_SPAWN_MS,
+  FLASHLIGHT_EDGE_BLUR_PX,
   INTRO_ATMOSPHERE,
   INTRO_BACKGROUND_SPAWN_MS,
   INTRO_MAX_DEPTH,
@@ -319,7 +326,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
         let incomingLength = length(clip - previousClip);
         let control1 = previousZ + (z - previousZ) / 3.0;
         let control2 = z - (future - z) / 3.0;
-        if (incomingLength <= 0.5 || (inAtlas && length(z - previousZ) <= 0.5)) {
+        if (incomingLength <= 0.12 && length(z - previousZ) <= 0.12) {
           let lineVertex = atomicAdd(&lineDrawArgs.vertexCount, ${CURVE_SEGMENTS * 2}u);
           let lineSlot = lineVertex / ${CURVE_SEGMENTS * 2}u;
           if (lineSlot < ${LINE_SEGMENT_CAPACITY}u) {
@@ -1023,11 +1030,6 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       atlasPoints.setVertexBuffer(0, vertexBuffer);
       atlasPoints.drawIndirect(indirectBuffer, 0);
       atlasPoints.end();
-      const atlasLines = encoder.beginRenderPass({ colorAttachments: [{ view: lineDestination.createView(), loadOp: "load", storeOp: "store" }] });
-      atlasLines.setPipeline(linePipeline);
-      atlasLines.setBindGroup(0, lineAtlasBind);
-      atlasLines.drawIndirect(lineIndirectBuffer, 0);
-      atlasLines.end();
       const livePoints = encoder.beginRenderPass({ colorAttachments: [{ view: liveTexture.createView(), loadOp: "load", storeOp: "store" }] });
       livePoints.setPipeline(pointPipeline);
       livePoints.setBindGroup(0, pointBind);
@@ -1369,9 +1371,12 @@ export default function MandelbrotSkipping() {
     const gridCanvas = document.createElement("canvas");
     const gridContext = gridCanvas.getContext("2d");
     let gridDirty = true;
+    const flashlightCanvas = document.createElement("canvas");
+    const flashlightContext = flashlightCanvas.getContext("2d");
     const previewCanvas = document.createElement("canvas");
     const previewContext = previewCanvas.getContext("2d");
     let flashlightDirty = true;
+    let buddhabrotSource: CanvasImageSource | null = null;
     let lastFlashlightSpawn = 0;
     let introRocks: FlyingRock[] = [];
     let introTrails: Array<{ path: Array<{ x: number; y: number }>; born: number }> = [];
@@ -1383,6 +1388,56 @@ export default function MandelbrotSkipping() {
 
     invalidateFlashlightRef.current = () => { flashlightDirty = true; };
     invalidateGridRef.current = () => { gridDirty = true; };
+
+    let flashlightLoadCancelled = false;
+    void (async () => {
+      try {
+        const size = selectTextureSize(window);
+        const store = indexedDbStore(indexedDB);
+        const cached = await readCachedTexture(size, store);
+        if (cached) {
+          if (flashlightLoadCancelled) return;
+          buddhabrotSource = await createImageBitmap(cached);
+          flashlightDirty = true;
+          return;
+        }
+        const gpu = await gpuPromiseRef.current;
+        if (!gpu || flashlightLoadCancelled) return;
+        const generator = createBuddhabrotGenerator(gpu, { size });
+        await new Promise<void>((resolve) => {
+          const tick = () => {
+            if (flashlightLoadCancelled) {
+              generator.destroy();
+              resolve();
+              return;
+            }
+            generator.step(1 / 60);
+            if (generator.isComplete()) {
+              resolve();
+              return;
+            }
+            requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        });
+        if (flashlightLoadCancelled) {
+          generator.destroy();
+          return;
+        }
+        const { bitmap, blobPromise } = await generator.toBitmapAndBlob();
+        generator.destroy();
+        if (flashlightLoadCancelled) {
+          bitmap.close();
+          return;
+        }
+        buddhabrotSource = bitmap;
+        flashlightDirty = true;
+        const blob = await blobPromise;
+        if (blob && !flashlightLoadCancelled) await writeCachedTexture(size, blob, store);
+      } catch {
+        // Aiming still shows live cone points without a cached nebula.
+      }
+    })();
 
     function anchor() { return { x: width * 0.5, y: height * 0.82 }; }
     function minDimension() { return Math.min(width, height); }
@@ -1400,6 +1455,10 @@ export default function MandelbrotSkipping() {
       gridCanvas.height = Math.round(height * dpr);
       gridContext?.setTransform(dpr, 0, 0, dpr, 0, 0);
       gridDirty = true;
+      flashlightCanvas.width = Math.round(width * dpr);
+      flashlightCanvas.height = Math.round(height * dpr);
+      flashlightContext?.setTransform(dpr, 0, 0, dpr, 0, 0);
+      flashlightDirty = true;
       previewCanvas.width = Math.round(width * dpr);
       previewCanvas.height = Math.round(height * dpr);
       previewContext?.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -2648,6 +2707,24 @@ export default function MandelbrotSkipping() {
       target.closePath();
     }
 
+    function drawMappedBuddhabrot(target: CanvasRenderingContext2D) {
+      const source = buddhabrotSource;
+      if (!source) return;
+      const rotateRight = tuningRef.current.rotateRight;
+      const topLeft = complexToScreen(TRAIL_BOUNDS.xMin, TRAIL_BOUNDS.yMax, width, height, viewRef.current, false);
+      const bottomRight = complexToScreen(TRAIL_BOUNDS.xMax, TRAIL_BOUNDS.yMin, width, height, viewRef.current, false);
+      target.save();
+      if (rotateRight) {
+        target.translate(width / 2, height / 2);
+        target.rotate(Math.PI / 2);
+        target.translate(-width / 2, -height / 2);
+      }
+      target.imageSmoothingEnabled = true;
+      target.globalAlpha = 0.42;
+      target.drawImage(source, topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y);
+      target.restore();
+    }
+
     function drawFlashlight() {
       const geometry = flashlightGeometry();
       if (!geometry) return;
@@ -2656,11 +2733,43 @@ export default function MandelbrotSkipping() {
       ctx.fillRect(0, 0, width, height);
       ctx.globalCompositeOperation = "destination-out";
       ctx.fillStyle = "#ffffff";
-      ctx.filter = `blur(${8 * dpr}px)`;
+      ctx.filter = `blur(${FLASHLIGHT_EDGE_BLUR_PX * dpr}px)`;
       traceFlashlightCone(ctx, geometry);
       ctx.fill();
       ctx.filter = "none";
       ctx.restore();
+
+      if (buddhabrotSource && flashlightContext) {
+        if (flashlightDirty) {
+          flashlightContext.clearRect(0, 0, width, height);
+          flashlightContext.save();
+          flashlightContext.filter = `blur(${FLASHLIGHT_EDGE_BLUR_PX * dpr}px)`;
+          const mask = flashlightContext.createLinearGradient(
+            geometry.apexX,
+            geometry.apexY,
+            geometry.apexX + geometry.directionX * geometry.range,
+            geometry.apexY + geometry.directionY * geometry.range,
+          );
+          mask.addColorStop(0, "rgba(255, 255, 255, .55)");
+          mask.addColorStop(.08, "rgba(255, 255, 255, .92)");
+          mask.addColorStop(.42, "rgba(255, 255, 255, .55)");
+          mask.addColorStop(.78, "rgba(255, 255, 255, .12)");
+          mask.addColorStop(1, "rgba(255, 255, 255, 0)");
+          flashlightContext.fillStyle = mask;
+          traceFlashlightCone(flashlightContext, geometry);
+          flashlightContext.fill();
+          flashlightContext.restore();
+          flashlightContext.globalCompositeOperation = "source-in";
+          drawMappedBuddhabrot(flashlightContext);
+          flashlightContext.globalCompositeOperation = "source-over";
+          flashlightDirty = false;
+        }
+        ctx.save();
+        ctx.globalCompositeOperation = "screen";
+        ctx.globalAlpha = 0.34;
+        ctx.drawImage(flashlightCanvas, 0, 0, width, height);
+        ctx.restore();
+      }
 
       ctx.save();
       traceFlashlightCone(ctx, geometry);
@@ -2691,33 +2800,23 @@ export default function MandelbrotSkipping() {
       drawRock(now);
     }
 
-    function spawnFlashlightSkips(now: number) {
+    function spawnFlashlightPoints(now: number) {
       if (phase !== "aiming" || introActiveRef.current) return;
       const geometry = flashlightGeometry();
       if (!geometry) return;
       if (lastFlashlightSpawn !== 0 && now - lastFlashlightSpawn < FLASHLIGHT_SPAWN_MS) return;
       lastFlashlightSpawn = now;
       const ray = sampleRayInCone(geometry, Math.random);
-      const landings = flashlightSkipLandings({
-        x: geometry.apexX,
-        y: geometry.apexY,
-        angle: ray.angle,
-        power: 0.48 + Math.random() * 0.3,
-        pondScale: pondScale(),
-        width,
-        height,
-        plannedSkips: FLASHLIGHT_PLANNED_SKIPS,
-      });
+      const mapped = screenToComplex(
+        ray.x, ray.y, width, height, viewRef.current, tuningRef.current.rotateRight,
+      );
       engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: FLASHLIGHT_MAX_DEPTH });
       engineRef.current?.setAtmosphere(FLASHLIGHT_ATMOSPHERE);
-      const glyph = (shapeOffset + rock.skips) % GLYPH_COUNT;
-      for (const landing of landings) {
-        const sources = impactSources(
-          landing.x, landing.y, width, height, viewRef.current,
-          FLASHLIGHT_SOURCE_DOTS, glyph, tuningRef.current.rotateRight,
-        );
-        engineRef.current?.spawn(sources, landing.index, FLASHLIGHT_SOURCE_CAP);
-      }
+      engineRef.current?.spawn(
+        [{ x: Math.fround(mapped.x), y: Math.fround(mapped.y) }],
+        1,
+        FLASHLIGHT_SOURCE_CAP,
+      );
     }
 
     function spawnIntroBackgroundOrbits(now: number) {
@@ -2783,7 +2882,7 @@ export default function MandelbrotSkipping() {
       }
       maybeOpeningThrow(now);
       spawnIntroBackgroundOrbits(now);
-      spawnFlashlightSkips(now);
+      spawnFlashlightPoints(now);
       advanceOrbits(now, elapsed);
       updateIterationSound(now);
       render(now);
@@ -2986,6 +3085,7 @@ export default function MandelbrotSkipping() {
     resetRound();
     frame = requestAnimationFrame(loop);
     return () => {
+      flashlightLoadCancelled = true;
       cancelAnimationFrame(frame);
       observer.disconnect();
       canvas.removeEventListener("pointerdown", onPointerDown);

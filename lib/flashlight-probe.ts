@@ -1,9 +1,10 @@
-export const FLASHLIGHT_SOURCE_DOTS = 6;
+export const FLASHLIGHT_SOURCE_DOTS = 1;
 export const FLASHLIGHT_MAX_DEPTH = 8_000;
 export const FLASHLIGHT_SOURCE_CAP = 36;
 export const FLASHLIGHT_SPAWN_MS = 240;
 export const FLASHLIGHT_PLANNED_SKIPS = 3;
 export const FLASHLIGHT_HALF_ANGLE = 0.29;
+export const FLASHLIGHT_EDGE_BLUR_PX = 32;
 export const INTRO_THROWS_PER_WAVE = 16;
 export const INTRO_THROW_STAGGER_MS = 45;
 export const INTRO_ROCK_DRAW_EVERY = 50;

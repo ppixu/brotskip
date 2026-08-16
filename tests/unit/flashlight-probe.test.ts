@@ -6,6 +6,7 @@ import {
   FLASHLIGHT_MAX_DEPTH,
   FLASHLIGHT_SOURCE_CAP,
   FLASHLIGHT_SOURCE_DOTS,
+  FLASHLIGHT_EDGE_BLUR_PX,
   INTRO_ATMOSPHERE,
   INTRO_BACKGROUND_SPAWN_MS,
   INTRO_SETTLE_MS,
@@ -30,9 +31,10 @@ const cone = {
 };
 
 test("flashlight budget stays light enough to aim without hitching", () => {
-  assert.equal(FLASHLIGHT_SOURCE_DOTS, 6);
+  assert.equal(FLASHLIGHT_SOURCE_DOTS, 1);
   assert.ok(FLASHLIGHT_MAX_DEPTH <= 8_000);
   assert.ok(FLASHLIGHT_SOURCE_CAP <= 36);
+  assert.ok(FLASHLIGHT_EDGE_BLUR_PX >= 24);
 });
 
 test("a point along the aim ray sits inside the flashlight cone", () => {

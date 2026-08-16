@@ -37,17 +37,19 @@ test("orbit trails accumulate in a complex-plane atlas instead of warping a scre
   assert.match(source, /zoomPixelScale/);
   assert.doesNotMatch(source, /cameraPausedUntil/);
   assert.doesNotMatch(source, /viewChangingUntil/);
-  assert.doesNotMatch(source, /incomingLength <= 0\.5 \|\| inAtlas\)/);
-  assert.match(source, /incomingLength <= 0\.5 \|\| \(inAtlas && length\(z - previousZ\) <= 0\.5\)/);
+  assert.doesNotMatch(source, /const atlasLines = encoder.beginRenderPass/);
+  assert.match(source, /incomingLength <= 0\.12 && length\(z - previousZ\) <= 0\.12/);
 });
 
-test("flashlight and opening use live orbit throws instead of a pre-filmed Buddhabrot", () => {
+test("flashlight shows a dim cached Buddhabrot in the cone and iterates random single points", () => {
   const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
   assert.match(source, /FLASHLIGHT_SOURCE_CAP/);
-  assert.match(source, /INTRO_THROWS_PER_WAVE/);
-  assert.doesNotMatch(source, /createBuddhabrotGenerator/);
-  assert.doesNotMatch(source, /drawMappedBuddhabrot/);
-  assert.doesNotMatch(source, /buddhabrot-density/);
+  assert.match(source, /drawMappedBuddhabrot/);
+  assert.match(source, /readCachedTexture/);
+  assert.match(source, /spawnFlashlightPoints/);
+  assert.match(source, /FLASHLIGHT_EDGE_BLUR_PX/);
+  assert.doesNotMatch(source, /spawnFlashlightSkips/);
+  assert.doesNotMatch(source, /flashlightSkipLandings\(\{\s*x: geometry\.apexX/);
 });
 
 test("opening and flashlight hide orbit lines, go grayscale, and throw overlapping intro rocks", () => {

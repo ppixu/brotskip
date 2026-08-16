@@ -17,10 +17,10 @@ Use the real orbit engine for both.
   each rock from a random point aiming toward the pond. After a 5.4s settle,
   a Play button in the playfield center starts the game and clears the
   nebula. Reduce-motion and share links skip this.
-- Flashlight: punch a hole in the dark overlay so live trails show in the
-  cone. While aiming, throw invisible light skips into the cone
-  (`6` dots, depth `8000`, cap `36` sources). Clear them on release.
-- Do not draw or cache a Buddhabrot PNG in the flashlight.
+- Flashlight: punch a soft-edged hole in the dark overlay. While aiming,
+  show a dim cached Buddhabrot in the cone and iterate random single
+  points there (`1` seed, depth `8000`, cap `36` sources). Do not throw
+  rocks. Clear live cone orbits on release.
 
 ## Atmosphere
 
