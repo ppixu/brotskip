@@ -37,4 +37,4 @@ nebula reads as density, not skip-colored paths.
   energy is much lower so the background Buddhabrot stays a faint wash.
   Opening uses a brighter grayscale nebula behind a sparse volley, keeps
   iterating for a short settle, then fades before clearing for play.
-  The aim cone has no stroked rim.
+  The aim cone has no fill or stroked rim; its sides fade with a conic mask.

@@ -2755,14 +2755,6 @@ export default function MandelbrotSkipping() {
       };
     }
 
-    function traceFlashlightCone(target: CanvasRenderingContext2D, geometry: NonNullable<ReturnType<typeof flashlightGeometry>>) {
-      target.beginPath();
-      target.moveTo(geometry.apexX, geometry.apexY);
-      target.lineTo(geometry.leftX, geometry.leftY);
-      target.quadraticCurveTo(geometry.tipX, geometry.tipY, geometry.rightX, geometry.rightY);
-      target.closePath();
-    }
-
     function drawMappedBuddhabrot(target: CanvasRenderingContext2D) {
       if (!buddhabrotSource) return;
       const topLeft = complexToScreen(TRAIL_BOUNDS.xMin, TRAIL_BOUNDS.yMax, width, height, viewRef.current, false);
@@ -2779,45 +2771,38 @@ export default function MandelbrotSkipping() {
       const geometry = flashlightGeometry();
       if (!geometry) return;
       const { apexX, apexY, directionX, directionY, range } = geometry;
-      const edgeBlur = FLASHLIGHT_EDGE_BLUR_PX;
-      ctx.save();
-      ctx.filter = `blur(${edgeBlur}px)`;
-      const beam = ctx.createRadialGradient(apexX, apexY, 0, apexX, apexY, range);
-      beam.addColorStop(0, "rgba(224, 244, 255, 0.07)");
-      beam.addColorStop(0.38, "rgba(180, 226, 252, 0.035)");
-      beam.addColorStop(0.78, "rgba(140, 204, 240, 0.012)");
-      beam.addColorStop(1, "rgba(120, 188, 230, 0)");
-      ctx.fillStyle = beam;
-      traceFlashlightCone(ctx, geometry);
-      ctx.fill();
-      ctx.restore();
 
       if (buddhabrotSource && flashlightContext) {
         if (flashlightDirty) {
           flashlightContext.clearRect(0, 0, width, height);
+          drawMappedBuddhabrot(flashlightContext);
+          flashlightContext.globalCompositeOperation = "destination-in";
           flashlightContext.save();
           flashlightContext.filter = `blur(${FLASHLIGHT_EDGE_BLUR_PX * dpr}px)`;
-          const mask = flashlightContext.createLinearGradient(
-            apexX,
-            apexY,
-            apexX + directionX * range,
-            apexY + directionY * range,
-          );
-          mask.addColorStop(0, "rgba(255, 255, 255, 0.95)");
-          mask.addColorStop(0.42, "rgba(255, 255, 255, 0.65)");
-          mask.addColorStop(0.85, "rgba(255, 255, 255, 0.22)");
-          mask.addColorStop(1, "rgba(255, 255, 255, 0)");
-          flashlightContext.fillStyle = mask;
-          traceFlashlightCone(flashlightContext, geometry);
-          flashlightContext.fill();
+          const facing = Math.atan2(directionY, directionX);
+          const span = (FLASHLIGHT_HALF_ANGLE * 2) / TAU;
+          const fade = Math.min(span * 0.22, 0.04);
+          const conic = flashlightContext.createConicGradient(facing - FLASHLIGHT_HALF_ANGLE, apexX, apexY);
+          conic.addColorStop(0, "rgba(255, 255, 255, 0)");
+          conic.addColorStop(fade, "rgba(255, 255, 255, 1)");
+          conic.addColorStop(Math.max(fade, span - fade), "rgba(255, 255, 255, 1)");
+          conic.addColorStop(span, "rgba(255, 255, 255, 0)");
+          if (span < 1) conic.addColorStop(1, "rgba(255, 255, 255, 0)");
+          flashlightContext.fillStyle = conic;
+          flashlightContext.fillRect(0, 0, width, height);
+          flashlightContext.globalCompositeOperation = "destination-in";
+          const radial = flashlightContext.createRadialGradient(apexX, apexY, 0, apexX, apexY, range);
+          radial.addColorStop(0, "rgba(255, 255, 255, 0.9)");
+          radial.addColorStop(0.55, "rgba(255, 255, 255, 0.4)");
+          radial.addColorStop(1, "rgba(255, 255, 255, 0)");
+          flashlightContext.fillStyle = radial;
+          flashlightContext.fillRect(0, 0, width, height);
           flashlightContext.restore();
-          flashlightContext.globalCompositeOperation = "source-in";
-          drawMappedBuddhabrot(flashlightContext);
           flashlightContext.globalCompositeOperation = "source-over";
           flashlightDirty = false;
         }
         ctx.save();
-        ctx.globalAlpha = 0.58;
+        ctx.globalAlpha = 0.32;
         ctx.drawImage(flashlightCanvas, 0, 0, width, height);
         ctx.restore();
       }
