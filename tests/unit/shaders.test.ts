@@ -69,6 +69,9 @@ test("opening and flashlight hide orbit lines, go grayscale, and throw overlappi
   assert.match(source, /let lineGain = display.pad;/);
   assert.match(source, /INTRO_SETTLE_MS/);
   assert.match(source, /spawnIntroBackgroundOrbits/);
+  assert.match(source, /spawnAppend/);
+  assert.match(source, /INTRO_TRAIL_FADE_MS/);
+  assert.match(source, /ripple: body\.draw/);
   assert.match(source, /drawIntroTrajectory/);
   assert.match(source, /playfieldThrowControl/);
   assert.doesNotMatch(source, /if \(now - introSettleAt >= INTRO_SETTLE_MS\) endOpeningRef\.current\(\)/);

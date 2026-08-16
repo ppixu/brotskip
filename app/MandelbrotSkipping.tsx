@@ -14,7 +14,7 @@ import {
   updateOrbitEnd,
 } from "@/lib/orbit-end";
 import { MAX_SKIPS, MIN_SKIPS, sampleSkipCount } from "@/lib/skip-count";
-import { allocateSources } from "@/lib/orbit-sources";
+import { allocateSources, allocateSourcesAppend } from "@/lib/orbit-sources";
 import { createBuddhabrotGenerator } from "@/lib/buddhabrot/generator";
 import {
   indexedDbStore,
@@ -26,7 +26,6 @@ import {
   FLASHLIGHT_ATMOSPHERE,
   FLASHLIGHT_HALF_ANGLE,
   FLASHLIGHT_MAX_DEPTH,
-  FLASHLIGHT_PLANNED_SKIPS,
   FLASHLIGHT_SOURCE_CAP,
   FLASHLIGHT_SPAWN_MS,
   FLASHLIGHT_EDGE_BLUR_PX,
@@ -38,9 +37,11 @@ import {
   INTRO_THROW_STAGGER_MS,
   INTRO_THROWS_PER_WAVE,
   INTRO_ROCK_DRAW_EVERY,
+  INTRO_TRAIL_FADE_MS,
+  INTRO_NEBULA_SEEDS_PER_WAVE,
   PLAY_ATMOSPHERE,
   introLaunchOrigin,
-  flashlightSkipLandings,
+  introNebulaSeed,
   sampleRayInCone,
   type OrbitAtmosphere,
 } from "@/lib/flashlight-probe";
@@ -134,6 +135,7 @@ type Tuning = {
 
 type OrbitEngine = {
   spawn: (points: Array<{ x: number; y: number }>, skipIndex: number, cap?: number) => void;
+  spawnAppend: (points: Array<{ x: number; y: number }>, skipIndex: number, cap?: number) => number;
   setView: (view: ViewTransform) => void;
   setTuning: (tuning: Tuning) => void;
   setAtmosphere: (atmosphere: OrbitAtmosphere) => void;
@@ -1070,6 +1072,25 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       nextSource = slot.nextSource;
       sourceCount = slot.sourceCount;
     },
+    spawnAppend(points, skipIndex, cap = MAX_SOURCES) {
+      paused = false;
+      const slot = allocateSourcesAppend(sourceCount, points.length, cap);
+      if (slot.added <= 0) return 0;
+      const batch = points.slice(0, slot.added);
+      const states = new Float32Array(batch.length * 12);
+      const uintStates = new Uint32Array(states.buffer);
+      batch.forEach((point, index) => {
+        const offset = index * 12;
+        states[offset + 2] = point.x;
+        states[offset + 3] = point.y;
+        states[offset + 4] = skipIndex;
+        uintStates[offset + 7] = 1;
+      });
+      device.queue.writeBuffer(stateBuffer, slot.start * 48, states.buffer, states.byteOffset, states.byteLength);
+      nextSource = slot.nextSource;
+      sourceCount = slot.sourceCount;
+      return slot.added;
+    },
     setView(nextView) {
       view = { ...nextView };
     },
@@ -1945,7 +1966,7 @@ export default function MandelbrotSkipping() {
     }
     playThrowRef.current = playSharedThrow;
 
-    function spawnImpact(x: number, y: number, index: number, glyphOffset: number, now: number) {
+    function spawnImpact(x: number, y: number, index: number, glyphOffset: number, now: number, extras?: { gpu?: boolean; ripple?: boolean }) {
       const mapped = screenToComplex(x, y, width, height, viewRef.current, tuningRef.current.rotateRight);
       const source = { x: Math.fround(mapped.x), y: Math.fround(mapped.y) };
       const glyph = (glyphOffset + index - 1) % GLYPH_COUNT;
@@ -1953,7 +1974,9 @@ export default function MandelbrotSkipping() {
       const sources = impactSources(
         x, y, width, height, viewRef.current, dots, glyph, tuningRef.current.rotateRight,
       );
-      if (!introActiveRef.current) ripples.push({ cr: source.x, ci: source.y, born: now, index });
+      const gpu = extras?.gpu ?? !introActiveRef.current;
+      const ripple = extras?.ripple ?? !introActiveRef.current;
+      if (ripple) ripples.push({ cr: source.x, ci: source.y, born: now, index });
       if (!introActiveRef.current) {
         impacts.push({ cr: source.x, ci: source.y, born: now, index });
         for (const orbitSource of sources) {
@@ -1967,7 +1990,7 @@ export default function MandelbrotSkipping() {
           });
         }
       }
-      engineRef.current?.spawn(sources, index);
+      if (gpu) engineRef.current?.spawn(sources, index);
       if (!introActiveRef.current) {
         tone(320 + index * 62, 0.1, 0.06);
         if ("vibrate" in navigator) navigator.vibrate?.(12);
@@ -2202,7 +2225,10 @@ export default function MandelbrotSkipping() {
           } else {
             body.skips += 1;
             body.bounceAge = 0;
-            spawnImpact(body.x, body.y, body.skips, body.shapeOffset, now);
+            spawnImpact(body.x, body.y, body.skips, body.shapeOffset, now, {
+              gpu: false,
+              ripple: body.draw,
+            });
             const remaining = body.plannedSkips - body.skips;
             body.vz = Math.max(Math.abs(body.vz) * 0.56, pondScale() * (0.05 + remaining * 0.008));
             body.vx *= 0.79;
@@ -2635,9 +2661,10 @@ export default function MandelbrotSkipping() {
         for (const body of introRocks) {
           if (body.draw) drawIntroTrajectory(body.path, 0.16);
         }
-        introTrails = introTrails.filter((trail) => now - trail.born < 1800);
+        introTrails = introTrails.filter((trail) => now - trail.born < INTRO_TRAIL_FADE_MS);
         for (const trail of introTrails) {
-          drawIntroTrajectory(trail.path, 0.08 * Math.max(0, 1 - (now - trail.born) / 1800));
+          const t = Math.min(1, (now - trail.born) / INTRO_TRAIL_FADE_MS);
+          drawIntroTrajectory(trail.path, 0.16 * (1 - t) * (1 - t));
         }
         return;
       }
@@ -2823,30 +2850,10 @@ export default function MandelbrotSkipping() {
       if (!introActiveRef.current || introFadingRef.current) return;
       if (lastIntroBackground !== 0 && now - lastIntroBackground < INTRO_BACKGROUND_SPAWN_MS) return;
       lastIntroBackground = now;
-      const origin = {
-        x: 36 + Math.random() * Math.max(8, width - 72),
-        y: 36 + Math.random() * Math.max(8, height - 72),
-      };
-      const landings = flashlightSkipLandings({
-        x: origin.x,
-        y: origin.y,
-        angle: Math.random() * TAU,
-        power: 0.38 + Math.random() * 0.44,
-        pondScale: pondScale(),
-        width,
-        height,
-        plannedSkips: FLASHLIGHT_PLANNED_SKIPS,
-      });
       engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
       engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
-      const glyph = Math.floor(Math.random() * GLYPH_COUNT);
-      for (const landing of landings) {
-        const sources = impactSources(
-          landing.x, landing.y, width, height, viewRef.current,
-          INTRO_SOURCE_DOTS, glyph, tuningRef.current.rotateRight,
-        );
-        engineRef.current?.spawn(sources, landing.index);
-      }
+      const seeds = Array.from({ length: INTRO_NEBULA_SEEDS_PER_WAVE }, () => introNebulaSeed());
+      engineRef.current?.spawnAppend(seeds, 1);
     }
 
     function maybeOpeningThrow(now: number) {

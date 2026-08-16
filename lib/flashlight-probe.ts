@@ -9,9 +9,11 @@ export const INTRO_THROWS_PER_WAVE = 16;
 export const INTRO_THROW_STAGGER_MS = 45;
 export const INTRO_ROCK_DRAW_EVERY = 50;
 export const INTRO_SOURCE_DOTS = 6;
-export const INTRO_MAX_DEPTH = 20_000;
+export const INTRO_MAX_DEPTH = 2_000_000;
 export const INTRO_SETTLE_MS = 5400;
 export const INTRO_BACKGROUND_SPAWN_MS = 120;
+export const INTRO_TRAIL_FADE_MS = 4200;
+export const INTRO_NEBULA_SEEDS_PER_WAVE = 16;
 
 export function introLaunchOrigin(
   width: number,
@@ -22,6 +24,13 @@ export function introLaunchOrigin(
   return {
     x: margin + random() * Math.max(8, width - margin * 2),
     y: margin + random() * Math.max(8, height - margin * 2),
+  };
+}
+
+export function introNebulaSeed(random: () => number = Math.random) {
+  return {
+    x: -2.05 + random() * 2.55,
+    y: (random() - 0.5) * 2.7,
   };
 }
 
@@ -43,7 +52,7 @@ export const INTRO_ATMOSPHERE: OrbitAtmosphere = {
   drawLines: false,
   grayscale: true,
   energy: 0.14,
-  hiddenSteps: 24,
+  hiddenSteps: 1,
 };
 
 export const FLASHLIGHT_ATMOSPHERE: OrbitAtmosphere = {

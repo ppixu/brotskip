@@ -14,7 +14,9 @@ Use the real orbit engine for both.
 
 - Opening: keep throwing a simultaneous volley (16 stones per wave) until
   Play, but only draw every 50th rock so trajectories stay sparse. Launch
-  each rock from a random point aiming toward the pond. After a 5.4s settle,
+  each rock from a random point aiming toward the pond. Append random nebula
+  seeds without overwriting live orbits so a Buddhabrot can form until Play.
+  Splash ripples mark pond hits; trajectories ease out. After a 5.4s settle,
   a Play button in the playfield center starts the game and clears the
   nebula. Reduce-motion and share links skip this.
 - Flashlight: punch a soft-edged hole in the dark overlay. While aiming,
@@ -29,8 +31,8 @@ nebula reads as density, not skip-colored paths.
 
 - Hide orbit iteration lines (`drawLines: false`). Gameplay still draws them.
 - Color both as monochrome depth gray, ignoring skip tints.
-- Flashlight and opening skip the first 24 iterates so sacred-shape seeds
-  stay invisible and only later orbit points fill in.
+- Flashlight skips the first 24 iterates so sacred-shape seeds stay
+  invisible. Opening plots from the first iterate so a Buddhabrot can form.
 - Flashlight point energy is about 15% of play energy so the cone stays
   dim. Opening uses a brighter grayscale nebula behind a sparse volley, keeps
   iterating for a short settle, then fades before clearing for play.

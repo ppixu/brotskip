@@ -14,13 +14,15 @@ import {
   INTRO_THROW_STAGGER_MS,
   INTRO_THROWS_PER_WAVE,
   INTRO_ROCK_DRAW_EVERY,
+  INTRO_TRAIL_FADE_MS,
+  INTRO_MAX_DEPTH,
   PLAY_ATMOSPHERE,
   introLaunchOrigin,
   pointInFlashlightCone,
   sampleRayInCone,
   flashlightSkipLandings,
 } from "../../lib/flashlight-probe.ts";
-import { allocateSources } from "../../lib/orbit-sources.ts";
+import { allocateSources, allocateSourcesAppend } from "../../lib/orbit-sources.ts";
 
 const cone = {
   apexX: 100,
@@ -97,6 +99,8 @@ test("opening throws rocks from random points instead of the throw stone", () =>
 test("opening keeps iterating a dim background Buddhabrot after the volley", () => {
   assert.ok(INTRO_SETTLE_MS >= 5000);
   assert.ok(INTRO_BACKGROUND_SPAWN_MS <= 160);
+  assert.ok(INTRO_MAX_DEPTH >= 500_000);
+  assert.ok(INTRO_TRAIL_FADE_MS >= 3500);
 });
 
 test("intro and flashlight atmospheres drop lines, stay gray, and keep the cone dim", () => {
@@ -112,7 +116,7 @@ test("intro and flashlight atmospheres drop lines, stay gray, and keep the cone 
   assert.ok(INTRO_ATMOSPHERE.energy <= PLAY_ATMOSPHERE.energy);
   assert.ok(INTRO_ATMOSPHERE.energy > FLASHLIGHT_ATMOSPHERE.energy);
   assert.ok(FLASHLIGHT_ATMOSPHERE.hiddenSteps >= 8);
-  assert.ok(INTRO_ATMOSPHERE.hiddenSteps >= 8);
+  assert.ok(INTRO_ATMOSPHERE.hiddenSteps <= 2);
 });
 
 test("source allocation wraps inside the live cap", () => {
@@ -122,4 +126,16 @@ test("source allocation wraps inside the live cap", () => {
   assert.equal(wrap.start, 0);
   assert.equal(wrap.nextSource, 6);
   assert.equal(wrap.sourceCount, 36);
+});
+
+test("intro source allocation appends without overwriting live orbits", () => {
+  const first = allocateSourcesAppend(0, 12, 36);
+  assert.deepEqual(first, { start: 0, nextSource: 12, sourceCount: 12, added: 12 });
+  const fill = allocateSourcesAppend(30, 12, 36);
+  assert.equal(fill.start, 30);
+  assert.equal(fill.added, 6);
+  assert.equal(fill.sourceCount, 36);
+  const full = allocateSourcesAppend(36, 12, 36);
+  assert.equal(full.added, 0);
+  assert.equal(full.sourceCount, 36);
 });
