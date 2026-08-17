@@ -34,7 +34,8 @@ nebula reads as density, not skip-colored paths.
 - Flashlight skips the first 24 iterates so sacred-shape seeds stay
   invisible. Opening plots from the first iterate so a Buddhabrot can form.
 - Flashlight point energy stays low so the cone stays dim. Gameplay nebula
-  energy is much lower so the background Buddhabrot stays a faint wash.
+  energy is much lower, and atlas gain is ~0.16, so the background
+  Buddhabrot stays a faint wash while live throws stay bright.
   Opening uses a brighter grayscale nebula behind a sparse volley, keeps
   iterating for a short settle, then fades before clearing for play.
   The aim cone has no fill or stroked rim; its sides fade with a conic mask.

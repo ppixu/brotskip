@@ -533,6 +533,10 @@ struct DisplayView {
   liveGain: f32,
   contrast: f32,
   bounds: vec4f,
+  atlasGain: f32,
+  pad1: f32,
+  pad2: f32,
+  pad3: f32,
 }
 @group(0) @binding(5) var<uniform> display: DisplayView;
 @fragment fn displayFs(in: VSOut) -> @location(0) vec4f {
@@ -548,9 +552,10 @@ struct DisplayView {
   let inside = all(atlasUv >= vec2f(0.0)) && all(atlasUv <= vec2f(1.0));
   let contrast = max(display.contrast, 0.08);
   let liveGain = display.liveGain;
+  let atlasGain = display.atlasGain;
   let raw = select(vec3f(0.0), textureSample(atlasTexture, displaySampler, atlasUv).rgb, inside) * 3.6;
   let mapped = raw / (vec3f(1.0) + raw);
-  let glow = pow(clamp(mapped, vec3f(0.0), vec3f(1.0)), vec3f(contrast));
+  let glow = pow(clamp(mapped, vec3f(0.0), vec3f(1.0)), vec3f(contrast)) * atlasGain;
   let lineGain = display.pad;
   let atlasLines = select(vec3f(0.0), textureSample(atlasLineTexture, displaySampler, atlasUv).rgb, inside) * 1.35 * lineGain;
   let liveGlow = textureSample(liveTexture, displaySampler, in.uv).rgb * 3.6;
@@ -774,7 +779,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   const styleBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
   const fadeBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
   const lineFadeBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
-  const displayViewBuffer = device.createBuffer({ size: 48, usage: usage.UNIFORM | usage.COPY_DST });
+  const displayViewBuffer = device.createBuffer({ size: 64, usage: usage.UNIFORM | usage.COPY_DST });
   const sampler = device.createSampler({ magFilter: "linear", minFilter: "linear" });
   const computeModule = device.createShaderModule({ code: computeShader });
   const pointModule = device.createShaderModule({ code: pointShader });
@@ -884,6 +889,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   let hiddenSteps = PLAY_ATMOSPHERE.hiddenSteps;
   let liveGain = PLAY_ATMOSPHERE.liveGain;
   let contrast = PLAY_ATMOSPHERE.contrast;
+  let atlasGain = PLAY_ATMOSPHERE.atlasGain;
   let lastDrawTime = 0;
 
   const makeAtlas = (format: string) => device.createTexture({
@@ -998,7 +1004,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     device.queue.writeBuffer(lineIndirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
     device.queue.writeBuffer(fadeBuffer, 0, new Float32Array([1, 0, 0, 0]));
     device.queue.writeBuffer(lineFadeBuffer, 0, new Float32Array([lineRetention, 0, 0, 0]));
-    const displayView = new Float32Array(12);
+    const displayView = new Float32Array(16);
     displayView[0] = view.centerX;
     displayView[1] = view.centerY;
     displayView[2] = view.halfY * width / Math.max(height, 1);
@@ -1011,6 +1017,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     displayView[9] = TRAIL_BOUNDS.xMax;
     displayView[10] = TRAIL_BOUNDS.yMin;
     displayView[11] = TRAIL_BOUNDS.yMax;
+    displayView[12] = atlasGain;
     device.queue.writeBuffer(displayViewBuffer, 0, displayView);
     const destination = atlasTextures[1 - textureIndex];
     const lineDestination = atlasLineTextures[1 - textureIndex];
@@ -1129,6 +1136,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       hiddenSteps = atmosphere.hiddenSteps;
       liveGain = atmosphere.liveGain;
       contrast = atmosphere.contrast;
+      atlasGain = atmosphere.atlasGain;
     },
     clear() {
       paused = false;

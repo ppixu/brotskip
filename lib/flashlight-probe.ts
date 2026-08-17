@@ -84,6 +84,7 @@ export type OrbitAtmosphere = {
   hiddenSteps: number;
   liveGain: number;
   contrast: number;
+  atlasGain: number;
 };
 
 export const PLAY_ATMOSPHERE: OrbitAtmosphere = {
@@ -93,6 +94,7 @@ export const PLAY_ATMOSPHERE: OrbitAtmosphere = {
   hiddenSteps: 0,
   liveGain: 1,
   contrast: 0.72,
+  atlasGain: 0.16,
 };
 
 export const INTRO_ATMOSPHERE: OrbitAtmosphere = {
@@ -102,6 +104,7 @@ export const INTRO_ATMOSPHERE: OrbitAtmosphere = {
   hiddenSteps: 1,
   liveGain: 0.12,
   contrast: 1.22,
+  atlasGain: 1,
 };
 
 export const FLASHLIGHT_ATMOSPHERE: OrbitAtmosphere = {
@@ -111,6 +114,7 @@ export const FLASHLIGHT_ATMOSPHERE: OrbitAtmosphere = {
   hiddenSteps: 24,
   liveGain: 0.8,
   contrast: 0.72,
+  atlasGain: 1,
 };
 
 export type FlashlightCone = {

@@ -49,9 +49,10 @@ test("loading Buddhabrot is vertical, high-res, and atlas-led instead of sparkly
   assert.match(source, /mandelbrot-skipping:tuning:v4/);
   assert.match(source, /displayView\[6\] = liveGain/);
   assert.match(source, /displayView\[7\] = contrast/);
-  assert.match(source, /pow\(clamp\(mapped, vec3f\(0\.0\), vec3f\(1\.0\)\), vec3f\(contrast\)\)/);
+  assert.match(source, /displayView\[12\] = atlasGain/);
+  assert.match(source, /pow\(clamp\(mapped, vec3f\(0\.0\), vec3f\(1\.0\)\), vec3f\(contrast\)\) \* atlasGain/);
   assert.match(source, /liveMapped[\s\S]*?\* liveGain/);
-  assert.match(source, /pointEnergy = atmosphere\.energy[\s\S]*?liveGain = atmosphere\.liveGain/);
+  assert.match(source, /pointEnergy = atmosphere\.energy[\s\S]*?atlasGain = atmosphere\.atlasGain/);
 });
 
 test("flashlight shows a dim cached Buddhabrot in the cone and iterates random single points", () => {
