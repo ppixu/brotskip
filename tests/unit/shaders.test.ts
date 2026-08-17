@@ -41,6 +41,19 @@ test("orbit trails accumulate in a complex-plane atlas instead of warping a scre
   assert.match(source, /incomingLength <= 0\.12 && length\(z - previousZ\) <= 0\.12/);
 });
 
+test("loading Buddhabrot is vertical, high-res, and atlas-led instead of sparkly live dust", () => {
+  const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
+  assert.match(source, /const DEFAULT_TUNING: Tuning = \{[\s\S]*?rotateRight: true/);
+  assert.match(source, /const POINT_BUDGET = 400_000/);
+  assert.match(source, /const INTRO_SOURCE_CAP = 4096/);
+  assert.match(source, /mandelbrot-skipping:tuning:v4/);
+  assert.match(source, /displayView\[6\] = liveGain/);
+  assert.match(source, /displayView\[7\] = contrast/);
+  assert.match(source, /pow\(clamp\(mapped, vec3f\(0\.0\), vec3f\(1\.0\)\), vec3f\(contrast\)\)/);
+  assert.match(source, /liveMapped[\s\S]*?\* liveGain/);
+  assert.match(source, /pointEnergy = atmosphere\.energy[\s\S]*?liveGain = atmosphere\.liveGain/);
+});
+
 test("flashlight shows a dim cached Buddhabrot in the cone and iterates random single points", () => {
   const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
   assert.match(source, /FLASHLIGHT_SOURCE_CAP/);

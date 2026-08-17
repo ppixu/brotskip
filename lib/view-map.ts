@@ -5,7 +5,7 @@ export type ViewTransform = {
 };
 
 export const TRAIL_BOUNDS = { xMin: -2.2, xMax: 1.2, yMin: -1.5, yMax: 1.5 };
-export const TRAIL_ATLAS_SIZE = 2048;
+export const TRAIL_ATLAS_SIZE = 4096;
 export const REFERENCE_VIEW_HALF_Y = 0.8;
 
 export function viewHalfX(view: ViewTransform, width: number, height: number) {

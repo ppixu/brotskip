@@ -10,7 +10,7 @@ smears hops.
 
 ## Decision
 
-Accumulate trails in a fixed complex-plane atlas (`TRAIL_BOUNDS`, 2048²).
+Accumulate trails in a fixed complex-plane atlas (`TRAIL_BOUNDS`, 4096²).
 The camera only changes how that atlas is sampled. This frame’s hops also
 draw in the current view so live ink stays sharp. No camera pause.
 

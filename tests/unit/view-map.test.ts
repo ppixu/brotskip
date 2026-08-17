@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  TRAIL_ATLAS_SIZE,
   TRAIL_BOUNDS,
   complexToAtlasUv,
   complexToScreen,
@@ -32,6 +33,18 @@ test("rotating 90° right puts +real below the pond, where the player throws", (
   const rotatedLeft = complexToScreen(view.centerX - 0.2, view.centerY, width, height, view, true);
   assert.ok(left.x < pond.x);
   assert.ok(rotatedLeft.y < pond.y);
+});
+
+test("the trail atlas is fine enough for sharp Buddhabrot filaments", () => {
+  assert.ok(TRAIL_ATLAS_SIZE >= 4096);
+});
+
+test("vertical orientation puts the period-2 bulb (Buddha head) above the pond", () => {
+  const pond = complexToScreen(view.centerX, view.centerY, width, height, view, true);
+  const head = complexToScreen(-1, 0, width, height, view, true);
+  const shoulder = complexToScreen(view.centerX, 0.4, width, height, view, true);
+  assert.ok(head.y < pond.y);
+  assert.ok(Math.abs(shoulder.x - pond.x) > Math.abs(shoulder.y - pond.y));
 });
 
 test("screen and complex round-trip with rotation", () => {

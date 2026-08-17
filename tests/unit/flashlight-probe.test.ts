@@ -16,6 +16,7 @@ import {
   INTRO_ROCK_DRAW_EVERY,
   INTRO_TRAIL_FADE_MS,
   INTRO_MAX_DEPTH,
+  INTRO_NEBULA_SEEDS_PER_WAVE,
   PLAY_ATMOSPHERE,
   introLaunchOrigin,
   introNebulaSeed,
@@ -99,9 +100,10 @@ test("opening throws rocks from random points instead of the throw stone", () =>
 
 test("opening keeps iterating a dim background Buddhabrot after the volley", () => {
   assert.ok(INTRO_SETTLE_MS >= 5000);
-  assert.ok(INTRO_BACKGROUND_SPAWN_MS <= 160);
+  assert.ok(INTRO_BACKGROUND_SPAWN_MS <= 50);
   assert.ok(INTRO_MAX_DEPTH >= 500_000);
   assert.ok(INTRO_TRAIL_FADE_MS >= 3500);
+  assert.ok(INTRO_NEBULA_SEEDS_PER_WAVE >= 64);
 });
 
 test("intro nebula seeds escape often enough that loading stays live", () => {
@@ -130,6 +132,21 @@ test("intro nebula seeds escape often enough that loading stays live", () => {
   assert.ok(trapped / samples < 0.08, `trapped ${trapped}/${samples} intro seeds past 20k iterates`);
 });
 
+test("intro nebula seeds fill the Buddhabrot body, not just the cardioid rim", () => {
+  let seed = 7;
+  const random = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  const samples = Array.from({ length: 120 }, () => introNebulaSeed(random));
+  const wide = samples.filter((point) => Math.abs(point.y) > 0.45).length;
+  const antenna = samples.filter((point) => point.x < -1.15).length;
+  const east = samples.filter((point) => point.x > 0.05).length;
+  assert.ok(wide >= 18, `only ${wide}/120 seeds sit off the real axis`);
+  assert.ok(antenna >= 8, `only ${antenna}/120 seeds reach the antenna`);
+  assert.ok(east >= 8, `only ${east}/120 seeds sit on the east cardioid`);
+});
+
 test("intro and flashlight atmospheres drop lines, stay gray, and keep play nebula dim", () => {
   assert.equal(PLAY_ATMOSPHERE.drawLines, true);
   assert.equal(PLAY_ATMOSPHERE.grayscale, false);
@@ -142,6 +159,10 @@ test("intro and flashlight atmospheres drop lines, stay gray, and keep play nebu
   assert.ok(PLAY_ATMOSPHERE.energy < INTRO_ATMOSPHERE.energy * 0.12);
   assert.ok(FLASHLIGHT_ATMOSPHERE.energy <= 0.04);
   assert.ok(INTRO_ATMOSPHERE.energy > FLASHLIGHT_ATMOSPHERE.energy);
+  assert.ok(INTRO_ATMOSPHERE.energy >= 0.24);
+  assert.ok((INTRO_ATMOSPHERE.liveGain ?? 1) <= 0.2);
+  assert.ok((INTRO_ATMOSPHERE.contrast ?? 0.72) >= 1.1);
+  assert.ok((PLAY_ATMOSPHERE.liveGain ?? 1) >= 0.9);
   assert.ok(FLASHLIGHT_ATMOSPHERE.hiddenSteps >= 8);
   assert.ok(INTRO_ATMOSPHERE.hiddenSteps <= 2);
 });

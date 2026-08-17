@@ -167,7 +167,7 @@ const SACRED_PATH_COUNTS = [2, 2, 2, 4, 2, 3, 7] as const;
 const MIN_SOURCE_DOTS = 6;
 const MAX_SOURCE_DOTS = 32;
 const MAX_SOURCES = 4096;
-const INTRO_SOURCE_CAP = 2048;
+const INTRO_SOURCE_CAP = 4096;
 const SCORE_DEPTH_CAP = DEPTH_OPTIONS[DEPTH_OPTIONS.length - 1];
 const LINE_VISIBLE_FLOOR = 0.05;
 const MIN_LINE_PERSIST = 0.05;
@@ -195,13 +195,13 @@ const DEFAULT_TUNING: Tuning = {
   previewIterations: 20,
   skipColors: true,
   coordinateAxes: false,
-  rotateRight: false,
+  rotateRight: true,
 };
-const TUNING_KEY = "mandelbrot-skipping:tuning:v3";
+const TUNING_KEY = "mandelbrot-skipping:tuning:v4";
 const SOURCE_RADIUS_PX = 10;
 const SLING_DRAW_PULL_RATIO = 0.30;
 const SLING_THROW_PULL_RATIO = 0.16;
-const POINT_BUDGET = 200_000;
+const POINT_BUDGET = 400_000;
 const HIDDEN_INITIAL_STEPS = 0;
 const CURVE_SEGMENTS = 6;
 const LINE_SEGMENT_BUDGET = 25_000;
@@ -216,8 +216,8 @@ const LEGACY_SCORE_KEY = "mandelbrot-skipping:scores:v1";
 const TAU = Math.PI * 2;
 const POND_CENTER = { x: -0.58, y: 0 };
 const VIEW_HALF_Y = 0.8;
-const INTRO_POND_CENTER = { x: -0.52, y: 0 };
-const INTRO_VIEW_HALF_Y = 1.45;
+const INTRO_POND_CENTER = { x: -0.55, y: 0 };
+const INTRO_VIEW_HALF_Y = 1.52;
 const SCORE_HALF_X = 1.6;
 const SCORE_HALF_Y = 1.15;
 const MIN_VIEW_HALF_Y = 0.035;
@@ -530,6 +530,8 @@ struct DisplayView {
   viewHalf: vec2f,
   rotateRight: f32,
   pad: f32,
+  liveGain: f32,
+  contrast: f32,
   bounds: vec4f,
 }
 @group(0) @binding(5) var<uniform> display: DisplayView;
@@ -544,14 +546,16 @@ struct DisplayView {
     (display.bounds.w - z.y) / span.y
   );
   let inside = all(atlasUv >= vec2f(0.0)) && all(atlasUv <= vec2f(1.0));
+  let contrast = max(display.contrast, 0.08);
+  let liveGain = display.liveGain;
   let raw = select(vec3f(0.0), textureSample(atlasTexture, displaySampler, atlasUv).rgb, inside) * 3.6;
   let mapped = raw / (vec3f(1.0) + raw);
-  let glow = pow(clamp(mapped, vec3f(0.0), vec3f(1.0)), vec3f(0.72));
+  let glow = pow(clamp(mapped, vec3f(0.0), vec3f(1.0)), vec3f(contrast));
   let lineGain = display.pad;
   let atlasLines = select(vec3f(0.0), textureSample(atlasLineTexture, displaySampler, atlasUv).rgb, inside) * 1.35 * lineGain;
   let liveGlow = textureSample(liveTexture, displaySampler, in.uv).rgb * 3.6;
   let liveMapped = liveGlow / (vec3f(1.0) + liveGlow);
-  let live = pow(clamp(liveMapped, vec3f(0.0), vec3f(1.0)), vec3f(0.72));
+  let live = pow(clamp(liveMapped, vec3f(0.0), vec3f(1.0)), vec3f(contrast)) * liveGain;
   let liveLines = textureSample(liveLineTexture, displaySampler, in.uv).rgb * 1.35 * lineGain;
   return vec4f(glow + atlasLines + live + liveLines, 1.0);
 }
@@ -645,7 +649,7 @@ function sanitizeTuning(value: Partial<Tuning> | null | undefined): Tuning {
   const previewOrbits = value?.previewOrbits === true;
   const skipColors = value?.skipColors !== false;
   const coordinateAxes = value?.coordinateAxes === true;
-  const rotateRight = value?.rotateRight === true;
+  const rotateRight = value?.rotateRight !== false;
   const requestedPreview = Math.round(Number(value?.previewIterations) || DEFAULT_TUNING.previewIterations);
   const previewIterations = Math.max(
     MIN_PREVIEW_ITERATIONS,
@@ -878,6 +882,8 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   let grayscale = PLAY_ATMOSPHERE.grayscale;
   let pointEnergy = PLAY_ATMOSPHERE.energy;
   let hiddenSteps = PLAY_ATMOSPHERE.hiddenSteps;
+  let liveGain = PLAY_ATMOSPHERE.liveGain;
+  let contrast = PLAY_ATMOSPHERE.contrast;
   let lastDrawTime = 0;
 
   const makeAtlas = (format: string) => device.createTexture({
@@ -999,6 +1005,8 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     displayView[3] = view.halfY;
     displayView[4] = rotateRight ? 1 : 0;
     displayView[5] = drawLines ? 1 : 0;
+    displayView[6] = liveGain;
+    displayView[7] = contrast;
     displayView[8] = TRAIL_BOUNDS.xMin;
     displayView[9] = TRAIL_BOUNDS.xMax;
     displayView[10] = TRAIL_BOUNDS.yMin;
@@ -1119,6 +1127,8 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       grayscale = atmosphere.grayscale;
       pointEnergy = atmosphere.energy;
       hiddenSteps = atmosphere.hiddenSteps;
+      liveGain = atmosphere.liveGain;
+      contrast = atmosphere.contrast;
     },
     clear() {
       paused = false;

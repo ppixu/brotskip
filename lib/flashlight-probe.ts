@@ -11,9 +11,9 @@ export const INTRO_ROCK_DRAW_EVERY = 50;
 export const INTRO_SOURCE_DOTS = 6;
 export const INTRO_MAX_DEPTH = 2_000_000;
 export const INTRO_SETTLE_MS = 5400;
-export const INTRO_BACKGROUND_SPAWN_MS = 90;
+export const INTRO_BACKGROUND_SPAWN_MS = 40;
 export const INTRO_TRAIL_FADE_MS = 4200;
-export const INTRO_NEBULA_SEEDS_PER_WAVE = 32;
+export const INTRO_NEBULA_SEEDS_PER_WAVE = 96;
 
 export function introLaunchOrigin(
   width: number,
@@ -40,36 +40,33 @@ export function isMandelbrotInterior(x: number, y: number): boolean {
 }
 
 export function introNebulaSeed(random: () => number = Math.random) {
-  for (let attempt = 0; attempt < 32; attempt++) {
+  for (let attempt = 0; attempt < 48; attempt++) {
     const mode = random();
     let x: number;
     let y: number;
-    if (mode < 0.55) {
-      // Focus on the perimeter boundary where rich escaping orbits live
+    if (mode < 0.5) {
+      x = -2.2 + random() * 3.4;
+      y = -1.5 + random() * 3.0;
+    } else if (mode < 0.78) {
       const theta = random() * Math.PI * 2;
       const r = 0.5 * (1 - Math.cos(theta)) + 0.002 + random() * 0.045;
       x = 0.25 + r * Math.cos(theta);
       y = r * Math.sin(theta);
-    } else if (mode < 0.82) {
-      // Antenna / valley region
+    } else {
       x = -2.0 + random() * 1.4;
       y = (random() - 0.5) * 0.35;
-    } else {
-      // Broad domain
-      x = -2.05 + random() * 3.10;
-      y = (random() - 0.5) * 2.70;
     }
-    // Fast verification to ensure seed escapes between 10 and 2000 steps
+    if (isMandelbrotInterior(x, y)) continue;
     let zr = 0;
     let zi = 0;
     let escaped = false;
-    for (let n = 1; n <= 2000; n++) {
+    for (let n = 1; n <= 8000; n++) {
       const nextR = zr * zr - zi * zi + x;
       const nextI = 2 * zr * zi + y;
       zr = nextR;
       zi = nextI;
       if (zr * zr + zi * zi > 4) {
-        if (n >= 10) escaped = true;
+        if (n >= 8) escaped = true;
         break;
       }
     }
@@ -85,6 +82,8 @@ export type OrbitAtmosphere = {
   grayscale: boolean;
   energy: number;
   hiddenSteps: number;
+  liveGain: number;
+  contrast: number;
 };
 
 export const PLAY_ATMOSPHERE: OrbitAtmosphere = {
@@ -92,13 +91,17 @@ export const PLAY_ATMOSPHERE: OrbitAtmosphere = {
   grayscale: false,
   energy: 0.01,
   hiddenSteps: 0,
+  liveGain: 1,
+  contrast: 0.72,
 };
 
 export const INTRO_ATMOSPHERE: OrbitAtmosphere = {
   drawLines: false,
   grayscale: true,
-  energy: 0.14,
+  energy: 0.28,
   hiddenSteps: 1,
+  liveGain: 0.12,
+  contrast: 1.22,
 };
 
 export const FLASHLIGHT_ATMOSPHERE: OrbitAtmosphere = {
@@ -106,6 +109,8 @@ export const FLASHLIGHT_ATMOSPHERE: OrbitAtmosphere = {
   grayscale: true,
   energy: 0.028,
   hiddenSteps: 24,
+  liveGain: 0.8,
+  contrast: 0.72,
 };
 
 export type FlashlightCone = {

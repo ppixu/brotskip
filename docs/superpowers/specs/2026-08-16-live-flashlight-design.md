@@ -38,3 +38,7 @@ nebula reads as density, not skip-colored paths.
   Opening uses a brighter grayscale nebula behind a sparse volley, keeps
   iterating for a short settle, then fades before clearing for play.
   The aim cone has no fill or stroked rim; its sides fade with a conic mask.
+- Opening samples escaping seeds across the trail bounds (not just the
+  cardioid rim), accumulates them in a 4096² atlas, and hides the sparkly
+  live overlay so filaments read sharp. Coordinates default to 90° right so
+  the Buddha sits upright.
