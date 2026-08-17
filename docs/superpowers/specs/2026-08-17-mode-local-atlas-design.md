@@ -2,6 +2,9 @@
 
 Date: 2026-08-17
 
+Superseded by `2026-08-17-native-pixel-pond-design.md` (native-pixel pond and
+throw buffers, no zoom).
+
 ## Problem
 
 One 4096² atlas over `TRAIL_BOUNDS` made loading grainy (hops are 1px in 16M
