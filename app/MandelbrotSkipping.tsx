@@ -23,11 +23,7 @@ import {
   writeCachedTexture,
 } from "@/lib/buddhabrot/cache";
 import {
-  FLASHLIGHT_ATMOSPHERE,
   FLASHLIGHT_HALF_ANGLE,
-  FLASHLIGHT_MAX_DEPTH,
-  FLASHLIGHT_SOURCE_CAP,
-  FLASHLIGHT_SPAWN_MS,
   FLASHLIGHT_EDGE_BLUR_PX,
   INTRO_ATMOSPHERE,
   INTRO_BACKGROUND_SPAWN_MS,
@@ -170,6 +166,10 @@ const MIN_SOURCE_DOTS = 6;
 const MAX_SOURCE_DOTS = 32;
 const MAX_SOURCES = 4096;
 const INTRO_SOURCE_CAP = 4096;
+const FLASHLIGHT_ATMOSPHERE = INTRO_ATMOSPHERE;
+const FLASHLIGHT_MAX_DEPTH = 8_000;
+const FLASHLIGHT_SOURCE_CAP = 36;
+const FLASHLIGHT_SPAWN_MS = 240;
 const SCORE_DEPTH_CAP = DEPTH_OPTIONS[DEPTH_OPTIONS.length - 1];
 const LINE_VISIBLE_FLOOR = 0.05;
 const MIN_LINE_PERSIST = 0.05;
@@ -1169,7 +1169,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       contrast = atmosphere.contrast;
       atlasGain = atmosphere.atlasGain;
       if (atmosphere.atlasFollowView !== atlasFollowView) {
-        atlasFollowView = atmosphere.atlasFollowView;
+        atlasFollowView = atmosphere.atlasFollowView === true;
         if (atlasFollowView) adoptFocusAtlas();
         else lockWorldAtlas();
       }

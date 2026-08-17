@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  FLASHLIGHT_ATMOSPHERE,
   FLASHLIGHT_HALF_ANGLE,
-  FLASHLIGHT_MAX_DEPTH,
-  FLASHLIGHT_SOURCE_CAP,
-  FLASHLIGHT_SOURCE_DOTS,
   FLASHLIGHT_EDGE_BLUR_PX,
   INTRO_ATMOSPHERE,
   INTRO_BACKGROUND_SPAWN_MS,
@@ -36,11 +32,9 @@ const cone = {
   range: 200,
 };
 
-test("flashlight budget stays light enough to aim without hitching", () => {
-  assert.equal(FLASHLIGHT_SOURCE_DOTS, 1);
-  assert.ok(FLASHLIGHT_MAX_DEPTH <= 8_000);
-  assert.ok(FLASHLIGHT_SOURCE_CAP <= 36);
+test("flashlight is a cone mask, not a cheaper iterator", () => {
   assert.ok(FLASHLIGHT_EDGE_BLUR_PX >= 24);
+  assert.ok(FLASHLIGHT_HALF_ANGLE > 0);
 });
 
 test("display layer gains match intro, play, and aiming", () => {
@@ -164,29 +158,23 @@ test("intro nebula seeds fill the Buddhabrot body, not just the cardioid rim", (
   assert.ok(east >= 8, `only ${east}/120 seeds sit on the east cardioid`);
 });
 
-test("intro and flashlight atmospheres drop lines, stay gray, and keep play throws as the picture", () => {
+test("intro and play atmospheres drop flashlight-specific iteration, and aiming reuses intro", () => {
   assert.equal(PLAY_ATMOSPHERE.drawLines, true);
   assert.equal(PLAY_ATMOSPHERE.grayscale, false);
   assert.equal(PLAY_ATMOSPHERE.hiddenSteps, 0);
   assert.equal(INTRO_ATMOSPHERE.drawLines, false);
   assert.equal(INTRO_ATMOSPHERE.grayscale, true);
-  assert.equal(FLASHLIGHT_ATMOSPHERE.drawLines, false);
-  assert.equal(FLASHLIGHT_ATMOSPHERE.grayscale, true);
   assert.ok(PLAY_ATMOSPHERE.energy <= 0.012);
   assert.ok(PLAY_ATMOSPHERE.energy < INTRO_ATMOSPHERE.energy * 0.12);
   assert.ok((PLAY_ATMOSPHERE.atlasGain ?? 1) >= 0.8);
   assert.ok((INTRO_ATMOSPHERE.atlasGain ?? 1) >= 0.9);
-  assert.equal(PLAY_ATMOSPHERE.atlasFollowView, true);
-  assert.equal(INTRO_ATMOSPHERE.atlasFollowView, false);
-  assert.equal(FLASHLIGHT_ATMOSPHERE.atlasFollowView, true);
-  assert.ok(FLASHLIGHT_ATMOSPHERE.energy <= 0.04);
-  assert.ok(INTRO_ATMOSPHERE.energy > FLASHLIGHT_ATMOSPHERE.energy);
+  assert.equal("atlasFollowView" in PLAY_ATMOSPHERE, false);
+  assert.equal("atlasFollowView" in INTRO_ATMOSPHERE, false);
   assert.ok(INTRO_ATMOSPHERE.energy >= 0.24);
   assert.ok((INTRO_ATMOSPHERE.liveGain ?? 1) <= 0.2);
   assert.ok((INTRO_ATMOSPHERE.contrast ?? 0.72) >= 1.1);
   assert.ok((PLAY_ATMOSPHERE.liveGain ?? 1) >= 0.9);
-  assert.ok(FLASHLIGHT_ATMOSPHERE.hiddenSteps >= 8);
-  assert.ok(INTRO_ATMOSPHERE.hiddenSteps <= 2);
+  assert.ok(INTRO_ATMOSPHERE.hiddenSteps <= 1);
 });
 
 test("source allocation wraps inside the live cap", () => {
