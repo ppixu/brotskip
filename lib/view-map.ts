@@ -12,7 +12,6 @@ export type AtlasBounds = {
 };
 
 export const TRAIL_BOUNDS: AtlasBounds = { xMin: -2.2, xMax: 1.2, yMin: -1.5, yMax: 1.5 };
-export const TRAIL_ATLAS_SIZE = 2048;
 export const GPU_PIXEL_RATIO_CAP = 2;
 
 export function gpuBufferSize(cssWidth: number, cssHeight: number, devicePixelRatio: number) {
@@ -24,8 +23,6 @@ export function gpuBufferSize(cssWidth: number, cssHeight: number, devicePixelRa
   };
 }
 export const REFERENCE_VIEW_HALF_Y = 0.8;
-export const FOCUS_ATLAS_MARGIN = 2;
-export const ATLAS_RECENTER_TEXEL_PX = 2;
 
 export function viewHalfX(view: ViewTransform, width: number, height: number) {
   return view.halfY * width / Math.max(height, 1);
@@ -185,56 +182,4 @@ export function mathBoundsForView(
     yMin: view.centerY - extentY,
     yMax: view.centerY + extentY,
   };
-}
-
-export function focusAtlasBounds(
-  view: ViewTransform,
-  width: number,
-  height: number,
-  rotateRight: boolean,
-  margin = FOCUS_ATLAS_MARGIN,
-): AtlasBounds {
-  const visible = mathBoundsForView(view, width, height, rotateRight);
-  const halfX = (visible.xMax - visible.xMin) / 2 * margin;
-  const halfY = (visible.yMax - visible.yMin) / 2 * margin;
-  return {
-    xMin: view.centerX - halfX,
-    xMax: view.centerX + halfX,
-    yMin: view.centerY - halfY,
-    yMax: view.centerY + halfY,
-  };
-}
-
-export function atlasNeedsRecenter(
-  atlas: AtlasBounds,
-  view: ViewTransform,
-  width: number,
-  height: number,
-  rotateRight: boolean,
-  atlasSize = TRAIL_ATLAS_SIZE,
-) {
-  const visible = mathBoundsForView(view, width, height, rotateRight);
-  if (
-    visible.xMin < atlas.xMin
-    || visible.xMax > atlas.xMax
-    || visible.yMin < atlas.yMin
-    || visible.yMax > atlas.yMax
-  ) {
-    return true;
-  }
-  const innerX = (atlas.xMax - atlas.xMin) * 0.25;
-  const innerY = (atlas.yMax - atlas.yMin) * 0.25;
-  if (
-    view.centerX < atlas.xMin + innerX
-    || view.centerX > atlas.xMax - innerX
-    || view.centerY < atlas.yMin + innerY
-    || view.centerY > atlas.yMax - innerY
-  ) {
-    return true;
-  }
-  const texelX = (atlas.xMax - atlas.xMin) / Math.max(atlasSize, 1);
-  const texelY = (atlas.yMax - atlas.yMin) / Math.max(atlasSize, 1);
-  const pixelX = (visible.xMax - visible.xMin) / Math.max(width, 1);
-  const pixelY = (visible.yMax - visible.yMin) / Math.max(height, 1);
-  return texelX > ATLAS_RECENTER_TEXEL_PX * pixelX || texelY > ATLAS_RECENTER_TEXEL_PX * pixelY;
 }

@@ -1,13 +1,11 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   GPU_PIXEL_RATIO_CAP,
-  TRAIL_ATLAS_SIZE,
   TRAIL_BOUNDS,
-  atlasNeedsRecenter,
   complexToAtlasUv,
   complexToScreen,
-  focusAtlasBounds,
   gpuBufferSize,
   reprojectScreenPoint,
   reprojectScreenVelocity,
@@ -39,10 +37,6 @@ test("rotating 90° right puts +real below the pond, where the player throws", (
   assert.ok(rotatedLeft.y < pond.y);
 });
 
-test("the trail atlas is 2048 so hops fill shapes instead of dust", () => {
-  assert.equal(TRAIL_ATLAS_SIZE, 2048);
-});
-
 test("GPU buffers use CSS size times device pixels, capped at 2", () => {
   assert.equal(GPU_PIXEL_RATIO_CAP, 2);
   assert.deepEqual(gpuBufferSize(800, 600, 1), { width: 800, height: 600, dpr: 1 });
@@ -51,19 +45,11 @@ test("GPU buffers use CSS size times device pixels, capped at 2", () => {
   assert.deepEqual(gpuBufferSize(0, 0, 2), { width: 1, height: 1, dpr: 2 });
 });
 
-test("a focus atlas covers about twice the current view and does not recenter on the same view", () => {
-  const focus = focusAtlasBounds(view, 800, 800, true);
-  const visibleHalfX = (focus.xMax - focus.xMin) / 4;
-  const visibleHalfY = (focus.yMax - focus.yMin) / 4;
-  assert.ok(Math.abs(visibleHalfX - view.halfY) < 1e-9);
-  assert.ok(Math.abs(visibleHalfY - view.halfY) < 1e-9);
-  assert.equal(atlasNeedsRecenter(focus, view, 800, 800, true), false);
-});
-
-test("a focus atlas recenters after a deep zoom or a pan off the inner half", () => {
-  const focus = focusAtlasBounds(view, 800, 800, true);
-  assert.equal(atlasNeedsRecenter(focus, { ...view, halfY: 0.2 }, 800, 800, true), true);
-  assert.equal(atlasNeedsRecenter(focus, { ...view, centerX: view.centerX + 1.2 }, 800, 800, true), true);
+test("view-map no longer exports a fixed atlas size or a view-following window", () => {
+  const source = readFileSync(new URL("../../lib/view-map.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /TRAIL_ATLAS_SIZE/);
+  assert.doesNotMatch(source, /focusAtlasBounds/);
+  assert.doesNotMatch(source, /atlasNeedsRecenter/);
 });
 
 test("vertical orientation puts the period-2 bulb (Buddha head) above the pond", () => {

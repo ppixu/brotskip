@@ -81,7 +81,6 @@ export type OrbitAtmosphere = {
   liveGain: number;
   contrast: number;
   atlasGain: number;
-  atlasFollowView?: boolean;
 };
 
 export const PLAY_ATMOSPHERE: OrbitAtmosphere = {
