@@ -64,26 +64,34 @@ test("loading Buddhabrot is vertical, high-res, and pond-led instead of sparkly 
   assert.match(source, /pointEnergy = atmosphere\.energy/);
 });
 
-test("flashlight shows a dim cached Buddhabrot in the cone and iterates random single points", () => {
+test("flashlight is a GPU cone on the live pond; cached blit is GPU-fail only", () => {
   const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
-  assert.match(source, /FLASHLIGHT_SOURCE_CAP/);
   assert.match(source, /drawMappedBuddhabrot/);
   assert.match(source, /readCachedTexture/);
-  assert.match(source, /spawnFlashlightPoints/);
   assert.match(source, /FLASHLIGHT_EDGE_BLUR_PX/);
+  assert.match(source, /createConicGradient/);
+  assert.match(source, /spawnIntroBackgroundOrbits/);
+  assert.match(source, /displayLayerGains\("aiming"\)/);
+  assert.match(source, /displayLayerGains\("play"\)/);
+  assert.match(source, /displayLayerGains\("intro"\)/);
+  assert.match(source, /setLayer\("pond"\)/);
+  assert.match(source, /beginThrow\(/);
+  assert.match(source, /clearPond\(/);
+  assert.doesNotMatch(source, /spawnFlashlightPoints/);
+  assert.doesNotMatch(source, /FLASHLIGHT_ATMOSPHERE/);
+  assert.doesNotMatch(source, /FLASHLIGHT_SOURCE_CAP/);
+  assert.doesNotMatch(source, /function zoomAt/);
+  assert.doesNotMatch(source, /addEventListener\("wheel"/);
+  assert.doesNotMatch(source, /event\.key === "\+"/);
   assert.doesNotMatch(source, /spawnFlashlightSkips/);
-  assert.doesNotMatch(source, /flashlightSkipLandings\(\{\s*x: geometry\.apexX/);
   assert.doesNotMatch(source, /traceFlashlightCone\(ctx, geometry\);\s*ctx\.stroke\(\)/);
   assert.doesNotMatch(source, /rgba\(224, 244, 255/);
-  assert.doesNotMatch(source, /traceFlashlightCone\(ctx, geometry\);\s*ctx\.fill\(\)/);
-  assert.match(source, /createConicGradient/);
 });
 
 test("opening and flashlight hide orbit lines, go grayscale, and throw overlapping intro rocks", () => {
   const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
   assert.match(source, /setAtmosphere/);
   assert.match(source, /INTRO_ATMOSPHERE/);
-  assert.match(source, /FLASHLIGHT_ATMOSPHERE/);
   assert.match(source, /introRocks/);
   assert.match(source, /INTRO_THROW_STAGGER_MS/);
   assert.match(source, /INTRO_THROWS_PER_WAVE/);

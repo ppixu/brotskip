@@ -39,7 +39,6 @@ import {
   displayLayerGains,
   introLaunchOrigin,
   introNebulaSeed,
-  sampleRayInCone,
   type FlashlightCone,
   type OrbitAtmosphere,
 } from "@/lib/flashlight-probe";
@@ -61,7 +60,6 @@ import {
   reprojectScreenPoint,
   reprojectScreenVelocity,
   screenToComplex,
-  viewCenterKeepingFocus,
   zoomPixelScale,
   type ViewTransform,
 } from "@/lib/view-map";
@@ -176,10 +174,6 @@ const MIN_SOURCE_DOTS = 6;
 const MAX_SOURCE_DOTS = 32;
 const MAX_SOURCES = 4096;
 const INTRO_SOURCE_CAP = 4096;
-const FLASHLIGHT_ATMOSPHERE = INTRO_ATMOSPHERE;
-const FLASHLIGHT_MAX_DEPTH = 8_000;
-const FLASHLIGHT_SOURCE_CAP = 36;
-const FLASHLIGHT_SPAWN_MS = 240;
 const SCORE_DEPTH_CAP = DEPTH_OPTIONS[DEPTH_OPTIONS.length - 1];
 const LINE_VISIBLE_FLOOR = 0.05;
 const MIN_LINE_PERSIST = 0.05;
@@ -232,7 +226,6 @@ const INTRO_POND_CENTER = { x: -0.55, y: 0 };
 const INTRO_VIEW_HALF_Y = 1.52;
 const SCORE_HALF_X = 1.6;
 const SCORE_HALF_Y = 1.15;
-const MAX_VIEW_HALF_Y = 2.4;
 const SONIC_SCALES = [
   [0, 2, 3, 5, 7, 9, 10], // dorian
   [0, 1, 4, 6, 7, 10], // crystalline synthetic
@@ -1373,8 +1366,12 @@ export default function MandelbrotSkipping() {
       if (introActiveRef.current) {
         engine?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
         engine?.setAtmosphere(INTRO_ATMOSPHERE);
+        engine?.setLayer("pond");
+        engine?.setDisplay({ ...displayLayerGains("intro"), cone: null, cssWidth: 1, cssHeight: 1 });
       } else {
         engine?.setAtmosphere(PLAY_ATMOSPHERE);
+        engine?.setLayer("throw");
+        engine?.setDisplay({ ...displayLayerGains("play"), cone: null, cssWidth: 1, cssHeight: 1 });
       }
     }).catch(() => setGpuError("Orbit renderer could not start. Throwing remains playable."));
     return () => {
@@ -1408,6 +1405,8 @@ export default function MandelbrotSkipping() {
       introThrowsRef.current = 0;
       introFadingRef.current = false;
       engineRef.current?.setAtmosphere(PLAY_ATMOSPHERE);
+      engineRef.current?.setLayer("throw");
+      engineRef.current?.setDisplay({ ...displayLayerGains("play"), cone: null, cssWidth: 1, cssHeight: 1 });
       engineRef.current?.setTuning(tuningRef.current);
       applyViewRef.current({ centerX: POND_CENTER.x, centerY: POND_CENTER.y, halfY: VIEW_HALF_Y });
       restartRef.current();
@@ -1423,8 +1422,12 @@ export default function MandelbrotSkipping() {
     spectatorRef.current = true;
     introThrowsRef.current = 0;
     introFadingRef.current = false;
+    engineRef.current?.clearPond();
+    engineRef.current?.clear();
+    engineRef.current?.setLayer("pond");
     engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
     engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
+    engineRef.current?.setDisplay({ ...displayLayerGains("intro"), cone: null, cssWidth: 1, cssHeight: 1 });
     applyViewRef.current({ centerX: INTRO_POND_CENTER.x, centerY: INTRO_POND_CENTER.y, halfY: INTRO_VIEW_HALF_Y });
     restartRef.current();
     setIntroFading(false);
@@ -1550,7 +1553,6 @@ export default function MandelbrotSkipping() {
     const previewContext = previewCanvas.getContext("2d");
     let flashlightDirty = true;
     let buddhabrotSource: CanvasImageSource | null = null;
-    let lastFlashlightSpawn = 0;
     let introRocks: FlyingRock[] = [];
     let introTrails: Array<{ path: Array<{ x: number; y: number }>; born: number }> = [];
     let lastIntroLaunch = 0;
@@ -2066,9 +2068,10 @@ export default function MandelbrotSkipping() {
 
     function launchRock(angle: number, rawPower: number) {
       if (!introActiveRef.current) {
-        engineRef.current?.clear();
+        engineRef.current?.beginThrow(viewRef.current, width, height, tuningRef.current.rotateRight);
         engineRef.current?.setTuning(tuningRef.current);
         engineRef.current?.setAtmosphere(PLAY_ATMOSPHERE);
+        engineRef.current?.setLayer("throw");
       }
       const a = anchor();
       const dx = Math.cos(angle);
@@ -2891,6 +2894,20 @@ export default function MandelbrotSkipping() {
       };
     }
 
+    function syncOrbitDisplay() {
+      const engine = engineRef.current;
+      if (!engine) return;
+      if (introActiveRef.current) {
+        engine.setDisplay({ ...displayLayerGains("intro"), cone: null, cssWidth: width, cssHeight: height });
+        return;
+      }
+      if (phase === "aiming") {
+        engine.setDisplay({ ...displayLayerGains("aiming"), cone: flashlightGeometry(), cssWidth: width, cssHeight: height });
+        return;
+      }
+      engine.setDisplay({ ...displayLayerGains("play"), cone: null, cssWidth: width, cssHeight: height });
+    }
+
     function drawMappedBuddhabrot(target: CanvasRenderingContext2D) {
       if (!buddhabrotSource) return;
       const topLeft = complexToScreen(TRAIL_BOUNDS.xMin, TRAIL_BOUNDS.yMax, width, height, viewRef.current, false);
@@ -2908,7 +2925,7 @@ export default function MandelbrotSkipping() {
       if (!geometry) return;
       const { apexX, apexY, directionX, directionY, range } = geometry;
 
-      if (buddhabrotSource && flashlightContext) {
+      if (!engineRef.current && buddhabrotSource && flashlightContext) {
         if (flashlightDirty) {
           flashlightContext.clearRect(0, 0, width, height);
           drawMappedBuddhabrot(flashlightContext);
@@ -2945,6 +2962,7 @@ export default function MandelbrotSkipping() {
     }
 
     function render(now: number) {
+      syncOrbitDisplay();
       ctx.clearRect(0, 0, width, height);
       if (gridDirty) rebuildScientificGrid();
       if (gridCanvas) ctx.drawImage(gridCanvas, 0, 0, width, height);
@@ -2953,25 +2971,6 @@ export default function MandelbrotSkipping() {
       drawAimOrbitPreview(a);
       drawEffects(now);
       drawRock(now);
-    }
-
-    function spawnFlashlightPoints(now: number) {
-      if (phase !== "aiming" || introActiveRef.current) return;
-      const geometry = flashlightGeometry();
-      if (!geometry) return;
-      if (lastFlashlightSpawn !== 0 && now - lastFlashlightSpawn < FLASHLIGHT_SPAWN_MS) return;
-      lastFlashlightSpawn = now;
-      const ray = sampleRayInCone(geometry, Math.random);
-      const mapped = screenToComplex(
-        ray.x, ray.y, width, height, viewRef.current, tuningRef.current.rotateRight,
-      );
-      engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: FLASHLIGHT_MAX_DEPTH });
-      engineRef.current?.setAtmosphere(FLASHLIGHT_ATMOSPHERE);
-      engineRef.current?.spawn(
-        [{ x: Math.fround(mapped.x), y: Math.fround(mapped.y) }],
-        1,
-        FLASHLIGHT_SOURCE_CAP,
-      );
     }
 
     function spawnIntroPondRipple(now: number) {
@@ -3001,9 +3000,11 @@ export default function MandelbrotSkipping() {
     }
 
     function spawnIntroBackgroundOrbits(now: number) {
-      if (!introActiveRef.current || introFadingRef.current) return;
+      const aiming = phase === "aiming" && !introActiveRef.current;
+      if ((!introActiveRef.current && !aiming) || introFadingRef.current) return;
       if (lastIntroBackground !== 0 && now - lastIntroBackground < INTRO_BACKGROUND_SPAWN_MS) return;
       lastIntroBackground = now;
+      engineRef.current?.setLayer("pond");
       engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
       engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
       const seeds = Array.from({ length: INTRO_NEBULA_SEEDS_PER_WAVE }, () => introNebulaSeed());
@@ -3049,7 +3050,6 @@ export default function MandelbrotSkipping() {
       }
       maybeOpeningThrow(now);
       spawnIntroBackgroundOrbits(now);
-      spawnFlashlightPoints(now);
       advanceOrbits(now, elapsed);
       updateIterationSound(now);
       render(now);
@@ -3088,15 +3088,6 @@ export default function MandelbrotSkipping() {
       engineRef.current?.setView(nextView);
     }
 
-    function zoomAt(x: number, y: number, factor: number) {
-      const previous = viewRef.current;
-      const nextHalfY = Math.max(0.0035, Math.min(MAX_VIEW_HALF_Y, previous.halfY * factor));
-      if (nextHalfY === previous.halfY) return;
-      const rotateRight = tuningRef.current.rotateRight;
-      const focus = screenToComplex(x, y, width, height, previous, rotateRight);
-      applyView(viewCenterKeepingFocus(x, y, focus, width, height, nextHalfY, rotateRight));
-    }
-
     function onPointerDown(event: PointerEvent) {
       if (introActiveRef.current) return;
       const point = eventPoint(event);
@@ -3108,9 +3099,9 @@ export default function MandelbrotSkipping() {
         plannedSkips = sampleSkipCount(Math.random);
         previewKey = "";
         flashlightDirty = true;
-        lastFlashlightSpawn = 0;
-        engineRef.current?.setAtmosphere(FLASHLIGHT_ATMOSPHERE);
-        engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: FLASHLIGHT_MAX_DEPTH });
+        engineRef.current?.setLayer("pond");
+        engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
+        engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
         pull = point;
         rock.x = point.x;
         rock.y = point.y;
@@ -3170,10 +3161,10 @@ export default function MandelbrotSkipping() {
         phase = "ready";
         rock.x = a.x;
         rock.y = a.y;
-        lastFlashlightSpawn = 0;
         engineRef.current?.clear();
         engineRef.current?.setTuning(tuningRef.current);
         engineRef.current?.setAtmosphere(PLAY_ATMOSPHERE);
+        engineRef.current?.setLayer("throw");
         updateHud(true);
         return;
       }
@@ -3215,18 +3206,11 @@ export default function MandelbrotSkipping() {
       rock.x = a.x;
       rock.y = a.y;
       flashlightDirty = true;
-      lastFlashlightSpawn = 0;
       engineRef.current?.clear();
       engineRef.current?.setTuning(tuningRef.current);
       engineRef.current?.setAtmosphere(PLAY_ATMOSPHERE);
+      engineRef.current?.setLayer("throw");
       updateHud(true);
-    }
-
-    function onWheel(event: WheelEvent) {
-      if (introActiveRef.current) return;
-      event.preventDefault();
-      const rect = canvas.getBoundingClientRect();
-      zoomAt(event.clientX - rect.left, event.clientY - rect.top, Math.exp(event.deltaY * 0.00125));
     }
 
     function onKeyDown(event: KeyboardEvent) {
@@ -3236,8 +3220,6 @@ export default function MandelbrotSkipping() {
         event.preventDefault();
         throwAgainRef.current();
       }
-      if (event.key === "+" || event.key === "=") zoomAt(width * 0.5, height * 0.5, 0.8);
-      if (event.key === "-" || event.key === "_") zoomAt(width * 0.5, height * 0.5, 1.25);
     }
 
     const observer = new ResizeObserver(resize);
@@ -3246,7 +3228,6 @@ export default function MandelbrotSkipping() {
     canvas.addEventListener("pointermove", onPointerMove);
     canvas.addEventListener("pointerup", release);
     canvas.addEventListener("pointercancel", cancelAim);
-    canvas.addEventListener("wheel", onWheel, { passive: false });
     window.addEventListener("keydown", onKeyDown);
     resize();
     resetRound();
@@ -3259,7 +3240,6 @@ export default function MandelbrotSkipping() {
       canvas.removeEventListener("pointermove", onPointerMove);
       canvas.removeEventListener("pointerup", release);
       canvas.removeEventListener("pointercancel", cancelAim);
-      canvas.removeEventListener("wheel", onWheel);
       window.removeEventListener("keydown", onKeyDown);
       audio?.close();
       playThrowRef.current = null;
