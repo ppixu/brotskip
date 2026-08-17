@@ -36,9 +36,11 @@ import {
   INTRO_TRAIL_FADE_MS,
   INTRO_NEBULA_SEEDS_PER_WAVE,
   PLAY_ATMOSPHERE,
+  displayLayerGains,
   introLaunchOrigin,
   introNebulaSeed,
   sampleRayInCone,
+  type FlashlightCone,
   type OrbitAtmosphere,
 } from "@/lib/flashlight-probe";
 import {
@@ -51,12 +53,10 @@ import {
   MIN_ACCELERATION,
 } from "@/lib/orbit-tuning";
 import {
-  TRAIL_ATLAS_SIZE,
   TRAIL_BOUNDS,
-  atlasNeedsRecenter,
   complexToClip,
   complexToScreen,
-  focusAtlasBounds,
+  gpuBufferSize,
   mathBoundsForView,
   reprojectScreenPoint,
   reprojectScreenVelocity,
@@ -137,6 +137,16 @@ type OrbitEngine = {
   setView: (view: ViewTransform) => void;
   setTuning: (tuning: Tuning) => void;
   setAtmosphere: (atmosphere: OrbitAtmosphere) => void;
+  setLayer: (layer: "pond" | "throw") => void;
+  setDisplay: (display: {
+    pondGain: number;
+    throwGain: number;
+    cone: FlashlightCone | null;
+    cssWidth: number;
+    cssHeight: number;
+  }) => void;
+  beginThrow: (view: ViewTransform, cssWidth: number, cssHeight: number, rotateRight: boolean) => void;
+  clearPond: () => void;
   clear: () => void;
   freeze: () => void;
   setSuspended: (suspended: boolean) => void;
@@ -222,7 +232,6 @@ const INTRO_POND_CENTER = { x: -0.55, y: 0 };
 const INTRO_VIEW_HALF_Y = 1.52;
 const SCORE_HALF_X = 1.6;
 const SCORE_HALF_Y = 1.15;
-const MIN_VIEW_HALF_Y = 0.0035;
 const MAX_VIEW_HALF_Y = 2.4;
 const SONIC_SCALES = [
   [0, 2, 3, 5, 7, 9, 10], // dorian
@@ -522,11 +531,12 @@ struct FadeTransform {
 
 const displayShader = /* wgsl */ `
 ${fullscreenVertex}
-@group(0) @binding(0) var atlasTexture: texture_2d<f32>;
-@group(0) @binding(1) var atlasLineTexture: texture_2d<f32>;
-@group(0) @binding(2) var liveTexture: texture_2d<f32>;
-@group(0) @binding(3) var liveLineTexture: texture_2d<f32>;
-@group(0) @binding(4) var displaySampler: sampler;
+@group(0) @binding(0) var pondTexture: texture_2d<f32>;
+@group(0) @binding(1) var throwTexture: texture_2d<f32>;
+@group(0) @binding(2) var throwLineTexture: texture_2d<f32>;
+@group(0) @binding(3) var liveTexture: texture_2d<f32>;
+@group(0) @binding(4) var liveLineTexture: texture_2d<f32>;
+@group(0) @binding(5) var displaySampler: sampler;
 struct DisplayView {
   center: vec2f,
   viewHalf: vec2f,
@@ -534,37 +544,74 @@ struct DisplayView {
   pad: f32,
   liveGain: f32,
   contrast: f32,
-  bounds: vec4f,
-  atlasGain: f32,
-  pad1: f32,
-  pad2: f32,
-  pad3: f32,
+  pondBounds: vec4f,
+  throwBounds: vec4f,
+  pondGain: f32,
+  throwGain: f32,
+  coneEnabled: f32,
+  coneHalfAngle: f32,
+  coneApex: vec2f,
+  coneDirection: vec2f,
+  coneRange: f32,
+  coneEdge: f32,
+  viewport: vec2f,
 }
-@group(0) @binding(5) var<uniform> display: DisplayView;
+@group(0) @binding(6) var<uniform> display: DisplayView;
+fn layerUv(z: vec2f, bounds: vec4f) -> vec2f {
+  let span = vec2f(bounds.y - bounds.x, bounds.w - bounds.z);
+  return vec2f(
+    (z.x - bounds.x) / span.x,
+    (bounds.w - z.y) / span.y
+  );
+}
+fn toneMap(rawRgb: vec3f, contrast: f32) -> vec3f {
+  let raw = rawRgb * 3.6;
+  let mapped = raw / (vec3f(1.0) + raw);
+  return pow(clamp(mapped, vec3f(0.0), vec3f(1.0)), vec3f(contrast));
+}
+fn coneMask(uv: vec2f, view: DisplayView) -> f32 {
+  if (view.coneEnabled < 0.5) { return 1.0; }
+  let px = uv * view.viewport;
+  let delta = px - view.coneApex;
+  let distance = length(delta);
+  if (distance <= 0.0 || distance > view.coneRange) { return 0.0; }
+  let along = dot(delta / distance, view.coneDirection);
+  let halfCos = cos(view.coneHalfAngle);
+  let edgeCos = cos(max(view.coneHalfAngle - view.coneEdge, 0.0));
+  let angular = smoothstep(halfCos, edgeCos, along);
+  let t = clamp(distance / max(view.coneRange, 1e-5), 0.0, 1.0);
+  let radial = mix(0.9, 0.4, smoothstep(0.0, 0.55, t)) * (1.0 - smoothstep(0.55, 1.0, t));
+  return angular * radial;
+}
 @fragment fn displayFs(in: VSOut) -> @location(0) vec4f {
   let clip = vec2f(in.uv.x * 2.0 - 1.0, 1.0 - in.uv.y * 2.0);
   let oriented = clip * display.viewHalf;
   let delta = select(oriented, vec2f(-oriented.y, oriented.x), display.rotateRight > 0.5);
   let z = display.center + delta;
-  let span = vec2f(display.bounds.y - display.bounds.x, display.bounds.w - display.bounds.z);
-  let atlasUv = vec2f(
-    (z.x - display.bounds.x) / span.x,
-    (display.bounds.w - z.y) / span.y
-  );
-  let inside = all(atlasUv >= vec2f(0.0)) && all(atlasUv <= vec2f(1.0));
   let contrast = max(display.contrast, 0.08);
   let liveGain = display.liveGain;
-  let atlasGain = display.atlasGain;
-  let raw = select(vec3f(0.0), textureSample(atlasTexture, displaySampler, atlasUv).rgb, inside) * 3.6;
+  let pondGain = display.pondGain;
+  let throwGain = display.throwGain;
+  let cone = coneMask(in.uv, display);
+  let pondUv = layerUv(z, display.pondBounds);
+  let throwUv = layerUv(z, display.throwBounds);
+  let pondInside = all(pondUv >= vec2f(0.0)) && all(pondUv <= vec2f(1.0));
+  let throwInside = all(throwUv >= vec2f(0.0)) && all(throwUv <= vec2f(1.0));
+  let raw = select(vec3f(0.0), textureSample(pondTexture, displaySampler, pondUv).rgb, pondInside) * 3.6;
   let mapped = raw / (vec3f(1.0) + raw);
-  let glow = pow(clamp(mapped, vec3f(0.0), vec3f(1.0)), vec3f(contrast)) * atlasGain;
+  let glow = pow(clamp(mapped, vec3f(0.0), vec3f(1.0)), vec3f(contrast)) * pondGain * cone;
+  let throwMapped = select(vec3f(0.0), textureSample(throwTexture, displaySampler, throwUv).rgb, throwInside);
+  let throwGlow = toneMap(throwMapped, contrast);
   let lineGain = display.pad;
-  let atlasLines = select(vec3f(0.0), textureSample(atlasLineTexture, displaySampler, atlasUv).rgb, inside) * 1.35 * lineGain;
+  let throwLines = select(vec3f(0.0), textureSample(throwLineTexture, displaySampler, throwUv).rgb, throwInside) * 1.35 * lineGain;
   let liveGlow = textureSample(liveTexture, displaySampler, in.uv).rgb * 3.6;
   let liveMapped = liveGlow / (vec3f(1.0) + liveGlow);
   let live = pow(clamp(liveMapped, vec3f(0.0), vec3f(1.0)), vec3f(contrast)) * liveGain;
   let liveLines = textureSample(liveLineTexture, displaySampler, in.uv).rgb * 1.35 * lineGain;
-  return vec4f(glow + atlasLines + live + liveLines, 1.0);
+  // pond * pondGain * cone
+  let pond = glow;
+  let thrown = (throwGlow + throwLines) * throwGain;
+  return vec4f(pond + thrown + live + liveLines, 1.0);
 }
 `;
 
@@ -781,8 +828,8 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   const styleBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
   const fadeBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
   const lineFadeBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
-  const displayViewBuffer = device.createBuffer({ size: 64, usage: usage.UNIFORM | usage.COPY_DST });
-  const sampler = device.createSampler({ magFilter: "linear", minFilter: "linear" });
+  const displayViewBuffer = device.createBuffer({ size: 128, usage: usage.UNIFORM | usage.COPY_DST });
+  const sampler = device.createSampler({ magFilter: "nearest", minFilter: "nearest" });
   const computeModule = device.createShaderModule({ code: computeShader });
   const pointModule = device.createShaderModule({ code: pointShader });
   const lineModule = device.createShaderModule({ code: lineShader });
@@ -869,16 +916,21 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   let disposed = false;
   let paused = false;
   let suspended = false;
-  let atlasTextures: any[] = [];
-  let atlasLineTextures: any[] = [];
+  let pondTextures: any[] = [];
+  let throwTextures: any[] = [];
+  let throwLineTextures: any[] = [];
   let liveTexture: any = null;
   let liveLineTexture: any = null;
-  let fadeBinds: any[] = [];
-  let lineFadeBinds: any[] = [];
+  let pondFadeBinds: any[] = [];
+  let throwFadeBinds: any[] = [];
+  let throwLineFadeBinds: any[] = [];
   let displayBinds: any[] = [];
-  let textureIndex = 0;
+  let pondIndex = 0;
+  let throwIndex = 0;
   let width = 0;
   let height = 0;
+  let cssWidth = 1;
+  let cssHeight = 1;
   let view: ViewTransform = { centerX: INTRO_POND_CENTER.x, centerY: INTRO_POND_CENTER.y, halfY: INTRO_VIEW_HALF_Y };
   let maxDepth = DEFAULT_TUNING.maxDepth;
   let accelerationCurve = DEFAULT_TUNING.acceleration;
@@ -891,16 +943,15 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   let hiddenSteps = PLAY_ATMOSPHERE.hiddenSteps;
   let liveGain = PLAY_ATMOSPHERE.liveGain;
   let contrast = PLAY_ATMOSPHERE.contrast;
-  let atlasGain = PLAY_ATMOSPHERE.atlasGain;
-  let atlasFollowView = false;
-  let atlasBounds = { ...TRAIL_BOUNDS };
+  const introGains = displayLayerGains("intro");
+  let pondGain = introGains.pondGain;
+  let throwGain = introGains.throwGain;
+  let cone: FlashlightCone | null = null;
+  let layer: "pond" | "throw" = "pond";
+  let pondBounds = { ...TRAIL_BOUNDS };
+  let throwBounds = { ...TRAIL_BOUNDS };
   let lastDrawTime = 0;
 
-  const makeAtlas = (format: string) => device.createTexture({
-    size: [TRAIL_ATLAS_SIZE, TRAIL_ATLAS_SIZE],
-    format,
-    usage: textureUsage.RENDER_ATTACHMENT | textureUsage.TEXTURE_BINDING,
-  });
   const makeScreen = (format: string) => device.createTexture({
     size: [width, height],
     format,
@@ -909,36 +960,39 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
 
   function clearTextures(encoder: any, list: any[]) {
     for (const texture of list) {
+      if (!texture) continue;
       const pass = encoder.beginRenderPass({ colorAttachments: [{ view: texture.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
       pass.end();
     }
   }
 
-  function resetAtlasTextures() {
-    if (!atlasTextures.length) return;
-    const encoder = device.createCommandEncoder({ label: "orbit-atlas-reset" });
-    clearTextures(encoder, atlasTextures);
-    clearTextures(encoder, atlasLineTextures);
-    device.queue.submit([encoder.finish()]);
+  function makeFadeBinds(textures: any[], buffer: any, pipeline: any) {
+    return textures.map((texture) => device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [
+      { binding: 0, resource: texture.createView() },
+      { binding: 1, resource: sampler },
+      { binding: 2, resource: { buffer } },
+    ] }));
   }
 
-  function lockWorldAtlas() {
-    atlasBounds = { ...TRAIL_BOUNDS };
-    resetAtlasTextures();
-  }
-
-  function adoptFocusAtlas() {
-    if (width < 1 || height < 1) return;
-    atlasBounds = focusAtlasBounds(view, width, height, rotateRight);
-    resetAtlasTextures();
-  }
-
-  function maybeRecenterAtlas() {
-    if (!atlasFollowView || width < 1 || height < 1) return;
-    if (atlasNeedsRecenter(atlasBounds, view, width, height, rotateRight)) adoptFocusAtlas();
+  function rebuildDisplayBinds() {
+    displayBinds = [];
+    for (let pond = 0; pond < 2; pond++) {
+      for (let thrown = 0; thrown < 2; thrown++) {
+        displayBinds[pond * 2 + thrown] = device.createBindGroup({ layout: displayPipeline.getBindGroupLayout(0), entries: [
+          { binding: 0, resource: pondTextures[pond].createView() },
+          { binding: 1, resource: throwTextures[thrown].createView() },
+          { binding: 2, resource: throwLineTextures[thrown].createView() },
+          { binding: 3, resource: liveTexture.createView() },
+          { binding: 4, resource: liveLineTexture.createView() },
+          { binding: 5, resource: sampler },
+          { binding: 6, resource: { buffer: displayViewBuffer } },
+        ] });
+      }
+    }
   }
 
   function writeParams(buffer: any, atlasMode: number) {
+    const bounds = layer === "pond" ? pondBounds : throwBounds;
     const bytes = new ArrayBuffer(80);
     const ints = new Uint32Array(bytes);
     const floats = new Float32Array(bytes);
@@ -956,58 +1010,43 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     floats[11] = accelerationCurve;
     floats[12] = atlasMode;
     floats[13] = hiddenSteps;
-    floats[16] = atlasBounds.xMin;
-    floats[17] = atlasBounds.xMax;
-    floats[18] = atlasBounds.yMin;
-    floats[19] = atlasBounds.yMax;
+    floats[16] = bounds.xMin;
+    floats[17] = bounds.xMax;
+    floats[18] = bounds.yMin;
+    floats[19] = bounds.yMax;
     device.queue.writeBuffer(buffer, 0, bytes);
   }
 
   function resize() {
     const rect = canvas.getBoundingClientRect();
-    const nextWidth = Math.max(1, Math.round(rect.width));
-    const nextHeight = Math.max(1, Math.round(rect.height));
-    const first = !atlasTextures.length;
-    if (!first && nextWidth === width && nextHeight === height) return;
-    width = nextWidth;
-    height = nextHeight;
+    const buffer = gpuBufferSize(rect.width, rect.height, globalThis.devicePixelRatio || 1);
+    cssWidth = Math.max(1, rect.width);
+    cssHeight = Math.max(1, rect.height);
+    if (pondTextures.length && buffer.width === width && buffer.height === height) return;
+    width = buffer.width;
+    height = buffer.height;
     canvas.width = width;
     canvas.height = height;
-    liveTexture?.destroy();
-    liveLineTexture?.destroy();
+    for (const texture of [...pondTextures, ...throwTextures, ...throwLineTextures, liveTexture, liveLineTexture]) {
+      texture?.destroy();
+    }
+    pondTextures = [0, 1].map(() => makeScreen("rgba16float"));
+    throwTextures = [0, 1].map(() => makeScreen("rgba16float"));
+    throwLineTextures = [0, 1].map(() => makeScreen("rgba8unorm"));
     liveTexture = makeScreen("rgba16float");
     liveLineTexture = makeScreen("rgba8unorm");
-    if (first) {
-      atlasTextures = [0, 1].map(() => makeAtlas("rgba16float"));
-      atlasLineTextures = [0, 1].map(() => makeAtlas("rgba8unorm"));
-      fadeBinds = atlasTextures.map((texture) => device.createBindGroup({ layout: fadePipeline.getBindGroupLayout(0), entries: [
-        { binding: 0, resource: texture.createView() },
-        { binding: 1, resource: sampler },
-        { binding: 2, resource: { buffer: fadeBuffer } },
-      ] }));
-      lineFadeBinds = atlasLineTextures.map((texture) => device.createBindGroup({ layout: lineFadePipeline.getBindGroupLayout(0), entries: [
-        { binding: 0, resource: texture.createView() },
-        { binding: 1, resource: sampler },
-        { binding: 2, resource: { buffer: lineFadeBuffer } },
-      ] }));
-    }
-    displayBinds = atlasTextures.map((texture, index) => device.createBindGroup({ layout: displayPipeline.getBindGroupLayout(0), entries: [
-      { binding: 0, resource: texture.createView() },
-      { binding: 1, resource: atlasLineTextures[index].createView() },
-      { binding: 2, resource: liveTexture.createView() },
-      { binding: 3, resource: liveLineTexture.createView() },
-      { binding: 4, resource: sampler },
-      { binding: 5, resource: { buffer: displayViewBuffer } },
-    ] }));
+    pondFadeBinds = makeFadeBinds(pondTextures, fadeBuffer, fadePipeline);
+    throwFadeBinds = makeFadeBinds(throwTextures, fadeBuffer, fadePipeline);
+    throwLineFadeBinds = makeFadeBinds(throwLineTextures, lineFadeBuffer, lineFadePipeline);
+    rebuildDisplayBinds();
     const encoder = device.createCommandEncoder({ label: "orbit-resize" });
-    if (first) {
-      clearTextures(encoder, atlasTextures);
-      clearTextures(encoder, atlasLineTextures);
-    }
+    clearTextures(encoder, pondTextures);
+    clearTextures(encoder, throwTextures);
+    clearTextures(encoder, throwLineTextures);
     clearTextures(encoder, [liveTexture, liveLineTexture]);
     device.queue.submit([encoder.finish()]);
-    if (first) textureIndex = 0;
-    maybeRecenterAtlas();
+    pondIndex = 0;
+    throwIndex = 0;
   }
 
   const observer = new ResizeObserver(resize);
@@ -1021,7 +1060,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
 
   function draw() {
     frame = 0;
-    if (disposed || gpu.hasFailed() || !atlasTextures.length || suspended) return;
+    if (disposed || gpu.hasFailed() || !pondTextures.length || suspended) return;
     const now = performance.now();
     const dt = lastDrawTime ? (now - lastDrawTime) / 1000 : 1 / 60;
     lastDrawTime = now;
@@ -1033,7 +1072,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     device.queue.writeBuffer(lineIndirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
     device.queue.writeBuffer(fadeBuffer, 0, new Float32Array([1, 0, 0, 0]));
     device.queue.writeBuffer(lineFadeBuffer, 0, new Float32Array([lineRetention, 0, 0, 0]));
-    const displayView = new Float32Array(16);
+    const displayView = new Float32Array(32);
     displayView[0] = view.centerX;
     displayView[1] = view.centerY;
     displayView[2] = view.halfY * width / Math.max(height, 1);
@@ -1042,14 +1081,27 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     displayView[5] = drawLines ? 1 : 0;
     displayView[6] = liveGain;
     displayView[7] = contrast;
-    displayView[8] = atlasBounds.xMin;
-    displayView[9] = atlasBounds.xMax;
-    displayView[10] = atlasBounds.yMin;
-    displayView[11] = atlasBounds.yMax;
-    displayView[12] = atlasGain;
+    displayView[8] = pondBounds.xMin;
+    displayView[9] = pondBounds.xMax;
+    displayView[10] = pondBounds.yMin;
+    displayView[11] = pondBounds.yMax;
+    displayView[12] = throwBounds.xMin;
+    displayView[13] = throwBounds.xMax;
+    displayView[14] = throwBounds.yMin;
+    displayView[15] = throwBounds.yMax;
+    displayView[16] = pondGain;
+    displayView[17] = throwGain;
+    displayView[18] = cone ? 1 : 0;
+    displayView[19] = FLASHLIGHT_HALF_ANGLE;
+    displayView[20] = cone?.apexX ?? 0;
+    displayView[21] = cone?.apexY ?? 0;
+    displayView[22] = cone?.directionX ?? 0;
+    displayView[23] = cone?.directionY ?? 0;
+    displayView[24] = cone?.range ?? 0;
+    displayView[25] = 0.04;
+    displayView[26] = cssWidth;
+    displayView[27] = cssHeight;
     device.queue.writeBuffer(displayViewBuffer, 0, displayView);
-    const destination = atlasTextures[1 - textureIndex];
-    const lineDestination = atlasLineTextures[1 - textureIndex];
     const encoder = device.createCommandEncoder({ label: "orbit-draw" });
     if (sourceCount > 0 && !paused) {
       const compute = encoder.beginComputePass();
@@ -1058,27 +1110,39 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       compute.dispatchWorkgroups(Math.ceil(sourceCount / 64));
       compute.end();
     }
-    const fade = encoder.beginRenderPass({ colorAttachments: [{ view: destination.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
-    fade.setPipeline(fadePipeline);
-    fade.setBindGroup(0, fadeBinds[textureIndex]);
-    fade.draw(3);
-    fade.end();
-    const lineFade = encoder.beginRenderPass({ colorAttachments: [{ view: lineDestination.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
-    lineFade.setPipeline(lineFadePipeline);
-    lineFade.setBindGroup(0, lineFadeBinds[textureIndex]);
-    lineFade.draw(3);
-    lineFade.end();
+    const pondDestination = pondTextures[1 - pondIndex];
+    const throwDestination = throwTextures[1 - throwIndex];
+    const throwLineDestination = throwLineTextures[1 - throwIndex];
+    if (layer === "pond") {
+      const fade = encoder.beginRenderPass({ colorAttachments: [{ view: pondDestination.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
+      fade.setPipeline(fadePipeline);
+      fade.setBindGroup(0, pondFadeBinds[pondIndex]);
+      fade.draw(3);
+      fade.end();
+    } else {
+      const fade = encoder.beginRenderPass({ colorAttachments: [{ view: throwDestination.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
+      fade.setPipeline(fadePipeline);
+      fade.setBindGroup(0, throwFadeBinds[throwIndex]);
+      fade.draw(3);
+      fade.end();
+      const lineFade = encoder.beginRenderPass({ colorAttachments: [{ view: throwLineDestination.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
+      lineFade.setPipeline(lineFadePipeline);
+      lineFade.setBindGroup(0, throwLineFadeBinds[throwIndex]);
+      lineFade.draw(3);
+      lineFade.end();
+    }
     const live = encoder.beginRenderPass({ colorAttachments: [{ view: liveTexture.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
     live.end();
     const liveLinesClear = encoder.beginRenderPass({ colorAttachments: [{ view: liveLineTexture.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
     liveLinesClear.end();
     if (sourceCount > 0 && !paused) {
-      const atlasPoints = encoder.beginRenderPass({ colorAttachments: [{ view: destination.createView(), loadOp: "load", storeOp: "store" }] });
-      atlasPoints.setPipeline(pointPipeline);
-      atlasPoints.setBindGroup(0, pointAtlasBind);
-      atlasPoints.setVertexBuffer(0, vertexBuffer);
-      atlasPoints.drawIndirect(indirectBuffer, 0);
-      atlasPoints.end();
+      const layerDestination = layer === "pond" ? pondDestination : throwDestination;
+      const layerPoints = encoder.beginRenderPass({ colorAttachments: [{ view: layerDestination.createView(), loadOp: "load", storeOp: "store" }] });
+      layerPoints.setPipeline(pointPipeline);
+      layerPoints.setBindGroup(0, pointAtlasBind);
+      layerPoints.setVertexBuffer(0, vertexBuffer);
+      layerPoints.drawIndirect(indirectBuffer, 0);
+      layerPoints.end();
       const livePoints = encoder.beginRenderPass({ colorAttachments: [{ view: liveTexture.createView(), loadOp: "load", storeOp: "store" }] });
       livePoints.setPipeline(pointPipeline);
       livePoints.setBindGroup(0, pointBind);
@@ -1090,21 +1154,22 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       liveLines.setBindGroup(0, lineBind);
       liveLines.drawIndirect(lineIndirectBuffer, 0);
       liveLines.end();
-      if (drawLines) {
-        const persistentLinePass = encoder.beginRenderPass({ colorAttachments: [{ view: lineDestination.createView(), loadOp: "load", storeOp: "store" }] });
+      if (layer === "throw" && drawLines) {
+        const persistentLinePass = encoder.beginRenderPass({ colorAttachments: [{ view: throwLineDestination.createView(), loadOp: "load", storeOp: "store" }] });
         persistentLinePass.setPipeline(linePipeline);
         persistentLinePass.setBindGroup(0, lineAtlasBind);
         persistentLinePass.drawIndirect(lineIndirectBuffer, 0);
         persistentLinePass.end();
       }
     }
+    if (layer === "pond") pondIndex = 1 - pondIndex;
+    else throwIndex = 1 - throwIndex;
     const display = encoder.beginRenderPass({ colorAttachments: [{ view: context.getCurrentTexture().createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } }] });
     display.setPipeline(displayPipeline);
-    display.setBindGroup(0, displayBinds[1 - textureIndex]);
+    display.setBindGroup(0, displayBinds[pondIndex * 2 + throwIndex]);
     display.draw(3);
     display.end();
     device.queue.submit([encoder.finish()]);
-    textureIndex = 1 - textureIndex;
     scheduleDraw();
   }
   scheduleDraw();
@@ -1150,7 +1215,6 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     },
     setView(nextView) {
       view = { ...nextView };
-      maybeRecenterAtlas();
     },
     setTuning(tuning) {
       maxDepth = tuning.maxDepth;
@@ -1158,7 +1222,6 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       linePersist = tuning.linePersist;
       skipColors = tuning.skipColors === true;
       rotateRight = tuning.rotateRight === true;
-      maybeRecenterAtlas();
     },
     setAtmosphere(atmosphere) {
       drawLines = atmosphere.drawLines;
@@ -1167,22 +1230,38 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       hiddenSteps = atmosphere.hiddenSteps;
       liveGain = atmosphere.liveGain;
       contrast = atmosphere.contrast;
-      atlasGain = atmosphere.atlasGain;
-      if (atmosphere.atlasFollowView !== atlasFollowView) {
-        atlasFollowView = atmosphere.atlasFollowView === true;
-        if (atlasFollowView) adoptFocusAtlas();
-        else lockWorldAtlas();
-      }
+    },
+    setLayer(nextLayer) {
+      layer = nextLayer;
+    },
+    setDisplay(next) {
+      pondGain = next.pondGain;
+      throwGain = next.throwGain;
+      cone = next.cone;
+      cssWidth = next.cssWidth;
+      cssHeight = next.cssHeight;
+    },
+    beginThrow(nextView, nextCssWidth, nextCssHeight, nextRotateRight) {
+      view = { ...nextView };
+      throwBounds = mathBoundsForView(nextView, nextCssWidth, nextCssHeight, nextRotateRight);
+      layer = "throw";
+      this.clear();
+    },
+    clearPond() {
+      if (!pondTextures.length) return;
+      const encoder = device.createCommandEncoder({ label: "orbit-clear-pond" });
+      clearTextures(encoder, pondTextures);
+      device.queue.submit([encoder.finish()]);
     },
     clear() {
       paused = false;
       sourceCount = 0;
       nextSource = 0;
       device.queue.writeBuffer(stateBuffer, 0, new Uint8Array(MAX_SOURCES * 48));
-      if (atlasFollowView) adoptFocusAtlas();
-      else resetAtlasTextures();
-      if (!liveTexture) return;
-      const encoder = device.createCommandEncoder({ label: "orbit-clear-live" });
+      if (!throwTextures.length) return;
+      const encoder = device.createCommandEncoder({ label: "orbit-clear-throw" });
+      clearTextures(encoder, throwTextures);
+      clearTextures(encoder, throwLineTextures);
       clearTextures(encoder, [liveTexture, liveLineTexture].filter(Boolean));
       device.queue.submit([encoder.finish()]);
     },
@@ -1197,8 +1276,9 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       disposed = true;
       cancelAnimationFrame(frame);
       observer.disconnect();
-      atlasTextures.forEach((texture) => texture.destroy());
-      atlasLineTextures.forEach((texture) => texture.destroy());
+      pondTextures.forEach((texture) => texture.destroy());
+      throwTextures.forEach((texture) => texture.destroy());
+      throwLineTextures.forEach((texture) => texture.destroy());
       liveTexture?.destroy();
       liveLineTexture?.destroy();
       vertexBuffer.destroy();
@@ -3010,7 +3090,7 @@ export default function MandelbrotSkipping() {
 
     function zoomAt(x: number, y: number, factor: number) {
       const previous = viewRef.current;
-      const nextHalfY = Math.max(MIN_VIEW_HALF_Y, Math.min(MAX_VIEW_HALF_Y, previous.halfY * factor));
+      const nextHalfY = Math.max(0.0035, Math.min(MAX_VIEW_HALF_Y, previous.halfY * factor));
       if (nextHalfY === previous.halfY) return;
       const rotateRight = tuningRef.current.rotateRight;
       const focus = screenToComplex(x, y, width, height, previous, rotateRight);

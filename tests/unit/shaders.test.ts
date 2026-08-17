@@ -29,19 +29,29 @@ test("WGSL shaders do not reuse a binding name as an entry point", () => {
   }
 });
 
-test("orbit trails accumulate in a complex-plane atlas instead of warping a screen bitmap", () => {
+test("orbit trails accumulate in native-pixel pond and throw layers", () => {
   const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
-  assert.match(source, /TRAIL_ATLAS_SIZE/);
-  assert.match(source, /atlasMode/);
+  assert.match(source, /gpuBufferSize\(/);
+  assert.match(source, /magFilter: "nearest"/);
+  assert.match(source, /minFilter: "nearest"/);
+  assert.match(source, /setLayer/);
+  assert.match(source, /beginThrow/);
+  assert.match(source, /clearPond/);
+  assert.match(source, /pondGain/);
+  assert.match(source, /throwGain/);
+  assert.match(source, /pond \* pondGain \* cone/);
+  assert.doesNotMatch(source, /atlasFollowView/);
+  assert.doesNotMatch(source, /atlasNeedsRecenter/);
+  assert.doesNotMatch(source, /focusAtlasBounds/);
+  assert.doesNotMatch(source, /TRAIL_ATLAS_SIZE/);
+  assert.doesNotMatch(source, /const MIN_VIEW_HALF_Y/);
   assert.match(source, /reprojectScreenPoint/);
   assert.match(source, /zoomPixelScale/);
   assert.doesNotMatch(source, /cameraPausedUntil/);
-  assert.doesNotMatch(source, /viewChangingUntil/);
-  assert.doesNotMatch(source, /const atlasLines = encoder.beginRenderPass/);
   assert.match(source, /incomingLength <= 0\.12 && length\(z - previousZ\) <= 0\.12/);
 });
 
-test("loading Buddhabrot is vertical, high-res, and atlas-led instead of sparkly live dust", () => {
+test("loading Buddhabrot is vertical, high-res, and pond-led instead of sparkly live dust", () => {
   const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
   assert.match(source, /const DEFAULT_TUNING: Tuning = \{[\s\S]*?rotateRight: true/);
   assert.match(source, /const POINT_BUDGET = 400_000/);
@@ -49,20 +59,9 @@ test("loading Buddhabrot is vertical, high-res, and atlas-led instead of sparkly
   assert.match(source, /mandelbrot-skipping:tuning:v4/);
   assert.match(source, /displayView\[6\] = liveGain/);
   assert.match(source, /displayView\[7\] = contrast/);
-  assert.match(source, /displayView\[12\] = atlasGain/);
-  assert.match(source, /pow\(clamp\(mapped, vec3f\(0\.0\), vec3f\(1\.0\)\), vec3f\(contrast\)\) \* atlasGain/);
+  assert.match(source, /pow\(clamp\(mapped, vec3f\(0\.0\), vec3f\(1\.0\)\), vec3f\(contrast\)\) \* pondGain \* cone/);
   assert.match(source, /liveMapped[\s\S]*?\* liveGain/);
-  assert.match(source, /pointEnergy = atmosphere\.energy[\s\S]*?atlasGain = atmosphere\.atlasGain/);
-});
-
-test("play follows a view-local atlas and can zoom about 10× deeper", () => {
-  const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
-  assert.match(source, /const MIN_VIEW_HALF_Y = 0\.0035/);
-  assert.match(source, /floats\[16\] = atlasBounds\.xMin/);
-  assert.match(source, /displayView\[8\] = atlasBounds\.xMin/);
-  assert.match(source, /atlasFollowView = atmosphere\.atlasFollowView/);
-  assert.match(source, /atlasNeedsRecenter\(atlasBounds/);
-  assert.match(source, /focusAtlasBounds\(view/);
+  assert.match(source, /pointEnergy = atmosphere\.energy/);
 });
 
 test("flashlight shows a dim cached Buddhabrot in the cone and iterates random single points", () => {
