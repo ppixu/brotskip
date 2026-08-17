@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  GPU_PIXEL_RATIO_CAP,
   TRAIL_ATLAS_SIZE,
   TRAIL_BOUNDS,
   atlasNeedsRecenter,
   complexToAtlasUv,
   complexToScreen,
   focusAtlasBounds,
+  gpuBufferSize,
   reprojectScreenPoint,
   reprojectScreenVelocity,
   screenToComplex,
@@ -39,6 +41,14 @@ test("rotating 90° right puts +real below the pond, where the player throws", (
 
 test("the trail atlas is 2048 so hops fill shapes instead of dust", () => {
   assert.equal(TRAIL_ATLAS_SIZE, 2048);
+});
+
+test("GPU buffers use CSS size times device pixels, capped at 2", () => {
+  assert.equal(GPU_PIXEL_RATIO_CAP, 2);
+  assert.deepEqual(gpuBufferSize(800, 600, 1), { width: 800, height: 600, dpr: 1 });
+  assert.deepEqual(gpuBufferSize(800, 600, 2), { width: 1600, height: 1200, dpr: 2 });
+  assert.deepEqual(gpuBufferSize(800, 600, 3), { width: 1600, height: 1200, dpr: 2 });
+  assert.deepEqual(gpuBufferSize(0, 0, 2), { width: 1, height: 1, dpr: 2 });
 });
 
 test("a focus atlas covers about twice the current view and does not recenter on the same view", () => {

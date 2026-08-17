@@ -18,6 +18,8 @@ import {
   INTRO_MAX_DEPTH,
   INTRO_NEBULA_SEEDS_PER_WAVE,
   PLAY_ATMOSPHERE,
+  displayLayerGains,
+  flashlightConeFalloff,
   introLaunchOrigin,
   introNebulaSeed,
   pointInFlashlightCone,
@@ -39,6 +41,21 @@ test("flashlight budget stays light enough to aim without hitching", () => {
   assert.ok(FLASHLIGHT_MAX_DEPTH <= 8_000);
   assert.ok(FLASHLIGHT_SOURCE_CAP <= 36);
   assert.ok(FLASHLIGHT_EDGE_BLUR_PX >= 24);
+});
+
+test("display layer gains match intro, play, and aiming", () => {
+  assert.deepEqual(displayLayerGains("intro"), { pondGain: 1, throwGain: 0, coneEnabled: false });
+  assert.deepEqual(displayLayerGains("play"), { pondGain: 0, throwGain: 1, coneEnabled: false });
+  assert.deepEqual(displayLayerGains("aiming"), { pondGain: 1, throwGain: 0, coneEnabled: true });
+});
+
+test("flashlight cone falloff is 1-ish on the aim ray and 0 outside the cone", () => {
+  const onRay = flashlightConeFalloff(100, 80, cone);
+  const outside = flashlightConeFalloff(10, 180, cone);
+  const far = flashlightConeFalloff(100, -50, cone);
+  assert.ok(onRay > 0.3, `on-ray falloff was ${onRay}`);
+  assert.equal(outside, 0);
+  assert.equal(far, 0);
 });
 
 test("a point along the aim ray sits inside the flashlight cone", () => {

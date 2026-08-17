@@ -13,6 +13,16 @@ export type AtlasBounds = {
 
 export const TRAIL_BOUNDS: AtlasBounds = { xMin: -2.2, xMax: 1.2, yMin: -1.5, yMax: 1.5 };
 export const TRAIL_ATLAS_SIZE = 2048;
+export const GPU_PIXEL_RATIO_CAP = 2;
+
+export function gpuBufferSize(cssWidth: number, cssHeight: number, devicePixelRatio: number) {
+  const dpr = Math.min(Math.max(devicePixelRatio, 1), GPU_PIXEL_RATIO_CAP);
+  return {
+    width: Math.max(1, Math.round(cssWidth * dpr)),
+    height: Math.max(1, Math.round(cssHeight * dpr)),
+    dpr,
+  };
+}
 export const REFERENCE_VIEW_HALF_Y = 0.8;
 export const FOCUS_ATLAS_MARGIN = 2;
 export const ATLAS_RECENTER_TEXEL_PX = 2;

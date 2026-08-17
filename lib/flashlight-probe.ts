@@ -121,6 +121,45 @@ export const FLASHLIGHT_ATMOSPHERE: OrbitAtmosphere = {
   atlasFollowView: true,
 };
 
+export type DisplayLayerMode = "intro" | "play" | "aiming";
+
+export function displayLayerGains(mode: DisplayLayerMode) {
+  if (mode === "intro") return { pondGain: 1, throwGain: 0, coneEnabled: false };
+  if (mode === "aiming") return { pondGain: 1, throwGain: 0, coneEnabled: true };
+  return { pondGain: 0, throwGain: 1, coneEnabled: false };
+}
+
+export function flashlightConeFalloff(
+  x: number,
+  y: number,
+  cone: FlashlightCone,
+  halfAngle = FLASHLIGHT_HALF_ANGLE,
+  edge = 0.04,
+) {
+  const dx = x - cone.apexX;
+  const dy = y - cone.apexY;
+  const distance = Math.hypot(dx, dy);
+  if (distance > cone.range || distance <= 0) return 0;
+  const along = (dx * cone.directionX + dy * cone.directionY) / distance;
+  const cosine = Math.min(1, Math.max(-1, along));
+  const halfCos = Math.cos(halfAngle);
+  const edgeCos = Math.cos(Math.max(0, halfAngle - edge));
+  const angular = smoothstep(halfCos, edgeCos, cosine);
+  const t = Math.min(1, distance / Math.max(cone.range, 1e-5));
+  const radial = mix(0.9, 0.4, smoothstep(0, 0.55, t)) * (1 - smoothstep(0.55, 1, t));
+  return angular * radial;
+}
+
+function mix(a: number, b: number, t: number) {
+  return a + (b - a) * t;
+}
+
+function smoothstep(edge0: number, edge1: number, x: number) {
+  if (edge0 === edge1) return x >= edge1 ? 1 : 0;
+  const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
 export type FlashlightCone = {
   apexX: number;
   apexY: number;
