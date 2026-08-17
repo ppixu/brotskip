@@ -55,6 +55,16 @@ test("loading Buddhabrot is vertical, high-res, and atlas-led instead of sparkly
   assert.match(source, /pointEnergy = atmosphere\.energy[\s\S]*?atlasGain = atmosphere\.atlasGain/);
 });
 
+test("play follows a view-local atlas and can zoom about 10× deeper", () => {
+  const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
+  assert.match(source, /const MIN_VIEW_HALF_Y = 0\.0035/);
+  assert.match(source, /floats\[16\] = atlasBounds\.xMin/);
+  assert.match(source, /displayView\[8\] = atlasBounds\.xMin/);
+  assert.match(source, /atlasFollowView = atmosphere\.atlasFollowView/);
+  assert.match(source, /atlasNeedsRecenter\(atlasBounds/);
+  assert.match(source, /focusAtlasBounds\(view/);
+});
+
 test("flashlight shows a dim cached Buddhabrot in the cone and iterates random single points", () => {
   const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
   assert.match(source, /FLASHLIGHT_SOURCE_CAP/);

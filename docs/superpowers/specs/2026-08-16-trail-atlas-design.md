@@ -14,6 +14,10 @@ Accumulate trails in a fixed complex-plane atlas (`TRAIL_BOUNDS`, 4096²).
 The camera only changes how that atlas is sampled. This frame’s hops also
 draw in the current view so live ink stays sharp. No camera pause.
 
+Loading still locks that window to `TRAIL_BOUNDS`. Play uses a 2048²
+view-following window instead of a 4096² world map; see
+`2026-08-17-mode-local-atlas-design.md`.
+
 The flying stone is reprojected with the view so it stays on the same water.
 Throw speed/gravity use `minDimension * (referenceHalfY / view.halfY)` so a
 given pull covers the same pond distance at any zoom.

@@ -33,13 +33,13 @@ nebula reads as density, not skip-colored paths.
 - Color both as monochrome depth gray, ignoring skip tints.
 - Flashlight skips the first 24 iterates so sacred-shape seeds stay
   invisible. Opening plots from the first iterate so a Buddhabrot can form.
-- Flashlight point energy stays low so the cone stays dim. Gameplay nebula
-  energy is much lower, and atlas gain is ~0.16, so the background
-  Buddhabrot stays a faint wash while live throws stay bright.
-  Opening uses a brighter grayscale nebula behind a sparse volley, keeps
-  iterating for a short settle, then fades before clearing for play.
+- Flashlight point energy stays low so the cone stays dim. Gameplay has no
+  intro nebula; each throw paints a view-local atlas at full atlas gain so
+  the orbit reads as a shape. Opening uses a brighter grayscale nebula
+  behind a sparse volley, keeps iterating for a short settle, then fades
+  before clearing for play.
   The aim cone has no fill or stroked rim; its sides fade with a conic mask.
 - Opening samples escaping seeds across the trail bounds (not just the
-  cardioid rim), accumulates them in a 4096² atlas, and hides the sparkly
+  cardioid rim), accumulates them in a 2048² pond atlas, and hides the sparkly
   live overlay so filaments read sharp. Coordinates default to 90° right so
   the Buddha sits upright.

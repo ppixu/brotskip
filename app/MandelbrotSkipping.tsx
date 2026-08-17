@@ -57,8 +57,10 @@ import {
 import {
   TRAIL_ATLAS_SIZE,
   TRAIL_BOUNDS,
+  atlasNeedsRecenter,
   complexToClip,
   complexToScreen,
+  focusAtlasBounds,
   mathBoundsForView,
   reprojectScreenPoint,
   reprojectScreenVelocity,
@@ -220,7 +222,7 @@ const INTRO_POND_CENTER = { x: -0.55, y: 0 };
 const INTRO_VIEW_HALF_Y = 1.52;
 const SCORE_HALF_X = 1.6;
 const SCORE_HALF_Y = 1.15;
-const MIN_VIEW_HALF_Y = 0.035;
+const MIN_VIEW_HALF_Y = 0.0035;
 const MAX_VIEW_HALF_Y = 2.4;
 const SONIC_SCALES = [
   [0, 2, 3, 5, 7, 9, 10], // dorian
@@ -890,6 +892,8 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   let liveGain = PLAY_ATMOSPHERE.liveGain;
   let contrast = PLAY_ATMOSPHERE.contrast;
   let atlasGain = PLAY_ATMOSPHERE.atlasGain;
+  let atlasFollowView = false;
+  let atlasBounds = { ...TRAIL_BOUNDS };
   let lastDrawTime = 0;
 
   const makeAtlas = (format: string) => device.createTexture({
@@ -910,6 +914,30 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     }
   }
 
+  function resetAtlasTextures() {
+    if (!atlasTextures.length) return;
+    const encoder = device.createCommandEncoder({ label: "orbit-atlas-reset" });
+    clearTextures(encoder, atlasTextures);
+    clearTextures(encoder, atlasLineTextures);
+    device.queue.submit([encoder.finish()]);
+  }
+
+  function lockWorldAtlas() {
+    atlasBounds = { ...TRAIL_BOUNDS };
+    resetAtlasTextures();
+  }
+
+  function adoptFocusAtlas() {
+    if (width < 1 || height < 1) return;
+    atlasBounds = focusAtlasBounds(view, width, height, rotateRight);
+    resetAtlasTextures();
+  }
+
+  function maybeRecenterAtlas() {
+    if (!atlasFollowView || width < 1 || height < 1) return;
+    if (atlasNeedsRecenter(atlasBounds, view, width, height, rotateRight)) adoptFocusAtlas();
+  }
+
   function writeParams(buffer: any, atlasMode: number) {
     const bytes = new ArrayBuffer(80);
     const ints = new Uint32Array(bytes);
@@ -928,10 +956,10 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     floats[11] = accelerationCurve;
     floats[12] = atlasMode;
     floats[13] = hiddenSteps;
-    floats[16] = TRAIL_BOUNDS.xMin;
-    floats[17] = TRAIL_BOUNDS.xMax;
-    floats[18] = TRAIL_BOUNDS.yMin;
-    floats[19] = TRAIL_BOUNDS.yMax;
+    floats[16] = atlasBounds.xMin;
+    floats[17] = atlasBounds.xMax;
+    floats[18] = atlasBounds.yMin;
+    floats[19] = atlasBounds.yMax;
     device.queue.writeBuffer(buffer, 0, bytes);
   }
 
@@ -979,6 +1007,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     clearTextures(encoder, [liveTexture, liveLineTexture]);
     device.queue.submit([encoder.finish()]);
     if (first) textureIndex = 0;
+    maybeRecenterAtlas();
   }
 
   const observer = new ResizeObserver(resize);
@@ -1013,10 +1042,10 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     displayView[5] = drawLines ? 1 : 0;
     displayView[6] = liveGain;
     displayView[7] = contrast;
-    displayView[8] = TRAIL_BOUNDS.xMin;
-    displayView[9] = TRAIL_BOUNDS.xMax;
-    displayView[10] = TRAIL_BOUNDS.yMin;
-    displayView[11] = TRAIL_BOUNDS.yMax;
+    displayView[8] = atlasBounds.xMin;
+    displayView[9] = atlasBounds.xMax;
+    displayView[10] = atlasBounds.yMin;
+    displayView[11] = atlasBounds.yMax;
     displayView[12] = atlasGain;
     device.queue.writeBuffer(displayViewBuffer, 0, displayView);
     const destination = atlasTextures[1 - textureIndex];
@@ -1121,6 +1150,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     },
     setView(nextView) {
       view = { ...nextView };
+      maybeRecenterAtlas();
     },
     setTuning(tuning) {
       maxDepth = tuning.maxDepth;
@@ -1128,6 +1158,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       linePersist = tuning.linePersist;
       skipColors = tuning.skipColors === true;
       rotateRight = tuning.rotateRight === true;
+      maybeRecenterAtlas();
     },
     setAtmosphere(atmosphere) {
       drawLines = atmosphere.drawLines;
@@ -1137,16 +1168,21 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       liveGain = atmosphere.liveGain;
       contrast = atmosphere.contrast;
       atlasGain = atmosphere.atlasGain;
+      if (atmosphere.atlasFollowView !== atlasFollowView) {
+        atlasFollowView = atmosphere.atlasFollowView;
+        if (atlasFollowView) adoptFocusAtlas();
+        else lockWorldAtlas();
+      }
     },
     clear() {
       paused = false;
       sourceCount = 0;
       nextSource = 0;
       device.queue.writeBuffer(stateBuffer, 0, new Uint8Array(MAX_SOURCES * 48));
-      if (!atlasTextures.length) return;
-      const encoder = device.createCommandEncoder({ label: "orbit-clear" });
-      clearTextures(encoder, atlasTextures);
-      clearTextures(encoder, atlasLineTextures);
+      if (atlasFollowView) adoptFocusAtlas();
+      else resetAtlasTextures();
+      if (!liveTexture) return;
+      const encoder = device.createCommandEncoder({ label: "orbit-clear-live" });
       clearTextures(encoder, [liveTexture, liveLineTexture].filter(Boolean));
       device.queue.submit([encoder.finish()]);
     },
@@ -1257,6 +1293,8 @@ export default function MandelbrotSkipping() {
       if (introActiveRef.current) {
         engine?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
         engine?.setAtmosphere(INTRO_ATMOSPHERE);
+      } else {
+        engine?.setAtmosphere(PLAY_ATMOSPHERE);
       }
     }).catch(() => setGpuError("Orbit renderer could not start. Throwing remains playable."));
     return () => {

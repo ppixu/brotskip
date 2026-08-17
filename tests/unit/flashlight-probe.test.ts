@@ -147,7 +147,7 @@ test("intro nebula seeds fill the Buddhabrot body, not just the cardioid rim", (
   assert.ok(east >= 8, `only ${east}/120 seeds sit on the east cardioid`);
 });
 
-test("intro and flashlight atmospheres drop lines, stay gray, and keep play nebula dim", () => {
+test("intro and flashlight atmospheres drop lines, stay gray, and keep play throws as the picture", () => {
   assert.equal(PLAY_ATMOSPHERE.drawLines, true);
   assert.equal(PLAY_ATMOSPHERE.grayscale, false);
   assert.equal(PLAY_ATMOSPHERE.hiddenSteps, 0);
@@ -157,8 +157,11 @@ test("intro and flashlight atmospheres drop lines, stay gray, and keep play nebu
   assert.equal(FLASHLIGHT_ATMOSPHERE.grayscale, true);
   assert.ok(PLAY_ATMOSPHERE.energy <= 0.012);
   assert.ok(PLAY_ATMOSPHERE.energy < INTRO_ATMOSPHERE.energy * 0.12);
-  assert.ok((PLAY_ATMOSPHERE.atlasGain ?? 1) <= 0.22);
+  assert.ok((PLAY_ATMOSPHERE.atlasGain ?? 1) >= 0.8);
   assert.ok((INTRO_ATMOSPHERE.atlasGain ?? 1) >= 0.9);
+  assert.equal(PLAY_ATMOSPHERE.atlasFollowView, true);
+  assert.equal(INTRO_ATMOSPHERE.atlasFollowView, false);
+  assert.equal(FLASHLIGHT_ATMOSPHERE.atlasFollowView, true);
   assert.ok(FLASHLIGHT_ATMOSPHERE.energy <= 0.04);
   assert.ok(INTRO_ATMOSPHERE.energy > FLASHLIGHT_ATMOSPHERE.energy);
   assert.ok(INTRO_ATMOSPHERE.energy >= 0.24);

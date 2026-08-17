@@ -3,8 +3,10 @@ import test from "node:test";
 import {
   TRAIL_ATLAS_SIZE,
   TRAIL_BOUNDS,
+  atlasNeedsRecenter,
   complexToAtlasUv,
   complexToScreen,
+  focusAtlasBounds,
   reprojectScreenPoint,
   reprojectScreenVelocity,
   screenToComplex,
@@ -35,8 +37,23 @@ test("rotating 90° right puts +real below the pond, where the player throws", (
   assert.ok(rotatedLeft.y < pond.y);
 });
 
-test("the trail atlas is fine enough for sharp Buddhabrot filaments", () => {
-  assert.ok(TRAIL_ATLAS_SIZE >= 4096);
+test("the trail atlas is 2048 so hops fill shapes instead of dust", () => {
+  assert.equal(TRAIL_ATLAS_SIZE, 2048);
+});
+
+test("a focus atlas covers about twice the current view and does not recenter on the same view", () => {
+  const focus = focusAtlasBounds(view, 800, 800, true);
+  const visibleHalfX = (focus.xMax - focus.xMin) / 4;
+  const visibleHalfY = (focus.yMax - focus.yMin) / 4;
+  assert.ok(Math.abs(visibleHalfX - view.halfY) < 1e-9);
+  assert.ok(Math.abs(visibleHalfY - view.halfY) < 1e-9);
+  assert.equal(atlasNeedsRecenter(focus, view, 800, 800, true), false);
+});
+
+test("a focus atlas recenters after a deep zoom or a pan off the inner half", () => {
+  const focus = focusAtlasBounds(view, 800, 800, true);
+  assert.equal(atlasNeedsRecenter(focus, { ...view, halfY: 0.2 }, 800, 800, true), true);
+  assert.equal(atlasNeedsRecenter(focus, { ...view, centerX: view.centerX + 1.2 }, 800, 800, true), true);
 });
 
 test("vertical orientation puts the period-2 bulb (Buddha head) above the pond", () => {
