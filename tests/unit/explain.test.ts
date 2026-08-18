@@ -31,7 +31,7 @@ test("a trapped seed stays inside the radius-2 circle", () => {
   assert.ok(orbit.every((point) => magnitudeSq(point) <= 4));
 });
 
-test("the overlay explains the pre-iterated GPU escape-depth scan", () => {
+test("the overlay explains the fixed GPU orbit-time scan", () => {
   const copy = BUDDHABROT_EXPLAIN.paragraphs.join(" ");
   assert.equal(BUDDHABROT_EXPLAIN.trigger, "Buddhabrot");
   assert.equal(BUDDHABROT_EXPLAIN.formula, "z → z² + c");
@@ -39,7 +39,8 @@ test("the overlay explains the pre-iterated GPU escape-depth scan", () => {
   assert.match(copy, /escape/);
   assert.match(copy, /Melinda Green/);
   assert.match(copy, /density|trajector/i);
-  assert.match(copy, /GPU pre-iterates the orbit pool/i);
+  assert.match(copy, /GPU computes a fixed volume/i);
+  assert.match(copy, /orbit-time slice/i);
   assert.match(copy, /loops smoothly back and forth/i);
   assert.doesNotMatch(copy, /iteration means/i);
   assert.equal("gif" in BUDDHABROT_EXPLAIN, false);

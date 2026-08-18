@@ -1465,7 +1465,8 @@ export default function MandelbrotSkipping() {
         engine?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH, doublePixels: true });
         engine?.setAtmosphere(INTRO_ATMOSPHERE);
         engine?.setLayer("pond");
-        engine?.setDisplay({ ...displayLayerGains("intro"), cone: null, cssWidth: 1, cssHeight: 1, mri: true });
+        engine?.setDisplay({ ...displayLayerGains("intro"), cone: null, cssWidth: 1, cssHeight: 1 });
+        engine?.setSuspended(true);
       } else {
         engine?.setTuning(tuningRef.current);
         engine?.setAtmosphere(PLAY_ATMOSPHERE);
@@ -1503,6 +1504,7 @@ export default function MandelbrotSkipping() {
       spectatorRef.current = false;
       introThrowsRef.current = 0;
       introFadingRef.current = false;
+      engineRef.current?.setSuspended(false);
       engineRef.current?.setAtmosphere(PLAY_ATMOSPHERE);
       engineRef.current?.setLayer("throw");
       engineRef.current?.setDisplay({ ...displayLayerGains("play"), cone: null, cssWidth: 1, cssHeight: 1 });
@@ -1526,7 +1528,8 @@ export default function MandelbrotSkipping() {
     engineRef.current?.setLayer("pond");
     engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH, doublePixels: true });
     engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
-    engineRef.current?.setDisplay({ ...displayLayerGains("intro"), cone: null, cssWidth: 1, cssHeight: 1, mri: true });
+    engineRef.current?.setDisplay({ ...displayLayerGains("intro"), cone: null, cssWidth: 1, cssHeight: 1 });
+    engineRef.current?.setSuspended(true);
     applyViewRef.current({ centerX: INTRO_POND_CENTER.x, centerY: INTRO_POND_CENTER.y, halfY: INTRO_VIEW_HALF_Y });
     restartRef.current();
     setIntroFading(false);
@@ -2997,7 +3000,6 @@ export default function MandelbrotSkipping() {
       const engine = engineRef.current;
       if (!engine) return;
       if (introActiveRef.current) {
-        engine.setDisplay({ ...displayLayerGains("intro"), cone: null, cssWidth: width, cssHeight: height, mri: true });
         return;
       }
       if (phase === "aiming") {
@@ -3099,6 +3101,7 @@ export default function MandelbrotSkipping() {
     }
 
     function spawnIntroBackgroundOrbits(now: number) {
+      if (introActiveRef.current) return;
       const aiming = phase === "aiming" && !introActiveRef.current;
       if ((!introActiveRef.current && !aiming) || introFadingRef.current) return;
       if (introActiveRef.current && engineRef.current?.isMriReady()) return;
@@ -3426,6 +3429,7 @@ export default function MandelbrotSkipping() {
             progress={intro.progress}
             fading={introFading}
             ready={intro.ready}
+            gpuContext={gpuPromiseRef.current}
             onPlay={finishOpening}
           />
         )}

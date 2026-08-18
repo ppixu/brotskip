@@ -51,8 +51,9 @@ test("orbit trails accumulate in native-pixel pond and throw layers", () => {
   assert.match(source, /incomingLength <= 0\.12 && length\(z - previousZ\) <= 0\.12/);
 });
 
-test("loading Buddhabrot precomputes a dedicated GPU depth texture before looping", () => {
+test("loading Buddhabrot uses a fixed layer-major Gaussian splat volume", () => {
   const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
+  const mri = readFileSync(new URL("../../app/BuddhabrotMriCanvas.tsx", import.meta.url), "utf8");
   assert.match(source, /const DEFAULT_TUNING: Tuning = \{[\s\S]*?rotateRight: true/);
   assert.match(source, /const POINT_BUDGET = 400_000/);
   assert.match(source, /const INTRO_SOURCE_CAP = 4096/);
@@ -78,6 +79,16 @@ test("loading Buddhabrot precomputes a dedicated GPU depth texture before loopin
   assert.match(source, /createOrbitEngine\(canvas, acquired, introActiveRef\.current\)/);
   assert.match(source, /className="gpuCanvas"/);
   assert.doesNotMatch(source, /introStashed/);
+  assert.match(source, /engine\?\.setSuspended\(true\)/);
+  assert.match(source, /engineRef\.current\?\.setSuspended\(false\)/);
+  assert.match(mri, /const SEED_COUNT = 8_192/);
+  assert.match(mri, /const LAYER_COUNT = 144/);
+  assert.match(mri, /let slot = layer \* params\.seedCount \+ seed/);
+  assert.match(mri, /label: "buddhabrot-mri-fixed-volume"/);
+  assert.match(mri, /computePass\.dispatchWorkgroups/);
+  assert.match(mri, /Math\.cos\(phase \* Math\.PI \* 2\)/);
+  assert.match(mri, /firstLayer \* SEED_COUNT/);
+  assert.doesNotMatch(mri, /epoch\+\+/);
   assert.match(source, /displayView\[6\] = mriEnabled \? 0 : liveGain/);
   assert.match(source, /displayView\[7\] = contrast/);
   assert.match(source, /pow\(clamp\(mapped, vec3f\(0\.0\), vec3f\(1\.0\)\), vec3f\(contrast\)\) \* pondGain \* cone/);
@@ -162,7 +173,8 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(intro, /ready/);
   assert.match(intro, />Play</);
   assert.match(intro, /introMode/);
-  assert.match(intro, /GPU pre-iterate/);
+  assert.match(intro, /Precalculated GPU volume/);
+  assert.match(intro, /BuddhabrotMriCanvas/);
   assert.doesNotMatch(intro, /introTraverse|gif\.file/);
   assert.match(intro, /BUDDHABROT_EXPLAIN/);
   assert.match(intro, /wikipedia/);
