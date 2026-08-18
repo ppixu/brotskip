@@ -207,4 +207,13 @@ test("every skip stamps a tinted glyph and later skips keep iterating", () => {
   assert.match(source, /engineRef\.current\?\.spawnAppend\(sources, index\)/);
   assert.doesNotMatch(source, /Math\.min\(18, tuningRef\.current\.sourceDots\)/);
   assert.doesNotMatch(source, /fillStyle = `rgba\(235, 252, 255,/);
+  assert.match(source, /pixelDots:\s*true/);
+  assert.match(source, /fillRect\(/);
+});
+
+test("throw orbits stay alive across the pond even when they leave the camera", () => {
+  const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
+  assert.match(source, /let inPond = /);
+  assert.match(source, /offscreenStreak = select\([\s\S]*inPond \|\| onScreen/);
+  assert.match(source, /z\.x >= \$\{TRAIL_BOUNDS\.xMin\}/);
 });

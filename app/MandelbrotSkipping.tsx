@@ -329,15 +329,18 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     let clip = toClip(z);
     let hopPx = length((clip - previousClip) * params.viewport * 0.5);
     let depthColor = log2(f32(state.step) + 1.0) / 25.6;
-    let inAtlas = all(abs(toAtlasClip(z)) <= vec2f(1.0));
-    if (inAtlas || all(abs(clip) <= vec2f(1.0))) {
+    let inLayer = all(abs(toAtlasClip(z)) <= vec2f(1.0));
+    let onScreen = all(abs(clip) <= vec2f(1.02));
+    let inPond = z.x >= ${TRAIL_BOUNDS.xMin} && z.x <= ${TRAIL_BOUNDS.xMax}
+      && z.y >= ${TRAIL_BOUNDS.yMin} && z.y <= ${TRAIL_BOUNDS.yMax};
+    if (inLayer || onScreen) {
       if (state.step > u32(params.hiddenSteps)) {
         let slot = atomicAdd(&drawArgs.vertexCount, 1u);
         if (slot < ${POINT_BUDGET}u) {
           vertices[slot] = OrbitPoint(z, depthColor, state.reserved.x);
         }
       }
-      if (state.step > u32(params.hiddenSteps) + 1u && (inAtlas || all(abs(previousClip) <= vec2f(1.0))) && i >= firstLineStep) {
+      if (state.step > u32(params.hiddenSteps) + 1u && (inLayer || all(abs(previousClip) <= vec2f(1.0))) && i >= firstLineStep) {
         let future = vec2f(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + state.c;
         let incomingLength = length(clip - previousClip);
         let control1 = previousZ + (z - previousZ) / 3.0;
@@ -357,8 +360,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
       }
     }
     let magSq = dot(z, z);
-    let onScreen = all(abs(clip) <= vec2f(1.02));
-    state.offscreenStreak = select(state.offscreenStreak + 1u, 0u, inAtlas || onScreen);
+    state.offscreenStreak = select(state.offscreenStreak + 1u, 0u, inPond || onScreen);
     state.tinyHopStreak = select(0u, state.tinyHopStreak + 1u, hopPx <= ${TINY_HOP_PX} && hopPx == hopPx);
     if (
       magSq > ${ESCAPE_RADIUS_SQ}.0
@@ -2837,19 +2839,28 @@ export default function MandelbrotSkipping() {
       ctx.drawImage(gridCanvas, 0, 0, width, height);
     }
 
-    function drawSacredGlyph(glyph: number, dots: number, stroke: string, fill: string, radius = SOURCE_RADIUS_PX) {
+    function drawSacredGlyph(
+      glyph: number,
+      dots: number,
+      stroke: string,
+      fill: string,
+      radius = SOURCE_RADIUS_PX,
+      { pixelDots = false } = {},
+    ) {
       const shape = ((glyph % GLYPH_COUNT) + GLYPH_COUNT) % GLYPH_COUNT;
       const shapePaths = SACRED_PATH_COUNTS[shape];
-      ctx.strokeStyle = stroke;
-      ctx.lineWidth = 1;
-      for (let path = 0; path < shapePaths; path++) {
-        ctx.beginPath();
-        for (let sample = 0; sample <= 32; sample++) {
-          const offset = sacredShapeOffset(shape, path, sample / 32);
-          if (sample === 0) ctx.moveTo(offset.x * radius, offset.y * radius);
-          else ctx.lineTo(offset.x * radius, offset.y * radius);
+      if (!pixelDots) {
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 1;
+        for (let path = 0; path < shapePaths; path++) {
+          ctx.beginPath();
+          for (let sample = 0; sample <= 32; sample++) {
+            const offset = sacredShapeOffset(shape, path, sample / 32);
+            if (sample === 0) ctx.moveTo(offset.x * radius, offset.y * radius);
+            else ctx.lineTo(offset.x * radius, offset.y * radius);
+          }
+          ctx.stroke();
         }
-        ctx.stroke();
       }
       ctx.fillStyle = fill;
       for (let index = 0; index < dots; index++) {
@@ -2857,9 +2868,15 @@ export default function MandelbrotSkipping() {
         const pathIndex = Math.floor(index / shapePaths);
         const samplesOnPath = Math.ceil((dots - path) / shapePaths);
         const offset = sacredShapeOffset(shape, path, pathIndex / Math.max(samplesOnPath, 1));
-        ctx.beginPath();
-        ctx.arc(offset.x * radius, offset.y * radius, 1.15, 0, TAU);
-        ctx.fill();
+        const x = offset.x * radius;
+        const y = offset.y * radius;
+        if (pixelDots) {
+          ctx.fillRect(Math.round(x), Math.round(y), 1, 1);
+        } else {
+          ctx.beginPath();
+          ctx.arc(x, y, 1.15, 0, TAU);
+          ctx.fill();
+        }
       }
     }
 
@@ -2956,24 +2973,30 @@ export default function MandelbrotSkipping() {
         const point = complexToScreen(impact.cr, impact.ci, width, height, viewRef.current, tuningRef.current.rotateRight);
         const age = now - impact.born;
         if (age < 0) continue;
-        const pop = age < 450 ? 1.0 + Math.sin((age / 450) * Math.PI) * 0.38 : 1.0;
-        const fontSize = Math.round(15 * pop);
-        ctx.font = `800 ${fontSize}px ui-monospace, monospace`;
+        const pop = age < 450 ? 1.0 + Math.sin((age / 450) * Math.PI) * 0.18 : 1.0;
+        const fontSize = Math.round(11 * pop);
+        ctx.font = `600 ${fontSize}px ui-monospace, monospace`;
         const [r, g, b] = skipTintRgb(impact.index, colored);
+        const mute = 0.28;
+        const nr = Math.round(r * mute + 186 * (1 - mute));
+        const ng = Math.round(g * mute + 210 * (1 - mute));
+        const nb = Math.round(b * mute + 214 * (1 - mute));
         ctx.save();
         ctx.translate(point.x, point.y);
         drawSacredGlyph(
           impact.glyph,
           glyphDots,
-          `rgba(${r}, ${g}, ${b}, 0.5)`,
-          `rgba(${r}, ${g}, ${b}, 0.92)`,
+          `rgba(${nr}, ${ng}, ${nb}, 0.2)`,
+          `rgba(${nr}, ${ng}, ${nb}, 0.55)`,
+          SOURCE_RADIUS_PX,
+          { pixelDots: true },
         );
         ctx.restore();
         ctx.save();
-        ctx.lineWidth = 2.5;
-        ctx.strokeStyle = `rgba(0, 16, 28, 0.85)`;
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = `rgba(0, 16, 28, 0.55)`;
         ctx.strokeText(String(impact.index), point.x, point.y + 0.5);
-        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 1)`;
+        ctx.fillStyle = `rgba(${nr}, ${ng}, ${nb}, 0.7)`;
         ctx.fillText(String(impact.index), point.x, point.y + 0.5);
         ctx.restore();
       }
