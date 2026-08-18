@@ -5,7 +5,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { GpuContext } from "@/lib/gpu";
 
-const SEED_COUNT = 8_192;
+const SEED_COUNT = 32_768;
+const SEEDS_PER_SHARD = 8_192;
+const SHARD_COUNT = SEED_COUNT / SEEDS_PER_SHARD;
 const LAYER_COUNT = 144;
 const MAX_ITERATIONS = 320;
 const MIN_ORBIT = 18;
@@ -16,9 +18,9 @@ const VISIBLE_LAYER_RADIUS = 4;
 const computeShader = /* wgsl */ `
 struct Params {
   seedCount: u32,
+  seedOffset: u32,
   layerCount: u32,
   maxIterations: u32,
-  minOrbit: u32,
 }
 
 struct Point {
@@ -49,8 +51,9 @@ fn isKnownInterior(c: vec2f) -> bool {
 
 @compute @workgroup_size(${WORKGROUP_SIZE})
 fn main(@builtin(global_invocation_id) id: vec3u) {
-  let seed = id.x;
-  if (seed >= params.seedCount) { return; }
+  let localSeed = id.x;
+  if (localSeed >= params.seedCount) { return; }
+  let seed = localSeed + params.seedOffset;
 
   // Fixed seed. The volume is computed once and never randomized frame-to-frame.
   let randomBase = seed * 747796405u + 0x9e3779b9u;
@@ -68,7 +71,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
       }
     }
   }
-  if (escapeAt < params.minOrbit) { return; }
+  if (escapeAt < ${MIN_ORBIT}u) { return; }
 
   // Store one orbit sample per normalized time layer. Layer-major order makes
   // the thin MRI window one contiguous instanced draw instead of the full volume.
@@ -81,7 +84,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
       currentStep += 1u;
     }
     let after = iterate(z, c);
-    let slot = layer * params.seedCount + seed;
+    let slot = layer * params.seedCount + localSeed;
     let normalizedLayer = f32(layer) / f32(max(params.layerCount - 1u, 1u));
     points[slot].center = vec4f(z, normalizedLayer, 1.0);
     points[slot].tangent = vec4f(after - z, f32(escapeAt) / f32(params.maxIterations), 0.0);
@@ -250,12 +253,17 @@ export default function BuddhabrotMriCanvas({
 
       const bufferUsage = (globalThis as any).GPUBufferUsage;
       const textureUsage = (globalThis as any).GPUTextureUsage;
-      const pointBuffer = device.createBuffer({
-        label: "buddhabrot-mri-fixed-volume",
-        size: SEED_COUNT * LAYER_COUNT * POINT_STRIDE,
+      // Four storage shards keep the 4x sample volume below WebGPU's common
+      // 128 MiB per-binding limit while preserving one contiguous range/layer.
+      const pointBuffers = Array.from({ length: SHARD_COUNT }, (_, shard) => device.createBuffer({
+        label: `buddhabrot-mri-fixed-volume-${shard}`,
+        size: SEEDS_PER_SHARD * LAYER_COUNT * POINT_STRIDE,
         usage: bufferUsage.STORAGE | bufferUsage.VERTEX,
-      });
-      const paramsBuffer = device.createBuffer({ size: 16, usage: bufferUsage.UNIFORM | bufferUsage.COPY_DST });
+      }));
+      const paramsBuffers = Array.from({ length: SHARD_COUNT }, () => device.createBuffer({
+        size: 16,
+        usage: bufferUsage.UNIFORM | bufferUsage.COPY_DST,
+      }));
       const styleBuffer = device.createBuffer({ size: 32, usage: bufferUsage.UNIFORM | bufferUsage.COPY_DST });
       const displayBuffer = device.createBuffer({ size: 16, usage: bufferUsage.UNIFORM | bufferUsage.COPY_DST });
       const sampler = device.createSampler({ magFilter: "linear", minFilter: "linear" });
@@ -300,20 +308,20 @@ export default function BuddhabrotMriCanvas({
         }),
       ]);
       if (disposed) {
-        pointBuffer.destroy();
-        paramsBuffer.destroy();
+        pointBuffers.forEach((buffer) => buffer.destroy());
+        paramsBuffers.forEach((buffer) => buffer.destroy());
         styleBuffer.destroy();
         displayBuffer.destroy();
         return;
       }
 
-      const computeBindGroup = device.createBindGroup({
+      const computeBindGroups = pointBuffers.map((pointBuffer, shard) => device.createBindGroup({
         layout: computePipeline.getBindGroupLayout(0),
         entries: [
-          { binding: 0, resource: { buffer: paramsBuffer } },
+          { binding: 0, resource: { buffer: paramsBuffers[shard] } },
           { binding: 1, resource: { buffer: pointBuffer } },
         ],
-      });
+      }));
       const pointBindGroup = device.createBindGroup({
         layout: pointPipeline.getBindGroupLayout(0),
         entries: [{ binding: 0, resource: { buffer: styleBuffer } }],
@@ -327,17 +335,21 @@ export default function BuddhabrotMriCanvas({
       const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       const startedAt = performance.now();
 
-      device.queue.writeBuffer(paramsBuffer, 0, new Uint32Array([
-        SEED_COUNT,
-        LAYER_COUNT,
-        MAX_ITERATIONS,
-        MIN_ORBIT,
-      ]));
+      paramsBuffers.forEach((buffer, shard) => {
+        device.queue.writeBuffer(buffer, 0, new Uint32Array([
+          SEEDS_PER_SHARD,
+          shard * SEEDS_PER_SHARD,
+          LAYER_COUNT,
+          MAX_ITERATIONS,
+        ]));
+      });
       const precompute = device.createCommandEncoder({ label: "buddhabrot-mri-precompute" });
       const computePass = precompute.beginComputePass();
       computePass.setPipeline(computePipeline);
-      computePass.setBindGroup(0, computeBindGroup);
-      computePass.dispatchWorkgroups(Math.ceil(SEED_COUNT / WORKGROUP_SIZE));
+      for (const bindGroup of computeBindGroups) {
+        computePass.setBindGroup(0, bindGroup);
+        computePass.dispatchWorkgroups(Math.ceil(SEEDS_PER_SHARD / WORKGROUP_SIZE));
+      }
       computePass.end();
       device.queue.submit([precompute.finish()]);
 
@@ -381,7 +393,7 @@ export default function BuddhabrotMriCanvas({
         const firstLayer = Math.max(0, centerLayer - VISIBLE_LAYER_RADIUS);
         const lastLayer = Math.min(LAYER_COUNT - 1, centerLayer + VISIBLE_LAYER_RADIUS);
         const visibleLayers = lastLayer - firstLayer + 1;
-        const pointScale = Math.max(0.74, Math.min(1.72, textureSize.height / 640));
+        const pointScale = Math.max(0.30, Math.min(0.78, textureSize.height / 1_500));
         device.queue.writeBuffer(styleBuffer, 0, new Float32Array([
           textureSize.width,
           textureSize.height,
@@ -390,7 +402,7 @@ export default function BuddhabrotMriCanvas({
           pointScale,
           textureSize.width / textureSize.height,
           seconds,
-          0.12,
+          0.10,
         ]));
         device.queue.writeBuffer(displayBuffer, 0, new Float32Array([
           textureSize.width,
@@ -410,8 +422,10 @@ export default function BuddhabrotMriCanvas({
         });
         pointPass.setPipeline(pointPipeline);
         pointPass.setBindGroup(0, pointBindGroup);
-        pointPass.setVertexBuffer(0, pointBuffer);
-        pointPass.draw(6, visibleLayers * SEED_COUNT, 0, firstLayer * SEED_COUNT);
+        for (const pointBuffer of pointBuffers) {
+          pointPass.setVertexBuffer(0, pointBuffer);
+          pointPass.draw(6, visibleLayers * SEEDS_PER_SHARD, 0, firstLayer * SEEDS_PER_SHARD);
+        }
         pointPass.end();
 
         const displayPass = encoder.beginRenderPass({
@@ -451,8 +465,8 @@ export default function BuddhabrotMriCanvas({
         document.removeEventListener("visibilitychange", onVisibilityChange);
         cancelAnimationFrame(frame);
         lightTexture?.destroy();
-        pointBuffer.destroy();
-        paramsBuffer.destroy();
+        pointBuffers.forEach((buffer) => buffer.destroy());
+        paramsBuffers.forEach((buffer) => buffer.destroy());
         styleBuffer.destroy();
         displayBuffer.destroy();
         context.unconfigure();

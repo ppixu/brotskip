@@ -81,13 +81,14 @@ test("loading Buddhabrot uses a fixed layer-major Gaussian splat volume", () => 
   assert.doesNotMatch(source, /introStashed/);
   assert.match(source, /engine\?\.setSuspended\(true\)/);
   assert.match(source, /engineRef\.current\?\.setSuspended\(false\)/);
-  assert.match(mri, /const SEED_COUNT = 8_192/);
+  assert.match(mri, /const SEED_COUNT = 32_768/);
+  assert.match(mri, /const SHARD_COUNT = SEED_COUNT \/ SEEDS_PER_SHARD/);
   assert.match(mri, /const LAYER_COUNT = 144/);
-  assert.match(mri, /let slot = layer \* params\.seedCount \+ seed/);
-  assert.match(mri, /label: "buddhabrot-mri-fixed-volume"/);
+  assert.match(mri, /let slot = layer \* params\.seedCount \+ localSeed/);
+  assert.match(mri, /label: `buddhabrot-mri-fixed-volume-\$\{shard\}`/);
   assert.match(mri, /computePass\.dispatchWorkgroups/);
   assert.match(mri, /Math\.cos\(phase \* Math\.PI \* 2\)/);
-  assert.match(mri, /firstLayer \* SEED_COUNT/);
+  assert.match(mri, /firstLayer \* SEEDS_PER_SHARD/);
   assert.doesNotMatch(mri, /epoch\+\+/);
   assert.match(source, /displayView\[6\] = mriEnabled \? 0 : liveGain/);
   assert.match(source, /displayView\[7\] = contrast/);
