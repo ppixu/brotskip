@@ -11,7 +11,7 @@
     "name": "rolldown-runtime"
   },
   "app/MandelbrotSkipping.tsx": {
-    "file": "brotskip/_next/static/chunks/MandelbrotSkipping-C7z49onh.js",
+    "file": "brotskip/_next/static/chunks/MandelbrotSkipping-FGnjZWIq.js",
     "name": "MandelbrotSkipping",
     "src": "app/MandelbrotSkipping.tsx",
     "isDynamicEntry": true,
@@ -21,7 +21,7 @@
     ]
   },
   "node_modules/vinext/dist/shims/layout-segment-context.js": {
-    "file": "brotskip/_next/static/chunks/layout-segment-context-BIC2F0ZL.js",
+    "file": "brotskip/_next/static/chunks/layout-segment-context-CYQWgdaT.js",
     "name": "layout-segment-context",
     "src": "node_modules/vinext/dist/shims/layout-segment-context.js",
     "isDynamicEntry": true,
@@ -32,7 +32,7 @@
     ]
   },
   "virtual:vinext-app-browser-entry": {
-    "file": "brotskip/_next/static/chunks/index-C0XiI3Pw.js",
+    "file": "brotskip/_next/static/chunks/index-BQjyQ476.js",
     "name": "index",
     "src": "virtual:vinext-app-browser-entry",
     "isEntry": true,
