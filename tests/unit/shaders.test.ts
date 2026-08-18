@@ -81,7 +81,7 @@ test("loading Buddhabrot uses the precomputed rotating Gaussian cloud", () => {
   assert.match(source, /createOrbitEngine\(canvas, acquired, introActiveRef\.current\)/);
   assert.match(source, /className="gpuCanvas"/);
   assert.doesNotMatch(source, /introStashed/);
-  assert.match(source, /engine\?\.setSuspended\(true\)/);
+  assert.doesNotMatch(source, /setSuspended\(true\)/);
   assert.match(source, /engineRef\.current\?\.setSuspended\(false\)/);
   assert.match(cloud, /SparkRenderer/);
   assert.match(cloud, /SplatMesh/);
@@ -118,6 +118,7 @@ test("flashlight is a GPU cone on the live pond; cached blit is GPU-fail only", 
   assert.doesNotMatch(source, /spawnFlashlightSkips/);
   assert.doesNotMatch(source, /traceFlashlightCone\(ctx, geometry\);\s*ctx\.stroke\(\)/);
   assert.doesNotMatch(source, /rgba\(224, 244, 255/);
+  assert.doesNotMatch(source, /function spawnIntroBackgroundOrbits\(now: number\) \{\s*if \(introActiveRef\.current\) return;/);
 });
 
 test("opening and flashlight hide orbit lines, go grayscale, and throw overlapping intro rocks", () => {

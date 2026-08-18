@@ -1468,7 +1468,6 @@ export default function MandelbrotSkipping() {
         engine?.setAtmosphere(INTRO_ATMOSPHERE);
         engine?.setLayer("pond");
         engine?.setDisplay({ ...displayLayerGains("intro"), cone: null, cssWidth: 1, cssHeight: 1 });
-        engine?.setSuspended(true);
       } else {
         engine?.setTuning(tuningRef.current);
         engine?.setAtmosphere(PLAY_ATMOSPHERE);
@@ -1531,7 +1530,6 @@ export default function MandelbrotSkipping() {
     engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH, doublePixels: true });
     engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
     engineRef.current?.setDisplay({ ...displayLayerGains("intro"), cone: null, cssWidth: 1, cssHeight: 1 });
-    engineRef.current?.setSuspended(true);
     applyViewRef.current({ centerX: INTRO_POND_CENTER.x, centerY: INTRO_POND_CENTER.y, halfY: INTRO_VIEW_HALF_Y });
     restartRef.current();
     setIntroFading(false);
@@ -3137,7 +3135,6 @@ export default function MandelbrotSkipping() {
     }
 
     function spawnIntroBackgroundOrbits(now: number) {
-      if (introActiveRef.current) return;
       const aiming = phase === "aiming" && !introActiveRef.current;
       if ((!introActiveRef.current && !aiming) || introFadingRef.current) return;
       if (introActiveRef.current && engineRef.current?.isMriReady()) return;
