@@ -106,11 +106,24 @@ export const INTRO_ATMOSPHERE: OrbitAtmosphere = {
 export type DisplayLayerMode = "intro" | "play" | "aiming";
 
 export const AIMING_POND_GAIN = 0.12;
+export const MRI_CYCLE_SECONDS = 18;
+export const MRI_SLICE_HALF = 0.055;
 
 export function displayLayerGains(mode: DisplayLayerMode) {
-  if (mode === "intro") return { pondGain: 0, throwGain: 0, coneEnabled: false };
+  if (mode === "intro") return { pondGain: 0, throwGain: 1, coneEnabled: false };
   if (mode === "aiming") return { pondGain: AIMING_POND_GAIN, throwGain: 0, coneEnabled: true };
   return { pondGain: 0, throwGain: 1, coneEnabled: false };
+}
+
+export function introMriSlice(timeSeconds: number, cycle = MRI_CYCLE_SECONDS) {
+  const phase = ((timeSeconds / Math.max(cycle, 1e-5)) % 1 + 1) % 1;
+  const ping = phase < 0.5 ? phase * 2 : 2 - phase * 2;
+  const eased = ping * ping * (3 - 2 * ping);
+  return {
+    zCamera: 0.07 + eased * 0.86,
+    sliceHalf: MRI_SLICE_HALF,
+    zoom: 1 + eased * 0.42,
+  };
 }
 
 export function flashlightConeFalloff(

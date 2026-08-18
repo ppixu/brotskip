@@ -15,6 +15,7 @@ import {
   INTRO_NEBULA_SEEDS_PER_WAVE,
   PLAY_ATMOSPHERE,
   displayLayerGains,
+  introMriSlice,
   flashlightConeFalloff,
   introLaunchOrigin,
   introNebulaSeed,
@@ -38,11 +39,22 @@ test("flashlight is a cone mask, not a cheaper iterator", () => {
 });
 
 test("display layer gains match intro, play, and aiming", () => {
-  assert.deepEqual(displayLayerGains("intro"), { pondGain: 0, throwGain: 0, coneEnabled: false });
+  assert.deepEqual(displayLayerGains("intro"), { pondGain: 0, throwGain: 1, coneEnabled: false });
   assert.deepEqual(displayLayerGains("play"), { pondGain: 0, throwGain: 1, coneEnabled: false });
   assert.deepEqual(displayLayerGains("aiming"), { pondGain: 0.12, throwGain: 0, coneEnabled: true });
   assert.ok(displayLayerGains("aiming").pondGain <= 0.15);
   assert.ok(displayLayerGains("aiming").pondGain < 1);
+});
+
+test("intro MRI slice sweeps hop-iteration like a cutting plane, not max-iter fill", () => {
+  const start = introMriSlice(0);
+  const mid = introMriSlice(9);
+  const end = introMriSlice(18);
+  assert.ok(start.zCamera < 0.2);
+  assert.ok(mid.zCamera > 0.7);
+  assert.ok(Math.abs(end.zCamera - start.zCamera) < 0.05);
+  assert.ok(start.sliceHalf > 0 && start.sliceHalf < 0.12);
+  assert.ok(mid.zoom > start.zoom);
 });
 
 test("flashlight cone falloff is 1-ish on the aim ray and 0 outside the cone", () => {

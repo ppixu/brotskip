@@ -37,6 +37,7 @@ import {
   INTRO_NEBULA_SEEDS_PER_WAVE,
   PLAY_ATMOSPHERE,
   displayLayerGains,
+  introMriSlice,
   introLaunchOrigin,
   introNebulaSeed,
   type FlashlightCone,
@@ -144,6 +145,7 @@ type OrbitEngine = {
     cone: FlashlightCone | null;
     cssWidth: number;
     cssHeight: number;
+    mri?: boolean;
   }) => void;
   beginThrow: (view: ViewTransform, cssWidth: number, cssHeight: number, rotateRight: boolean) => void;
   clearPond: () => void;
@@ -372,7 +374,8 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
 `;
 
 const pointShader = /* wgsl */ `
-struct Style { alpha: f32, pulse: f32, colorMode: f32, pad: f32 }
+struct Style { alpha: f32, pulse: f32, colorMode: f32, sliceEnabled: f32 }
+struct Slice { zCamera: f32, sliceHalf: f32, zoom: f32, pad: f32 }
 struct Params {
   sourceCount: u32,
   batch: u32,
@@ -389,7 +392,8 @@ struct Params {
 }
 @group(0) @binding(0) var<uniform> style: Style;
 @group(0) @binding(1) var<uniform> params: Params;
-struct VSOut { @builtin(position) position: vec4f, @location(0) color: vec3f }
+@group(0) @binding(2) var<uniform> slice: Slice;
+struct VSOut { @builtin(position) position: vec4f, @location(0) color: vec3f, @location(1) weight: f32 }
 fn skipTint(index: f32) -> vec3f {
   let colors = array<vec3f, 7>(${SKIP_TINT_WGSL});
   return colors[u32(max(index, 1.0) - 1.0) % 7u];
@@ -408,16 +412,22 @@ fn projectPoint(z: vec2f) -> vec2f {
 }
 @vertex fn vs(@location(0) position: vec2f, @location(1) depth: f32, @location(2) skip: f32) -> VSOut {
   var out: VSOut;
-  out.position = vec4f(projectPoint(position), 0.0, 1.0);
   let t = clamp(depth, 0.0, 1.0);
+  let band = (t - slice.zCamera) / max(slice.sliceHalf, 1e-4);
+  let weight = select(1.0, exp(-band * band), style.sliceEnabled > 0.5);
+  let zoom = select(1.0, max(slice.zoom, 1.0), style.sliceEnabled > 0.5);
+  out.position = vec4f(projectPoint(position) / zoom, 0.0, 1.0);
   let depthColor = mix(vec3f(0.10, 0.78, 0.92), vec3f(0.92, 1.0, 0.82), t);
   let tinted = mix(depthColor, skipTint(skip), style.colorMode);
   let gray = vec3f(mix(0.22, 1.0, t));
   out.color = mix(tinted, gray, style.pulse);
+  out.weight = weight;
   return out;
 }
 @fragment fn fs(in: VSOut) -> @location(0) vec4f {
-  return vec4f(in.color * style.alpha, style.alpha);
+  if (style.sliceEnabled > 0.5 && in.weight < 0.03) { discard; }
+  let alpha = style.alpha * in.weight;
+  return vec4f(in.color * alpha, alpha);
 }
 `;
 
@@ -823,6 +833,8 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   const paramsBuffer = device.createBuffer({ size: 80, usage: usage.UNIFORM | usage.COPY_DST });
   const paramsAtlasBuffer = device.createBuffer({ size: 80, usage: usage.UNIFORM | usage.COPY_DST });
   const styleBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
+  const styleSliceBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
+  const sliceBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
   const fadeBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
   const lineFadeBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
   const displayViewBuffer = device.createBuffer({ size: 128, usage: usage.UNIFORM | usage.COPY_DST });
@@ -891,10 +903,17 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   const pointBind = device.createBindGroup({ layout: pointPipeline.getBindGroupLayout(0), entries: [
     { binding: 0, resource: { buffer: styleBuffer } },
     { binding: 1, resource: { buffer: paramsBuffer } },
+    { binding: 2, resource: { buffer: sliceBuffer } },
   ] });
   const pointAtlasBind = device.createBindGroup({ layout: pointPipeline.getBindGroupLayout(0), entries: [
     { binding: 0, resource: { buffer: styleBuffer } },
     { binding: 1, resource: { buffer: paramsAtlasBuffer } },
+    { binding: 2, resource: { buffer: sliceBuffer } },
+  ] });
+  const pointAtlasSliceBind = device.createBindGroup({ layout: pointPipeline.getBindGroupLayout(0), entries: [
+    { binding: 0, resource: { buffer: styleSliceBuffer } },
+    { binding: 1, resource: { buffer: paramsAtlasBuffer } },
+    { binding: 2, resource: { buffer: sliceBuffer } },
   ] });
   const lineBind = device.createBindGroup({ layout: linePipeline.getBindGroupLayout(0), entries: [
     { binding: 0, resource: { buffer: lineSegmentBuffer } },
@@ -945,6 +964,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   let pondGain = introGains.pondGain;
   let throwGain = introGains.throwGain;
   let cone: FlashlightCone | null = null;
+  let mriEnabled = false;
   let layer: "pond" | "throw" = "pond";
   let pondBounds = { ...TRAIL_BOUNDS };
   let throwBounds = { ...TRAIL_BOUNDS };
@@ -1065,7 +1085,10 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     const lineRetention = lineFadeRetention(dt, linePersist);
     writeParams(paramsBuffer, 0);
     writeParams(paramsAtlasBuffer, 1);
+    const slice = mriEnabled ? introMriSlice(now / 1000) : { zCamera: 0, sliceHalf: 1, zoom: 1 };
     device.queue.writeBuffer(styleBuffer, 0, new Float32Array([pointEnergy, grayscale ? 1 : 0, skipColors ? 1 : 0, 0]));
+    device.queue.writeBuffer(styleSliceBuffer, 0, new Float32Array([Math.min(1.2, pointEnergy * 4.2), grayscale ? 1 : 0, skipColors ? 1 : 0, 1]));
+    device.queue.writeBuffer(sliceBuffer, 0, new Float32Array([slice.zCamera, slice.sliceHalf, slice.zoom, 0]));
     device.queue.writeBuffer(indirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
     device.queue.writeBuffer(lineIndirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
     device.queue.writeBuffer(fadeBuffer, 0, new Float32Array([1, 0, 0, 0]));
@@ -1077,7 +1100,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     displayView[3] = view.halfY;
     displayView[4] = rotateRight ? 1 : 0;
     displayView[5] = drawLines ? 1 : 0;
-    displayView[6] = liveGain;
+    displayView[6] = mriEnabled ? 0 : liveGain;
     displayView[7] = contrast;
     displayView[8] = pondBounds.xMin;
     displayView[9] = pondBounds.xMax;
@@ -1141,6 +1164,14 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       layerPoints.setVertexBuffer(0, vertexBuffer);
       layerPoints.drawIndirect(indirectBuffer, 0);
       layerPoints.end();
+      if (mriEnabled && layer === "pond") {
+        const mriPass = encoder.beginRenderPass({ colorAttachments: [{ view: throwTextures[throwIndex].createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
+        mriPass.setPipeline(pointPipeline);
+        mriPass.setBindGroup(0, pointAtlasSliceBind);
+        mriPass.setVertexBuffer(0, vertexBuffer);
+        mriPass.drawIndirect(indirectBuffer, 0);
+        mriPass.end();
+      }
       const livePoints = encoder.beginRenderPass({ colorAttachments: [{ view: liveTexture.createView(), loadOp: "load", storeOp: "store" }] });
       livePoints.setPipeline(pointPipeline);
       livePoints.setBindGroup(0, pointBind);
@@ -1243,6 +1274,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       cone = next.cone;
       cssWidth = next.cssWidth;
       cssHeight = next.cssHeight;
+      mriEnabled = next.mri === true;
     },
     beginThrow(nextView, nextCssWidth, nextCssHeight, nextRotateRight) {
       view = { ...nextView };
@@ -1292,6 +1324,8 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       paramsBuffer.destroy();
       paramsAtlasBuffer.destroy();
       styleBuffer.destroy();
+      styleSliceBuffer.destroy();
+      sliceBuffer.destroy();
       fadeBuffer.destroy();
       lineFadeBuffer.destroy();
       displayViewBuffer.destroy();
@@ -1377,7 +1411,7 @@ export default function MandelbrotSkipping() {
         engine?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
         engine?.setAtmosphere(INTRO_ATMOSPHERE);
         engine?.setLayer("pond");
-        engine?.setDisplay({ ...displayLayerGains("intro"), cone: null, cssWidth: 1, cssHeight: 1 });
+        engine?.setDisplay({ ...displayLayerGains("intro"), cone: null, cssWidth: 1, cssHeight: 1, mri: true });
       } else {
         engine?.setAtmosphere(PLAY_ATMOSPHERE);
         engine?.setLayer("throw");
@@ -1437,7 +1471,7 @@ export default function MandelbrotSkipping() {
     engineRef.current?.setLayer("pond");
     engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
     engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
-    engineRef.current?.setDisplay({ ...displayLayerGains("intro"), cone: null, cssWidth: 1, cssHeight: 1 });
+    engineRef.current?.setDisplay({ ...displayLayerGains("intro"), cone: null, cssWidth: 1, cssHeight: 1, mri: true });
     applyViewRef.current({ centerX: INTRO_POND_CENTER.x, centerY: INTRO_POND_CENTER.y, halfY: INTRO_VIEW_HALF_Y });
     restartRef.current();
     setIntroFading(false);
@@ -2908,7 +2942,7 @@ export default function MandelbrotSkipping() {
       const engine = engineRef.current;
       if (!engine) return;
       if (introActiveRef.current) {
-        engine.setDisplay({ ...displayLayerGains("intro"), cone: null, cssWidth: width, cssHeight: height });
+        engine.setDisplay({ ...displayLayerGains("intro"), cone: null, cssWidth: width, cssHeight: height, mri: true });
         return;
       }
       if (phase === "aiming") {
@@ -3319,7 +3353,7 @@ export default function MandelbrotSkipping() {
   return (
     <main className={`gameShell ${replayMode ? "replayMode" : ""}`}>
       <section className="playfield" aria-label="Mandelbrot rock skipping game">
-        <canvas ref={gpuCanvasRef} className={`gpuCanvas ${intro ? "introStashed" : ""}`} aria-hidden="true" />
+        <canvas ref={gpuCanvasRef} className="gpuCanvas" aria-hidden="true" />
         <canvas ref={gameCanvasRef} className="gameCanvas" tabIndex={0} aria-label="Throw ready. Drag the white orb backward and release it across the water" />
         {replayMode && (
           <p className="replayBanner" aria-live="polite">
@@ -3332,7 +3366,6 @@ export default function MandelbrotSkipping() {
             progress={intro.progress}
             fading={introFading}
             ready={intro.ready}
-            rotateRight={tuning.rotateRight}
             onPlay={finishOpening}
           />
         )}
