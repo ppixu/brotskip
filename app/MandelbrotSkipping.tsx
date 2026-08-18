@@ -2899,7 +2899,7 @@ export default function MandelbrotSkipping() {
       ctx.rotate(body.spin * .18);
       const previewDots = introActiveRef.current
         ? INTRO_SOURCE_DOTS
-        : Math.max(MIN_SOURCE_DOTS, tuningRef.current.sourceDots);
+        : Math.max(1, Math.round(tuningRef.current.sourceDots / 3));
       drawSacredGlyph(nextShape, previewDots, "rgba(255, 255, 255, .34)", "#ffffff");
       ctx.restore();
     }

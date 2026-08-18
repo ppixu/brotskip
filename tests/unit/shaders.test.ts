@@ -210,6 +210,7 @@ test("every skip stamps a tinted glyph and later skips keep iterating", () => {
   assert.doesNotMatch(source, /fillStyle = `rgba\(235, 252, 255,/);
   assert.match(source, /pixelDots:\s*true/);
   assert.match(source, /fillRect\(/);
+  assert.match(source, /previewDots[\s\S]*sourceDots \/ 3/);
 });
 
 test("throw orbits stay alive across the pond even when they leave the camera", () => {
