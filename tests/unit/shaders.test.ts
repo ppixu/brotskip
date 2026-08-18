@@ -176,7 +176,8 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(intro, /introSetToggle/);
   assert.match(intro, /True z² \+ c Buddhabrot/);
   assert.match(intro, /BuddhabrotCloudCanvas/);
-  assert.match(intro, /TrueBuddhabrotCanvas/);
+  assert.match(intro, /variant=\{showTrueBuddhabrot \? "classic" : "henon"\}/);
+  assert.doesNotMatch(intro, /TrueBuddhabrotCanvas/);
   assert.doesNotMatch(intro, /introTraverse|gif\.file/);
   assert.match(intro, /BUDDHABROT_EXPLAIN/);
   assert.match(intro, /wikipedia/);

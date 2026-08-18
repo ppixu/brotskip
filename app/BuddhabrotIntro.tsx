@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { BUDDHABROT_EXPLAIN } from "@/lib/buddhabrot/explain";
 import BuddhabrotCloudCanvas from "./BuddhabrotCloudCanvas";
-import TrueBuddhabrotCanvas from "./TrueBuddhabrotCanvas";
 
 function paperWords(text: string) {
   return text.split(/\b(tika|ushnisha)\b/).map((part, index) => (
@@ -23,9 +22,11 @@ export default function BuddhabrotIntro({
   const [showTrueBuddhabrot, setShowTrueBuddhabrot] = useState(false);
   return (
     <div className={`introOverlay ${fading ? "fading" : ""}`} role="status" aria-label="Charting the pond">
-      {showTrueBuddhabrot
-        ? <TrueBuddhabrotCanvas fading={fading} />
-        : <BuddhabrotCloudCanvas fading={fading} />}
+      <BuddhabrotCloudCanvas
+        key={showTrueBuddhabrot ? "classic" : "henon"}
+        fading={fading}
+        variant={showTrueBuddhabrot ? "classic" : "henon"}
+      />
       <div className="introChrome">
         <span className="introTitle">Mandelbrot Skipping</span>
         <label className="introSetToggle">

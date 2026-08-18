@@ -1,24 +1,26 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
-const spz = readFileSync(new URL("../../app/BuddhabrotCloudCanvas.tsx", import.meta.url), "utf8");
-const live = readFileSync(new URL("../../app/TrueBuddhabrotCanvas.tsx", import.meta.url), "utf8");
+const cloud = readFileSync(new URL("../../app/BuddhabrotCloudCanvas.tsx", import.meta.url), "utf8");
+const generator = readFileSync(new URL("../../tools/true_buddhabrot_splat.cpp", import.meta.url), "utf8");
 
-test("both loading clouds support drag orbiting", () => {
-  for (const source of [spz, live]) {
-    assert.match(source, /pointerdown/);
-    assert.match(source, /pointermove/);
-    assert.match(source, /setPointerCapture/);
-    assert.match(source, /!dragging/);
-  }
+test("both loading choices use the same draggable SPZ renderer", () => {
+  assert.match(cloud, /"classic"/);
+  assert.match(cloud, /"henon"/);
+  assert.match(cloud, /true-buddhabrot-4096\.spz/);
+  assert.match(cloud, /henon-buddhabrot-4096\.spz/);
+  assert.match(cloud, /pointerdown/);
+  assert.match(cloud, /pointermove/);
+  assert.match(cloud, /setPointerCapture/);
+  assert.match(cloud, /!dragging/);
+  assert.doesNotMatch(cloud, /webgpu/);
+  assert.ok(existsSync(new URL("../../public/true-buddhabrot-4096.spz", import.meta.url)));
 });
 
-test("the true Buddhabrot mode computes escaping z squared plus c paths on the GPU", () => {
-  assert.match(live, /getContext\("webgpu"\)/);
-  assert.match(live, /fn iterate\(z: vec2f, c: vec2f\)/);
-  assert.match(live, /z\.x \* z\.x - z\.y \* z\.y/);
-  assert.match(live, /if \(dot\(z, z\) > 4\.0\)/);
-  assert.match(live, /step >= escapeAt/);
-  assert.match(live, /orbitTime/);
+test("the second SPZ is generated from standard escaping z squared plus c paths", () => {
+  assert.match(generator, /z\.real \* z\.real - z\.imag \* z\.imag \+ c\.real/);
+  assert.match(generator, /2\.0 \* z\.real \* z\.imag \+ c\.imag/);
+  assert.match(generator, /norm_squared\(z\) > 4\.0/);
+  assert.match(generator, /normalized orbit time/);
 });

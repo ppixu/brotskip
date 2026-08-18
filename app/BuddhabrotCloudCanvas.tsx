@@ -29,7 +29,15 @@ function makeBeaconTexture() {
   return new THREE.CanvasTexture(canvas);
 }
 
-export default function BuddhabrotCloudCanvas({ fading }: { fading: boolean }) {
+type CloudVariant = "henon" | "classic";
+
+export default function BuddhabrotCloudCanvas({
+  fading,
+  variant = "henon",
+}: {
+  fading: boolean;
+  variant?: CloudVariant;
+}) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
 
@@ -53,9 +61,10 @@ export default function BuddhabrotCloudCanvas({ fading }: { fading: boolean }) {
     scene.background = new THREE.Color(0x030408);
     const camera = new THREE.PerspectiveCamera(42, 1, 0.01, 20);
     const target = new THREE.Vector3(0, 0, 0);
-    let yaw = 0.72;
-    let pitch = 0.32;
-    const distance = 3.15;
+    const classic = variant === "classic";
+    let yaw = classic ? 0.16 : 0.72;
+    let pitch = classic ? 0.12 : 0.32;
+    const distance = classic ? 5.0 : 3.15;
     let dragging = false;
     let lastPointerX = 0;
     let lastPointerY = 0;
@@ -70,7 +79,8 @@ export default function BuddhabrotCloudCanvas({ fading }: { fading: boolean }) {
     });
     scene.add(spark);
 
-    const assetUrl = new URL("henon-buddhabrot-4096.spz", window.location.href).href;
+    const assetName = classic ? "true-buddhabrot-4096.spz" : "henon-buddhabrot-4096.spz";
+    const assetUrl = new URL(assetName, window.location.href).href;
     const splat = new SplatMesh({ url: assetUrl, lod: false });
     splat.opacity = 0.82;
     scene.add(splat);
@@ -279,14 +289,14 @@ export default function BuddhabrotCloudCanvas({ fading }: { fading: boolean }) {
       };
       disposeCloud();
     };
-  }, []);
+  }, [variant]);
 
   return (
     <div
       ref={hostRef}
       className={`introCloudHost ${ready ? "ready" : ""} ${fading ? "fading" : ""}`}
       role="img"
-      aria-label="Rotating precomputed 3D Buddhabrot Gaussian cloud. Drag to orbit."
+      aria-label={`${variant === "classic" ? "True z squared plus c" : "Complex Henon"} precomputed 3D Buddhabrot Gaussian cloud. Drag to orbit.`}
     />
   );
 }
