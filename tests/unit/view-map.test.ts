@@ -7,6 +7,7 @@ import {
   complexToAtlasUv,
   complexToScreen,
   gpuBufferSize,
+  gpuPixelRatio,
   reprojectScreenPoint,
   reprojectScreenVelocity,
   screenToComplex,
@@ -43,6 +44,13 @@ test("GPU buffers use CSS size times device pixels, capped at 2", () => {
   assert.deepEqual(gpuBufferSize(800, 600, 2), { width: 1600, height: 1200, dpr: 2 });
   assert.deepEqual(gpuBufferSize(800, 600, 3), { width: 1600, height: 1200, dpr: 2 });
   assert.deepEqual(gpuBufferSize(0, 0, 2), { width: 1, height: 1, dpr: 2 });
+});
+
+test("double-pixel mode forces a 1× CSS buffer so retina shows 2×2 blocks", () => {
+  assert.equal(gpuPixelRatio(2, false), 2);
+  assert.equal(gpuPixelRatio(3, false), 2);
+  assert.equal(gpuPixelRatio(2, true), 1);
+  assert.deepEqual(gpuBufferSize(800, 600, gpuPixelRatio(2, true)), { width: 800, height: 600, dpr: 1 });
 });
 
 test("view-map no longer exports a fixed atlas size or a view-following window", () => {

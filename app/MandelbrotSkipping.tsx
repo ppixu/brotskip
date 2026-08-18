@@ -56,6 +56,7 @@ import {
   complexToClip,
   complexToScreen,
   gpuBufferSize,
+  gpuPixelRatio,
   mathBoundsForView,
   reprojectScreenPoint,
   reprojectScreenVelocity,
@@ -127,6 +128,7 @@ type Tuning = {
   skipColors: boolean;
   coordinateAxes: boolean;
   rotateRight: boolean;
+  doublePixels: boolean;
 };
 
 type OrbitEngine = {
@@ -202,8 +204,9 @@ const DEFAULT_TUNING: Tuning = {
   skipColors: true,
   coordinateAxes: false,
   rotateRight: true,
+  doublePixels: false,
 };
-const TUNING_KEY = "mandelbrot-skipping:tuning:v4";
+const TUNING_KEY = "mandelbrot-skipping:tuning:v5";
 const SOURCE_RADIUS_PX = 10;
 const SLING_DRAW_PULL_RATIO = 0.30;
 const SLING_THROW_PULL_RATIO = 0.16;
@@ -697,12 +700,13 @@ function sanitizeTuning(value: Partial<Tuning> | null | undefined): Tuning {
   const skipColors = value?.skipColors !== false;
   const coordinateAxes = value?.coordinateAxes === true;
   const rotateRight = value?.rotateRight !== false;
+  const doublePixels = value?.doublePixels === true;
   const requestedPreview = Math.round(Number(value?.previewIterations) || DEFAULT_TUNING.previewIterations);
   const previewIterations = Math.max(
     MIN_PREVIEW_ITERATIONS,
     Math.min(MAX_PREVIEW_ITERATIONS, requestedPreview),
   );
-  return { sourceDots, maxDepth, acceleration, linePersist, previewOrbits, previewIterations, skipColors, coordinateAxes, rotateRight };
+  return { sourceDots, maxDepth, acceleration, linePersist, previewOrbits, previewIterations, skipColors, coordinateAxes, rotateRight, doublePixels };
 }
 
 function loadTuning(): Tuning {
@@ -930,6 +934,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   let linePersist = DEFAULT_TUNING.linePersist;
   let skipColors = DEFAULT_TUNING.skipColors;
   let rotateRight = DEFAULT_TUNING.rotateRight;
+  let doublePixels = DEFAULT_TUNING.doublePixels;
   let drawLines = PLAY_ATMOSPHERE.drawLines;
   let grayscale = PLAY_ATMOSPHERE.grayscale;
   let pointEnergy = PLAY_ATMOSPHERE.energy;
@@ -1012,7 +1017,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
 
   function resize() {
     const rect = canvas.getBoundingClientRect();
-    const buffer = gpuBufferSize(rect.width, rect.height, globalThis.devicePixelRatio || 1);
+    const buffer = gpuBufferSize(rect.width, rect.height, gpuPixelRatio(globalThis.devicePixelRatio || 1, doublePixels));
     cssWidth = Math.max(1, rect.width);
     cssHeight = Math.max(1, rect.height);
     if (pondTextures.length && buffer.width === width && buffer.height === height) return;
@@ -1215,6 +1220,11 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       linePersist = tuning.linePersist;
       skipColors = tuning.skipColors === true;
       rotateRight = tuning.rotateRight === true;
+      const nextDoublePixels = tuning.doublePixels === true;
+      if (nextDoublePixels !== doublePixels) {
+        doublePixels = nextDoublePixels;
+        resize();
+      }
     },
     setAtmosphere(atmosphere) {
       drawLines = atmosphere.drawLines;
@@ -3309,7 +3319,7 @@ export default function MandelbrotSkipping() {
   return (
     <main className={`gameShell ${replayMode ? "replayMode" : ""}`}>
       <section className="playfield" aria-label="Mandelbrot rock skipping game">
-        <canvas ref={gpuCanvasRef} className="gpuCanvas" aria-hidden="true" />
+        <canvas ref={gpuCanvasRef} className={`gpuCanvas ${intro ? "introStashed" : ""}`} aria-hidden="true" />
         <canvas ref={gameCanvasRef} className="gameCanvas" tabIndex={0} aria-label="Throw ready. Drag the white orb backward and release it across the water" />
         {replayMode && (
           <p className="replayBanner" aria-live="polite">
@@ -3322,6 +3332,7 @@ export default function MandelbrotSkipping() {
             progress={intro.progress}
             fading={introFading}
             ready={intro.ready}
+            rotateRight={tuning.rotateRight}
             onPlay={finishOpening}
           />
         )}
@@ -3429,6 +3440,12 @@ export default function MandelbrotSkipping() {
               aria-label="Rotate coordinates and Buddhabrot 90 degrees right"
               onChange={(event) => updateTuning({ rotateRight: event.target.checked })} />
             Rotate 90° right
+          </label>
+          <label className="tuningCheck">
+            <input type="checkbox" checked={tuning.doublePixels}
+              aria-label="Render the orbit nebula at half resolution so pixels look doubled"
+              onChange={(event) => updateTuning({ doublePixels: event.target.checked })} />
+            Double pixels
           </label>
           <div className="tuningControl">
             <span><span>Preview iterations</span><output>{tuning.previewIterations}</output></span>

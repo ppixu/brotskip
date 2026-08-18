@@ -56,7 +56,10 @@ test("loading Buddhabrot is vertical, high-res, and pond-led instead of sparkly 
   assert.match(source, /const DEFAULT_TUNING: Tuning = \{[\s\S]*?rotateRight: true/);
   assert.match(source, /const POINT_BUDGET = 400_000/);
   assert.match(source, /const INTRO_SOURCE_CAP = 4096/);
-  assert.match(source, /mandelbrot-skipping:tuning:v4/);
+  assert.match(source, /mandelbrot-skipping:tuning:v5/);
+  assert.match(source, /doublePixels/);
+  assert.match(source, /gpuPixelRatio\(/);
+  assert.match(source, /introStashed/);
   assert.match(source, /displayView\[6\] = liveGain/);
   assert.match(source, /displayView\[7\] = contrast/);
   assert.match(source, /pow\(clamp\(mapped, vec3f\(0\.0\), vec3f\(1\.0\)\), vec3f\(contrast\)\) \* pondGain \* cone/);
@@ -139,4 +142,7 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   const intro = readFileSync(new URL("../../app/BuddhabrotIntro.tsx", import.meta.url), "utf8");
   assert.match(intro, /ready/);
   assert.match(intro, />Play</);
+  assert.match(intro, /introTraverse/);
+  assert.match(intro, /gif\.file/);
+  assert.match(intro, /BUDDHABROT_EXPLAIN/);
 });

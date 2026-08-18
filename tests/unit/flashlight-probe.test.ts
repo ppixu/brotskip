@@ -38,9 +38,11 @@ test("flashlight is a cone mask, not a cheaper iterator", () => {
 });
 
 test("display layer gains match intro, play, and aiming", () => {
-  assert.deepEqual(displayLayerGains("intro"), { pondGain: 1, throwGain: 0, coneEnabled: false });
+  assert.deepEqual(displayLayerGains("intro"), { pondGain: 0, throwGain: 0, coneEnabled: false });
   assert.deepEqual(displayLayerGains("play"), { pondGain: 0, throwGain: 1, coneEnabled: false });
-  assert.deepEqual(displayLayerGains("aiming"), { pondGain: 1, throwGain: 0, coneEnabled: true });
+  assert.deepEqual(displayLayerGains("aiming"), { pondGain: 0.12, throwGain: 0, coneEnabled: true });
+  assert.ok(displayLayerGains("aiming").pondGain <= 0.15);
+  assert.ok(displayLayerGains("aiming").pondGain < 1);
 });
 
 test("flashlight cone falloff is 1-ish on the aim ray and 0 outside the cone", () => {

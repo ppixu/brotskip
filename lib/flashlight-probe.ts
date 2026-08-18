@@ -105,9 +105,11 @@ export const INTRO_ATMOSPHERE: OrbitAtmosphere = {
 
 export type DisplayLayerMode = "intro" | "play" | "aiming";
 
+export const AIMING_POND_GAIN = 0.12;
+
 export function displayLayerGains(mode: DisplayLayerMode) {
-  if (mode === "intro") return { pondGain: 1, throwGain: 0, coneEnabled: false };
-  if (mode === "aiming") return { pondGain: 1, throwGain: 0, coneEnabled: true };
+  if (mode === "intro") return { pondGain: 0, throwGain: 0, coneEnabled: false };
+  if (mode === "aiming") return { pondGain: AIMING_POND_GAIN, throwGain: 0, coneEnabled: true };
   return { pondGain: 0, throwGain: 1, coneEnabled: false };
 }
 

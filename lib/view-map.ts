@@ -14,8 +14,13 @@ export type AtlasBounds = {
 export const TRAIL_BOUNDS: AtlasBounds = { xMin: -2.2, xMax: 1.2, yMin: -1.5, yMax: 1.5 };
 export const GPU_PIXEL_RATIO_CAP = 2;
 
+export function gpuPixelRatio(devicePixelRatio: number, doublePixels = false) {
+  if (doublePixels) return 1;
+  return Math.min(Math.max(devicePixelRatio, 1), GPU_PIXEL_RATIO_CAP);
+}
+
 export function gpuBufferSize(cssWidth: number, cssHeight: number, devicePixelRatio: number) {
-  const dpr = Math.min(Math.max(devicePixelRatio, 1), GPU_PIXEL_RATIO_CAP);
+  const dpr = gpuPixelRatio(devicePixelRatio);
   return {
     width: Math.max(1, Math.round(cssWidth * dpr)),
     height: Math.max(1, Math.round(cssHeight * dpr)),
