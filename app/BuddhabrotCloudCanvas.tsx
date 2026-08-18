@@ -54,8 +54,11 @@ export default function BuddhabrotCloudCanvas({ fading }: { fading: boolean }) {
     const camera = new THREE.PerspectiveCamera(42, 1, 0.01, 20);
     const target = new THREE.Vector3(0, 0, 0);
     let yaw = 0.72;
-    const pitch = 0.32;
+    let pitch = 0.32;
     const distance = 3.15;
+    let dragging = false;
+    let lastPointerX = 0;
+    let lastPointerY = 0;
 
     const spark = new SparkRenderer({
       renderer,
@@ -71,6 +74,30 @@ export default function BuddhabrotCloudCanvas({ fading }: { fading: boolean }) {
     const splat = new SplatMesh({ url: assetUrl, lod: false });
     splat.opacity = 0.82;
     scene.add(splat);
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.button !== 0) return;
+      dragging = true;
+      lastPointerX = event.clientX;
+      lastPointerY = event.clientY;
+      renderer.domElement.setPointerCapture(event.pointerId);
+      renderer.domElement.classList.add("dragging");
+    };
+    const onPointerMove = (event: PointerEvent) => {
+      if (!dragging) return;
+      yaw -= (event.clientX - lastPointerX) * 0.006;
+      pitch = THREE.MathUtils.clamp(pitch + (event.clientY - lastPointerY) * 0.005, -1.25, 1.25);
+      lastPointerX = event.clientX;
+      lastPointerY = event.clientY;
+    };
+    const onPointerUp = () => {
+      dragging = false;
+      renderer.domElement.classList.remove("dragging");
+    };
+    renderer.domElement.addEventListener("pointerdown", onPointerDown);
+    renderer.domElement.addEventListener("pointermove", onPointerMove);
+    renderer.domElement.addEventListener("pointerup", onPointerUp);
+    renderer.domElement.addEventListener("pointercancel", onPointerUp);
 
     const rippleGeometry = new THREE.RingGeometry(0.972, 1, 96);
     const beaconTexture = makeBeaconTexture();
@@ -182,7 +209,7 @@ export default function BuddhabrotCloudCanvas({ fading }: { fading: boolean }) {
       if (disposed || !pageVisible) return;
       const delta = Math.min(50, now - previousTime);
       previousTime = now;
-      if (!reduceMotion) yaw += delta * 0.000055;
+      if (!reduceMotion && !dragging) yaw += delta * 0.000055;
       const cosPitch = Math.cos(pitch);
       camera.position.set(
         target.x + Math.sin(yaw) * cosPitch * distance,
@@ -227,6 +254,10 @@ export default function BuddhabrotCloudCanvas({ fading }: { fading: boolean }) {
       cancelAnimationFrame(frame);
       resizeObserver.disconnect();
       document.removeEventListener("visibilitychange", onVisibilityChange);
+      renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+      renderer.domElement.removeEventListener("pointermove", onPointerMove);
+      renderer.domElement.removeEventListener("pointerup", onPointerUp);
+      renderer.domElement.removeEventListener("pointercancel", onPointerUp);
       for (const ripple of ripples) removeRipple(ripple);
       ripples.length = 0;
       rippleGeometry.dispose();
@@ -255,7 +286,7 @@ export default function BuddhabrotCloudCanvas({ fading }: { fading: boolean }) {
       ref={hostRef}
       className={`introCloudHost ${ready ? "ready" : ""} ${fading ? "fading" : ""}`}
       role="img"
-      aria-label="Rotating precomputed 3D Buddhabrot Gaussian cloud"
+      aria-label="Rotating precomputed 3D Buddhabrot Gaussian cloud. Drag to orbit."
     />
   );
 }

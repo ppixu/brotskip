@@ -172,9 +172,11 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   const css = readFileSync(new URL("../../app/globals.css", import.meta.url), "utf8");
   assert.match(intro, /ready/);
   assert.match(intro, />Play</);
-  assert.match(intro, /introMode/);
-  assert.match(intro, /Precomputed 3D Gaussian cloud/);
+  assert.doesNotMatch(intro, /introMode|Precomputed 3D Gaussian cloud/);
+  assert.match(intro, /introSetToggle/);
+  assert.match(intro, /True z² \+ c Buddhabrot/);
   assert.match(intro, /BuddhabrotCloudCanvas/);
+  assert.match(intro, /TrueBuddhabrotCanvas/);
   assert.doesNotMatch(intro, /introTraverse|gif\.file/);
   assert.match(intro, /BUDDHABROT_EXPLAIN/);
   assert.match(intro, /wikipedia/);
