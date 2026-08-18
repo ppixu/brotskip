@@ -57,7 +57,9 @@ test("loading Buddhabrot uses the precomputed rotating Gaussian cloud", () => {
   assert.match(source, /const DEFAULT_TUNING: Tuning = \{[\s\S]*?rotateRight: true/);
   assert.match(source, /const POINT_BUDGET = 400_000/);
   assert.match(source, /const INTRO_SOURCE_CAP = 4096/);
-  assert.match(source, /mandelbrot-skipping:tuning:v5/);
+  assert.match(source, /mandelbrot-skipping:tuning:v6/);
+  assert.match(source, /const MAX_SOURCE_DOTS = 128/);
+  assert.match(source, /sourceDots: 64,/);
   assert.match(source, /doublePixels/);
   assert.match(source, /gpuPixelRatio\(/);
   assert.match(source, /introMriSlice\(/);
@@ -192,4 +194,15 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(titleRule, /font-size:\s*32px/);
   assert.match(dropCapRule, /font-size:\s*3\.5em/);
   assert.doesNotMatch(css, /gpuCanvas\.introStashed/);
+});
+
+test("every skip stamps a tinted glyph and later skips keep iterating", () => {
+  const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
+  assert.match(source, /function drawSacredGlyph\(/);
+  assert.match(source, /impacts\.push\(\{[\s\S]*?glyph,/);
+  assert.match(source, /drawSacredGlyph\(/);
+  assert.match(source, /skipTintRgb\(impact\.index/);
+  assert.match(source, /engineRef\.current\?\.spawnAppend\(sources, index\)/);
+  assert.doesNotMatch(source, /Math\.min\(18, tuningRef\.current\.sourceDots\)/);
+  assert.doesNotMatch(source, /fillStyle = `rgba\(235, 252, 255,/);
 });

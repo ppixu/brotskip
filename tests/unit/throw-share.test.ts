@@ -6,6 +6,7 @@ import {
   parseThrowShare,
   sharePlayerLabel,
   throwShareUrl,
+  SHARE_MAX_SOURCE_DOTS,
   type SharedThrow,
 } from "../../lib/throw-share.ts";
 
@@ -76,4 +77,13 @@ test("query-string throw links still parse", () => {
 test("share player labels use a possessive name", () => {
   assert.equal(sharePlayerLabel("you"), "YOU's");
   assert.equal(sharePlayerLabel("henkka!!"), "HENKKA's");
+});
+
+test("shared throws accept up to 128 glyph dots", () => {
+  assert.equal(SHARE_MAX_SOURCE_DOTS, 128);
+  const dense = decodeSharedThrow(encodeSharedThrow({ ...shot, sourceDots: 64 }));
+  const maxed = decodeSharedThrow(encodeSharedThrow({ ...shot, sourceDots: 128 }));
+  assert.equal(dense?.sourceDots, 64);
+  assert.equal(maxed?.sourceDots, 128);
+  assert.equal(decodeSharedThrow(encodeSharedThrow({ ...shot, sourceDots: 129 })), null);
 });
