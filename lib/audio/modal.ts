@@ -7,6 +7,7 @@
 import {
   makeNoiseBuffer,
   scheduleCleanup,
+  UPDATE_INTERVAL_SECONDS,
   type EngineShell,
 } from "./engine.ts";
 import type { FeatureFrame, Milestone } from "./features.ts";
@@ -176,7 +177,7 @@ export function createResonantEngine(shell: EngineShell): ResonantEngine {
         bank.pan.pan.setTargetAtTime(Math.max(-.85, Math.min(.85, group.centroidX * .7)), at, .15);
         bank.send.gain.setTargetAtTime(.06 + group.spread * .25, at, .2);
         // Iteration strums the body: expected taps this frame from activity.
-        const expected = group.activity * 14 * .042;
+        const expected = group.activity * 14 * UPDATE_INTERVAL_SECONDS;
         const taps = Math.floor(expected) + (Math.random() < expected % 1 ? 1 : 0);
         for (let index = 0; index < taps; index++) {
           tap(group.glyph, .1 + group.activity * .3, shell.nextEventTime(false) + Math.random() * .03);

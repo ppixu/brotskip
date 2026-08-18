@@ -4,7 +4,7 @@
  * detector, and the per-round palette. Every method is no-throw — audio
  * is strictly optional and silently degrades.
  */
-import { createEngineShell, type EngineShell } from "./engine.ts";
+import { createEngineShell, UPDATE_INTERVAL_SECONDS, type EngineShell } from "./engine.ts";
 import {
   createFeatureTracker,
   createMilestoneDetector,
@@ -31,7 +31,7 @@ export type GameAudio = {
   destroy(): void;
 };
 
-const UPDATE_INTERVAL_MS = 42;
+const UPDATE_INTERVAL_MS = UPDATE_INTERVAL_SECONDS * 1000;
 
 export function createGameAudio(initialMode: SoundEngineMode = "melodic"): GameAudio {
   let shell: EngineShell | null = null;
@@ -95,8 +95,14 @@ export function createGameAudio(initialMode: SoundEngineMode = "melodic"): GameA
     },
     setMode(next) {
       try {
+        const previous = mode;
         mode = next;
         shell?.setMode(next);
+        if (previous !== next) {
+          // Stop the outgoing engine's stale-frame arps before it goes quiet.
+          const outgoing = previous === "melodic" ? melodic : resonant;
+          outgoing?.silence();
+        }
         activeEngine(); // build the target engine so it is ready mid-crossfade
       } catch { /* audio stays optional */ }
     },
@@ -115,11 +121,17 @@ export function createGameAudio(initialMode: SoundEngineMode = "melodic"): GameA
     throwStart() {
       try {
         ensureShell();
+        // Frozen clock while suspended: scheduled nodes would pile up until
+        // the first user gesture resumes the context, then burst all at once.
+        if (!shell || shell.context.state !== "running") return;
         activeEngine()?.throwStart();
       } catch { /* audio stays optional */ }
     },
     splash(skipIndex, glyph, panPosition) {
       try {
+        // Frozen clock while suspended: scheduled nodes would pile up until
+        // the first user gesture resumes the context, then burst all at once.
+        if (!shell || shell.context.state !== "running") return;
         const engine = activeEngine();
         if (!engine) return;
         if (!palette) {
@@ -134,6 +146,9 @@ export function createGameAudio(initialMode: SoundEngineMode = "melodic"): GameA
     update(orbits, phase, nowMs) {
       try {
         if (!shell) return; // no context until a user gesture called init()
+        // Frozen clock while suspended: scheduled nodes would pile up until
+        // the first user gesture resumes the context, then burst all at once.
+        if (shell.context.state !== "running") return;
         const engine = activeEngine();
         if (!engine) return;
         const playing = (phase === "flying" || phase === "resolving") && orbits.length > 0;

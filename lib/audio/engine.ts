@@ -11,6 +11,14 @@ export const DEFAULT_BPM = 90;
 export const TICK_MS = 25;
 export const REVERB_SECONDS = 2.2;
 
+/**
+ * Facade update() throttle, in seconds. Mirrors GameAudio's
+ * UPDATE_INTERVAL_MS (42ms) in lib/audio/index.ts — kept here as the single
+ * source of truth because modal.ts's grain-tap math depends on the same
+ * cadence to convert per-frame activity into an expected taps-per-second rate.
+ */
+export const UPDATE_INTERVAL_SECONDS = .042;
+
 export function softClipCurve(length = 1024, amount = 2.35): Float32Array<ArrayBuffer> {
   const curve = new Float32Array(length);
   for (let index = 0; index < length; index++) {

@@ -352,7 +352,7 @@ export function createMelodicEngine(shell: EngineShell): MelodicEngine {
       const chord = chordForBar(shell.barIndex());
       const scaleLength = palette.steps.length;
       const when = shell.nextEventTime(true);
-      const rootDegree = snapToChord(GLYPH_DEGREE_OFFSET[event.glyph % 7], chord, scaleLength);
+      const rootDegree = snapToChord(GLYPH_DEGREE_OFFSET[event.glyph % GLYPH_DEGREE_OFFSET.length], chord, scaleLength);
       if (event.kind === "bloom") {
         // The glyph announces itself with its signature patch as it first blooms.
         playNote(event.glyph, rootDegree + scaleLength, .4 + event.magnitude * .5, when, 0);
