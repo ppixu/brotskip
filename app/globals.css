@@ -485,9 +485,14 @@ button, input { font: inherit; }
   z-index: 0;
   background: #000107;
   opacity: 0;
-  pointer-events: none;
+  pointer-events: auto;
   transition: opacity 320ms ease;
 }
+.introCloudHost canvas {
+  cursor: grab;
+  touch-action: none;
+}
+.introCloudHost canvas.dragging { cursor: grabbing; }
 .introCloudHost.ready { opacity: 1; }
 .introCloudHost.fading { opacity: 0; }
 .introPaper {
@@ -632,14 +637,23 @@ button, input { font: inherit; }
   letter-spacing: .22em;
   text-transform: uppercase;
 }
-.introMode {
-  display: block;
-  margin-top: 5px;
-  color: rgba(174, 217, 226, .58);
+.introSetToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 7px;
+  color: rgba(194, 228, 235, .72);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 8px;
-  letter-spacing: .14em;
+  letter-spacing: .11em;
   text-transform: uppercase;
+  cursor: pointer;
+}
+.introSetToggle input {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  accent-color: #9feeff;
 }
 
 @media (max-width: 760px) {

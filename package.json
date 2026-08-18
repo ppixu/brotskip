@@ -13,6 +13,7 @@
     "test": "npm run test:unit && npm run build && node --test tests/rendered-html.test.mjs",
     "test:unit": "node --experimental-strip-types --test tests/unit/*.test.ts",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "generate:true-buddhabrot": "bash tools/generate_true_buddhabrot.sh",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {

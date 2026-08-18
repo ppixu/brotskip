@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { BUDDHABROT_EXPLAIN } from "@/lib/buddhabrot/explain";
 import BuddhabrotCloudCanvas from "./BuddhabrotCloudCanvas";
 
@@ -18,12 +19,24 @@ export default function BuddhabrotIntro({
   onPlay?: () => void;
 }) {
   const { wikipedia } = BUDDHABROT_EXPLAIN;
+  const [showTrueBuddhabrot, setShowTrueBuddhabrot] = useState(false);
   return (
     <div className={`introOverlay ${fading ? "fading" : ""}`} role="status" aria-label="Charting the pond">
-      <BuddhabrotCloudCanvas fading={fading} />
+      <BuddhabrotCloudCanvas
+        key={showTrueBuddhabrot ? "classic" : "henon"}
+        fading={fading}
+        variant={showTrueBuddhabrot ? "classic" : "henon"}
+      />
       <div className="introChrome">
         <span className="introTitle">Mandelbrot Skipping</span>
-        <span className="introMode">Precomputed 3D Gaussian cloud · rotating live</span>
+        <label className="introSetToggle">
+          <input
+            type="checkbox"
+            checked={showTrueBuddhabrot}
+            onChange={(event) => setShowTrueBuddhabrot(event.target.checked)}
+          />
+          <span>True z² + c Buddhabrot</span>
+        </label>
         {!ready && <span className="liveProgress"><i style={{ width: `${Math.max(2, progress * 100)}%` }} /></span>}
       </div>
       <article className="introPaper" aria-label="Buddhabrot, from Wikipedia">

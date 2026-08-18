@@ -57,7 +57,9 @@ test("loading Buddhabrot uses the precomputed rotating Gaussian cloud", () => {
   assert.match(source, /const DEFAULT_TUNING: Tuning = \{[\s\S]*?rotateRight: true/);
   assert.match(source, /const POINT_BUDGET = 400_000/);
   assert.match(source, /const INTRO_SOURCE_CAP = 4096/);
-  assert.match(source, /mandelbrot-skipping:tuning:v5/);
+  assert.match(source, /mandelbrot-skipping:tuning:v6/);
+  assert.match(source, /const MAX_SOURCE_DOTS = 128/);
+  assert.match(source, /sourceDots: 64,/);
   assert.match(source, /doublePixels/);
   assert.match(source, /gpuPixelRatio\(/);
   assert.match(source, /introMriSlice\(/);
@@ -79,7 +81,7 @@ test("loading Buddhabrot uses the precomputed rotating Gaussian cloud", () => {
   assert.match(source, /createOrbitEngine\(canvas, acquired, introActiveRef\.current\)/);
   assert.match(source, /className="gpuCanvas"/);
   assert.doesNotMatch(source, /introStashed/);
-  assert.match(source, /engine\?\.setSuspended\(true\)/);
+  assert.doesNotMatch(source, /setSuspended\(true\)/);
   assert.match(source, /engineRef\.current\?\.setSuspended\(false\)/);
   assert.match(cloud, /SparkRenderer/);
   assert.match(cloud, /SplatMesh/);
@@ -116,6 +118,7 @@ test("flashlight is a GPU cone on the live pond; cached blit is GPU-fail only", 
   assert.doesNotMatch(source, /spawnFlashlightSkips/);
   assert.doesNotMatch(source, /traceFlashlightCone\(ctx, geometry\);\s*ctx\.stroke\(\)/);
   assert.doesNotMatch(source, /rgba\(224, 244, 255/);
+  assert.doesNotMatch(source, /function spawnIntroBackgroundOrbits\(now: number\) \{\s*if \(introActiveRef\.current\) return;/);
 });
 
 test("opening and flashlight hide orbit lines, go grayscale, and throw overlapping intro rocks", () => {
@@ -170,9 +173,12 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   const css = readFileSync(new URL("../../app/globals.css", import.meta.url), "utf8");
   assert.match(intro, /ready/);
   assert.match(intro, />Play</);
-  assert.match(intro, /introMode/);
-  assert.match(intro, /Precomputed 3D Gaussian cloud/);
+  assert.doesNotMatch(intro, /introMode|Precomputed 3D Gaussian cloud/);
+  assert.match(intro, /introSetToggle/);
+  assert.match(intro, /True z² \+ c Buddhabrot/);
   assert.match(intro, /BuddhabrotCloudCanvas/);
+  assert.match(intro, /variant=\{showTrueBuddhabrot \? "classic" : "henon"\}/);
+  assert.doesNotMatch(intro, /TrueBuddhabrotCanvas/);
   assert.doesNotMatch(intro, /introTraverse|gif\.file/);
   assert.match(intro, /BUDDHABROT_EXPLAIN/);
   assert.match(intro, /wikipedia/);
@@ -192,4 +198,25 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(titleRule, /font-size:\s*32px/);
   assert.match(dropCapRule, /font-size:\s*3\.5em/);
   assert.doesNotMatch(css, /gpuCanvas\.introStashed/);
+});
+
+test("every skip stamps a tinted glyph and later skips keep iterating", () => {
+  const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
+  assert.match(source, /function drawSacredGlyph\(/);
+  assert.match(source, /impacts\.push\(\{[\s\S]*?glyph,/);
+  assert.match(source, /drawSacredGlyph\(/);
+  assert.match(source, /skipTintRgb\(impact\.index/);
+  assert.match(source, /engineRef\.current\?\.spawnAppend\(sources, index\)/);
+  assert.doesNotMatch(source, /Math\.min\(18, tuningRef\.current\.sourceDots\)/);
+  assert.doesNotMatch(source, /fillStyle = `rgba\(235, 252, 255,/);
+  assert.match(source, /pixelDots:\s*true/);
+  assert.match(source, /fillRect\(/);
+  assert.match(source, /previewDots[\s\S]*sourceDots \/ 3/);
+});
+
+test("throw orbits stay alive across the pond even when they leave the camera", () => {
+  const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
+  assert.match(source, /let inPond = /);
+  assert.match(source, /offscreenStreak = select\([\s\S]*inPond \|\| onScreen/);
+  assert.match(source, /z\.x >= \$\{TRAIL_BOUNDS\.xMin\}/);
 });

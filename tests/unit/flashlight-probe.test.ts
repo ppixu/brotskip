@@ -185,8 +185,9 @@ test("intro and play atmospheres drop flashlight-specific iteration, and aiming 
   assert.equal(PLAY_ATMOSPHERE.hiddenSteps, 0);
   assert.equal(INTRO_ATMOSPHERE.drawLines, false);
   assert.equal(INTRO_ATMOSPHERE.grayscale, true);
-  assert.ok(PLAY_ATMOSPHERE.energy <= 0.012);
-  assert.ok(PLAY_ATMOSPHERE.energy < INTRO_ATMOSPHERE.energy * 0.12);
+  assert.ok(PLAY_ATMOSPHERE.energy >= 0.04);
+  assert.ok(PLAY_ATMOSPHERE.energy <= 0.08);
+  assert.ok(PLAY_ATMOSPHERE.energy < INTRO_ATMOSPHERE.energy * 0.3);
   assert.ok((PLAY_ATMOSPHERE.atlasGain ?? 1) >= 0.8);
   assert.ok((INTRO_ATMOSPHERE.atlasGain ?? 1) >= 0.9);
   assert.equal("atlasFollowView" in PLAY_ATMOSPHERE, false);
