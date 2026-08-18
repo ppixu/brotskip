@@ -492,7 +492,7 @@ button, input { font: inherit; }
   left: 50%;
   bottom: max(18px, env(safe-area-inset-bottom));
   z-index: 2;
-  width: min(38rem, calc(100% - 28px));
+  width: min(19rem, calc(50% - 14px));
   transform: translateX(-50%);
   padding: 18px 22px 14px;
   background: rgba(0, 0, 0, 0.18);
@@ -510,7 +510,7 @@ button, input { font: inherit; }
 }
 .introPaperTitle {
   margin: 4px 0 10px;
-  font-size: 20px;
+  font-size: 32px;
   font-style: italic;
   font-weight: 500;
   letter-spacing: .01em;
@@ -525,10 +525,10 @@ button, input { font: inherit; }
 }
 .introPaperLede::first-letter {
   float: left;
-  padding: 4px 6px 0 0;
-  font-size: 2.35em;
+  padding: 0.02em 0.12em 0 0;
+  font-size: 3.5em;
   font-weight: 600;
-  line-height: .85;
+  line-height: .8;
 }
 .introPaperLede i { font-style: italic; }
 .introPaperCite {
@@ -671,12 +671,12 @@ button, input { font: inherit; }
   .replayBanner { top: 10px; left: 10px; }
   .replayBannerName { font-size: 18px; }
   .introPaper {
-    width: min(34rem, calc(100% - 16px));
+    width: min(17rem, calc(50% - 8px));
     padding: 12px 14px 10px;
   }
-  .introPaperTitle { font-size: 16px; margin: 2px 0 8px; }
+  .introPaperTitle { font-size: 24px; margin: 2px 0 8px; }
   .introPaperLede { font-size: 12px; }
-  .introPaperLede::first-letter { font-size: 1.9em; }
+  .introPaperLede::first-letter { font-size: 3.2em; }
   .introPlay { top: 36%; min-height: 44px; }
 }
 
