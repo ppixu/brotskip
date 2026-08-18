@@ -9,7 +9,7 @@ export default function HowItWorks() {
       </button>
       <div id="how-it-works-panel" className="howItWorksPanel" role="tooltip">
         <p className="howItWorksKicker">{title}</p>
-        <p className="howItWorksGpuNote">Opening visual computed live on your GPU · no video</p>
+        <p className="howItWorksGpuNote">Pre-iterated on your GPU, then looped live · no video</p>
         <p className="howItWorksFormula">{formula}</p>
         {paragraphs.map((paragraph) => (
           <p key={paragraph.slice(0, 24)}>{paragraph}</p>

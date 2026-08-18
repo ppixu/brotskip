@@ -35,6 +35,7 @@ import {
   INTRO_ROCK_DRAW_EVERY,
   INTRO_TRAIL_FADE_MS,
   INTRO_NEBULA_SEEDS_PER_WAVE,
+  MRI_PREITERATE_MS,
   PLAY_ATMOSPHERE,
   displayLayerGains,
   introMriSlice,
@@ -151,6 +152,7 @@ type OrbitEngine = {
   clearPond: () => void;
   clear: () => void;
   freeze: () => void;
+  isMriReady: () => boolean;
   setSuspended: (suspended: boolean) => void;
   destroy: () => void;
 };
@@ -543,6 +545,7 @@ ${fullscreenVertex}
 @group(0) @binding(3) var liveTexture: texture_2d<f32>;
 @group(0) @binding(4) var liveLineTexture: texture_2d<f32>;
 @group(0) @binding(5) var displaySampler: sampler;
+@group(0) @binding(6) var mriTexture: texture_2d<f32>;
 struct DisplayView {
   center: vec2f,
   viewHalf: vec2f,
@@ -561,8 +564,12 @@ struct DisplayView {
   coneRange: f32,
   coneEdge: f32,
   viewport: vec2f,
+  mriEnabled: f32,
+  mriCamera: f32,
+  mriSliceHalf: f32,
+  mriZoom: f32,
 }
-@group(0) @binding(6) var<uniform> display: DisplayView;
+@group(0) @binding(7) var<uniform> display: DisplayView;
 fn layerUv(z: vec2f, bounds: vec4f) -> vec2f {
   let span = vec2f(bounds.y - bounds.x, bounds.w - bounds.z);
   return vec2f(
@@ -599,15 +606,29 @@ fn coneMask(uv: vec2f, view: DisplayView) -> f32 {
   let pondGain = display.pondGain;
   let throwGain = display.throwGain;
   let cone = coneMask(in.uv, display);
-  let pondUv = layerUv(z, display.pondBounds);
+  var pondUv = layerUv(z, display.pondBounds);
+  if (display.mriEnabled > 0.5) {
+    pondUv = (pondUv - vec2f(0.5)) / max(display.mriZoom, 1.0) + vec2f(0.5);
+  }
   let throwUv = layerUv(z, display.throwBounds);
   let pondInside = all(pondUv >= vec2f(0.0)) && all(pondUv <= vec2f(1.0));
   let throwInside = all(throwUv >= vec2f(0.0)) && all(throwUv <= vec2f(1.0));
-  let raw = select(vec3f(0.0), textureSample(pondTexture, displaySampler, pondUv).rgb, pondInside) * 3.6;
+  let pondRaw = select(vec3f(0.0), textureSample(pondTexture, displaySampler, pondUv).rgb, pondInside);
+  let throwRaw = select(vec3f(0.0), textureSample(throwTexture, displaySampler, throwUv).rgb, throwInside);
+  let mriRaw = select(vec3f(0.0), textureSample(mriTexture, displaySampler, pondUv).rgb, pondInside);
+  let scanRaw = select(pondRaw, mriRaw, display.mriEnabled > 0.5);
+  var mriWeight = 1.0;
+  if (display.mriEnabled > 0.5) {
+    let depthNumerator = max(0.0, 0.92 * scanRaw.r - 0.10 * scanRaw.b);
+    let depthDenominator = max(1e-5, 0.82 * scanRaw.b + 0.10 * scanRaw.r);
+    let inferredDepth = clamp(depthNumerator / depthDenominator, 0.0, 1.0);
+    let band = (inferredDepth - display.mriCamera) / max(display.mriSliceHalf, 1e-4);
+    mriWeight = exp(-band * band);
+  }
+  let raw = scanRaw * 3.6 * mriWeight;
   let mapped = raw / (vec3f(1.0) + raw);
   let glow = pow(clamp(mapped, vec3f(0.0), vec3f(1.0)), vec3f(contrast)) * pondGain * cone;
-  let throwMapped = select(vec3f(0.0), textureSample(throwTexture, displaySampler, throwUv).rgb, throwInside);
-  let throwGlow = toneMap(throwMapped, contrast);
+  let throwGlow = toneMap(throwRaw, contrast);
   let lineGain = display.pad;
   let throwLines = select(vec3f(0.0), textureSample(throwLineTexture, displaySampler, throwUv).rgb, throwInside) * 1.35 * lineGain;
   let liveGlow = textureSample(liveTexture, displaySampler, in.uv).rgb * 3.6;
@@ -833,7 +854,6 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
   const paramsBuffer = device.createBuffer({ size: 80, usage: usage.UNIFORM | usage.COPY_DST });
   const paramsAtlasBuffer = device.createBuffer({ size: 80, usage: usage.UNIFORM | usage.COPY_DST });
   const styleBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
-  const styleSliceBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
   const sliceBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
   const fadeBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
   const lineFadeBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
@@ -910,11 +930,6 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
     { binding: 1, resource: { buffer: paramsAtlasBuffer } },
     { binding: 2, resource: { buffer: sliceBuffer } },
   ] });
-  const pointAtlasSliceBind = device.createBindGroup({ layout: pointPipeline.getBindGroupLayout(0), entries: [
-    { binding: 0, resource: { buffer: styleSliceBuffer } },
-    { binding: 1, resource: { buffer: paramsAtlasBuffer } },
-    { binding: 2, resource: { buffer: sliceBuffer } },
-  ] });
   const lineBind = device.createBindGroup({ layout: linePipeline.getBindGroupLayout(0), entries: [
     { binding: 0, resource: { buffer: lineSegmentBuffer } },
     { binding: 1, resource: { buffer: styleBuffer } },
@@ -937,6 +952,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
   let throwLineTextures: any[] = [];
   let liveTexture: any = null;
   let liveLineTexture: any = null;
+  let mriTexture: any = null;
   let pondFadeBinds: any[] = [];
   let throwFadeBinds: any[] = [];
   let throwLineFadeBinds: any[] = [];
@@ -965,6 +981,9 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
   let throwGain = introGains.throwGain;
   let cone: FlashlightCone | null = null;
   let mriEnabled = false;
+  let mriFrozen = false;
+  let mriWarmupStartedAt = 0;
+  let mriLoopStartedAt = 0;
   let layer: "pond" | "throw" = "pond";
   let pondBounds = { ...TRAIL_BOUNDS };
   let throwBounds = { ...TRAIL_BOUNDS };
@@ -1003,14 +1022,15 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
           { binding: 3, resource: liveTexture.createView() },
           { binding: 4, resource: liveLineTexture.createView() },
           { binding: 5, resource: sampler },
-          { binding: 6, resource: { buffer: displayViewBuffer } },
+          { binding: 6, resource: mriTexture.createView() },
+          { binding: 7, resource: { buffer: displayViewBuffer } },
         ] });
       }
     }
   }
 
   function writeParams(buffer: any, atlasMode: number) {
-    const bounds = layer === "pond" ? pondBounds : throwBounds;
+    const bounds = mriEnabled && atlasMode > 0.5 ? TRAIL_BOUNDS : layer === "pond" ? pondBounds : throwBounds;
     const bytes = new ArrayBuffer(80);
     const ints = new Uint32Array(bytes);
     const floats = new Float32Array(bytes);
@@ -1045,7 +1065,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
     height = buffer.height;
     canvas.width = width;
     canvas.height = height;
-    for (const texture of [...pondTextures, ...throwTextures, ...throwLineTextures, liveTexture, liveLineTexture]) {
+    for (const texture of [...pondTextures, ...throwTextures, ...throwLineTextures, liveTexture, liveLineTexture, mriTexture]) {
       texture?.destroy();
     }
     pondTextures = [0, 1].map(() => makeScreen("rgba16float"));
@@ -1053,6 +1073,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
     throwLineTextures = [0, 1].map(() => makeScreen("rgba8unorm"));
     liveTexture = makeScreen("rgba16float");
     liveLineTexture = makeScreen("rgba8unorm");
+    mriTexture = makeScreen("rgba16float");
     pondFadeBinds = makeFadeBinds(pondTextures, fadeBuffer, fadePipeline);
     throwFadeBinds = makeFadeBinds(throwTextures, fadeBuffer, fadePipeline);
     throwLineFadeBinds = makeFadeBinds(throwLineTextures, lineFadeBuffer, lineFadePipeline);
@@ -1061,7 +1082,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
     clearTextures(encoder, pondTextures);
     clearTextures(encoder, throwTextures);
     clearTextures(encoder, throwLineTextures);
-    clearTextures(encoder, [liveTexture, liveLineTexture]);
+    clearTextures(encoder, [liveTexture, liveLineTexture, mriTexture]);
     device.queue.submit([encoder.finish()]);
     pondIndex = 0;
     throwIndex = 0;
@@ -1085,14 +1106,18 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
     const lineRetention = lineFadeRetention(dt, linePersist);
     writeParams(paramsBuffer, 0);
     writeParams(paramsAtlasBuffer, 1);
-    const slice = mriEnabled ? introMriSlice(now / 1000) : { zCamera: 0, sliceHalf: 1, zoom: 1 };
-    device.queue.writeBuffer(styleBuffer, 0, new Float32Array([pointEnergy, grayscale ? 1 : 0, skipColors ? 1 : 0, 0]));
-    device.queue.writeBuffer(styleSliceBuffer, 0, new Float32Array([Math.min(1.2, pointEnergy * 4.2), 0, 0, 1]));
+    const mriTime = mriFrozen ? Math.max(0, now - mriLoopStartedAt) / 1000 : 0;
+    const slice = mriEnabled ? introMriSlice(mriTime) : { zCamera: 0, sliceHalf: 1, zoom: 1 };
+    device.queue.writeBuffer(styleBuffer, 0, new Float32Array([
+      pointEnergy,
+      mriEnabled ? 0 : grayscale ? 1 : 0,
+      mriEnabled ? 0 : skipColors ? 1 : 0,
+      0,
+    ]));
     device.queue.writeBuffer(sliceBuffer, 0, new Float32Array([slice.zCamera, slice.sliceHalf, slice.zoom, 0]));
     device.queue.writeBuffer(indirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
     device.queue.writeBuffer(lineIndirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
-    const mriRetention = mriEnabled ? Math.pow(0.965, dt * 60) : 1;
-    device.queue.writeBuffer(fadeBuffer, 0, new Float32Array([mriRetention, 0, 0, 0]));
+    device.queue.writeBuffer(fadeBuffer, 0, new Float32Array([1, 0, 0, 0]));
     device.queue.writeBuffer(lineFadeBuffer, 0, new Float32Array([lineRetention, 0, 0, 0]));
     const displayView = new Float32Array(32);
     displayView[0] = view.centerX;
@@ -1111,8 +1136,8 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
     displayView[13] = throwBounds.xMax;
     displayView[14] = throwBounds.yMin;
     displayView[15] = throwBounds.yMax;
-    displayView[16] = pondGain;
-    displayView[17] = throwGain;
+    displayView[16] = mriEnabled ? (mriFrozen ? 1 : 0) : pondGain;
+    displayView[17] = mriEnabled ? 0 : throwGain;
     displayView[18] = cone ? 1 : 0;
     displayView[19] = FLASHLIGHT_HALF_ANGLE;
     displayView[20] = cone?.apexX ?? 0;
@@ -1123,9 +1148,13 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
     displayView[25] = 0.04;
     displayView[26] = cssWidth;
     displayView[27] = cssHeight;
+    displayView[28] = mriEnabled && mriFrozen ? 1 : 0;
+    displayView[29] = slice.zCamera;
+    displayView[30] = slice.sliceHalf;
+    displayView[31] = slice.zoom;
     device.queue.writeBuffer(displayViewBuffer, 0, displayView);
     const encoder = device.createCommandEncoder({ label: "orbit-draw" });
-    if (sourceCount > 0 && !paused) {
+    if (sourceCount > 0 && !paused && (!mriEnabled || !mriFrozen)) {
       const compute = encoder.beginComputePass();
       compute.setPipeline(computePipeline);
       compute.setBindGroup(0, computeBind);
@@ -1141,13 +1170,6 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
       fade.setBindGroup(0, pondFadeBinds[pondIndex]);
       fade.draw(3);
       fade.end();
-      if (mriEnabled) {
-        const mriFade = encoder.beginRenderPass({ colorAttachments: [{ view: throwDestination.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
-        mriFade.setPipeline(fadePipeline);
-        mriFade.setBindGroup(0, throwFadeBinds[throwIndex]);
-        mriFade.draw(3);
-        mriFade.end();
-      }
     } else {
       const fade = encoder.beginRenderPass({ colorAttachments: [{ view: throwDestination.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
       fade.setPipeline(fadePipeline);
@@ -1164,7 +1186,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
     live.end();
     const liveLinesClear = encoder.beginRenderPass({ colorAttachments: [{ view: liveLineTexture.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
     liveLinesClear.end();
-    if (sourceCount > 0 && !paused) {
+    if (sourceCount > 0 && !paused && (!mriEnabled || !mriFrozen)) {
       const layerDestination = layer === "pond" ? pondDestination : throwDestination;
       const layerPoints = encoder.beginRenderPass({ colorAttachments: [{ view: layerDestination.createView(), loadOp: "load", storeOp: "store" }] });
       layerPoints.setPipeline(pointPipeline);
@@ -1172,13 +1194,13 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
       layerPoints.setVertexBuffer(0, vertexBuffer);
       layerPoints.drawIndirect(indirectBuffer, 0);
       layerPoints.end();
-      if (mriEnabled && layer === "pond") {
-        const mriPass = encoder.beginRenderPass({ colorAttachments: [{ view: throwDestination.createView(), loadOp: "load", storeOp: "store" }] });
-        mriPass.setPipeline(pointPipeline);
-        mriPass.setBindGroup(0, pointAtlasSliceBind);
-        mriPass.setVertexBuffer(0, vertexBuffer);
-        mriPass.drawIndirect(indirectBuffer, 0);
-        mriPass.end();
+      if (mriEnabled && !mriFrozen) {
+        const mriCapture = encoder.beginRenderPass({ colorAttachments: [{ view: mriTexture.createView(), loadOp: "load", storeOp: "store" }] });
+        mriCapture.setPipeline(pointPipeline);
+        mriCapture.setBindGroup(0, pointAtlasBind);
+        mriCapture.setVertexBuffer(0, vertexBuffer);
+        mriCapture.drawIndirect(indirectBuffer, 0);
+        mriCapture.end();
       }
       const livePoints = encoder.beginRenderPass({ colorAttachments: [{ view: liveTexture.createView(), loadOp: "load", storeOp: "store" }] });
       livePoints.setPipeline(pointPipeline);
@@ -1201,7 +1223,6 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
     }
     if (layer === "pond") {
       pondIndex = 1 - pondIndex;
-      if (mriEnabled) throwIndex = 1 - throwIndex;
     } else {
       throwIndex = 1 - throwIndex;
     }
@@ -1211,6 +1232,10 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
     display.draw(3);
     display.end();
     device.queue.submit([encoder.finish()]);
+    if (mriEnabled && !mriFrozen && sourceCount > 0 && now - mriWarmupStartedAt >= MRI_PREITERATE_MS) {
+      mriFrozen = true;
+      mriLoopStartedAt = now;
+    }
     scheduleDraw();
   }
   scheduleDraw();
@@ -1286,7 +1311,22 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
       cone = next.cone;
       cssWidth = next.cssWidth;
       cssHeight = next.cssHeight;
-      mriEnabled = next.mri === true;
+      const nextMriEnabled = next.mri === true;
+      if (nextMriEnabled && !mriEnabled) {
+        mriFrozen = false;
+        mriWarmupStartedAt = performance.now();
+        mriLoopStartedAt = 0;
+        if (mriTexture) {
+          const encoder = device.createCommandEncoder({ label: "mri-capture-reset" });
+          clearTextures(encoder, [mriTexture]);
+          device.queue.submit([encoder.finish()]);
+        }
+      } else if (!nextMriEnabled) {
+        mriFrozen = false;
+        mriWarmupStartedAt = 0;
+        mriLoopStartedAt = 0;
+      }
+      mriEnabled = nextMriEnabled;
     },
     beginThrow(nextView, nextCssWidth, nextCssHeight, nextRotateRight) {
       view = { ...nextView };
@@ -1315,6 +1355,9 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
     freeze() {
       paused = true;
     },
+    isMriReady() {
+      return mriEnabled && mriFrozen;
+    },
     setSuspended(value: boolean) {
       suspended = value;
       if (!value) scheduleDraw();
@@ -1328,6 +1371,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
       throwLineTextures.forEach((texture) => texture.destroy());
       liveTexture?.destroy();
       liveLineTexture?.destroy();
+      mriTexture?.destroy();
       vertexBuffer.destroy();
       lineSegmentBuffer.destroy();
       stateBuffer.destroy();
@@ -1336,7 +1380,6 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
       paramsBuffer.destroy();
       paramsAtlasBuffer.destroy();
       styleBuffer.destroy();
-      styleSliceBuffer.destroy();
       sliceBuffer.destroy();
       fadeBuffer.destroy();
       lineFadeBuffer.destroy();
@@ -3058,6 +3101,7 @@ export default function MandelbrotSkipping() {
     function spawnIntroBackgroundOrbits(now: number) {
       const aiming = phase === "aiming" && !introActiveRef.current;
       if ((!introActiveRef.current && !aiming) || introFadingRef.current) return;
+      if (introActiveRef.current && engineRef.current?.isMriReady()) return;
       if (lastIntroBackground !== 0 && now - lastIntroBackground < INTRO_BACKGROUND_SPAWN_MS) return;
       lastIntroBackground = now;
       engineRef.current?.setLayer("pond");

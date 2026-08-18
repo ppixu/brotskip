@@ -10,6 +10,7 @@ export const INTRO_SETTLE_MS = 5400;
 export const INTRO_BACKGROUND_SPAWN_MS = 40;
 export const INTRO_TRAIL_FADE_MS = 4200;
 export const INTRO_NEBULA_SEEDS_PER_WAVE = 96;
+export const MRI_PREITERATE_MS = 1800;
 
 export function introLaunchOrigin(
   width: number,
@@ -106,8 +107,8 @@ export const INTRO_ATMOSPHERE: OrbitAtmosphere = {
 export type DisplayLayerMode = "intro" | "play" | "aiming";
 
 export const AIMING_POND_GAIN = 0.12;
-export const MRI_CYCLE_SECONDS = 18;
-export const MRI_SLICE_HALF = 0.055;
+export const MRI_CYCLE_SECONDS = 12;
+export const MRI_SLICE_HALF = 0.075;
 
 export function displayLayerGains(mode: DisplayLayerMode) {
   if (mode === "intro") return { pondGain: 0, throwGain: 1, coneEnabled: false };
@@ -120,9 +121,9 @@ export function introMriSlice(timeSeconds: number, cycle = MRI_CYCLE_SECONDS) {
   const ping = phase < 0.5 ? phase * 2 : 2 - phase * 2;
   const eased = ping * ping * (3 - 2 * ping);
   return {
-    zCamera: 0.07 + eased * 0.86,
+    zCamera: 0.09 + eased * 0.18,
     sliceHalf: MRI_SLICE_HALF,
-    zoom: 1 + eased * 0.42,
+    zoom: 1 + eased * 0.18,
   };
 }
 

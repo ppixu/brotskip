@@ -6,7 +6,7 @@ export const BUDDHABROT_EXPLAIN = {
   formula: "z → z² + c",
   paragraphs: [
     "The Buddhabrot is a density map of Mandelbrot trajectories that escape. Start at 0, then keep applying z → z² + c. If that orbit flies off to infinity, every hop is counted. Stack enough of those escaping paths and the glow takes the shape of a seated Buddha — the resemblance that gave Melinda Green’s 1993 rendering its name.",
-    "Points that stay trapped are discarded, so the Mandelbrot set itself stays dark. During the opening, a thin GPU-computed escape-depth slice moves through those trajectories and exposes progressively finer filaments.",
+    "Points that stay trapped are discarded, so the Mandelbrot set itself stays dark. During the opening, the GPU pre-iterates the orbit pool, then a thin escape-depth slice loops smoothly back and forth through progressively finer filaments.",
   ],
   wikipedia: {
     journal: "Notes on fractal geometry",

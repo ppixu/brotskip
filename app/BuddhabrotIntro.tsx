@@ -21,7 +21,7 @@ export default function BuddhabrotIntro({
     <div className={`introOverlay ${fading ? "fading" : ""}`} role="status" aria-label="Charting the pond">
       <div className="introChrome">
         <span className="introTitle">Mandelbrot Skipping</span>
-        <span className="introMode">Live GPU · escape-depth slice</span>
+        <span className="introMode">GPU pre-iterate · looping depth slice</span>
         {!ready && <span className="liveProgress"><i style={{ width: `${Math.max(2, progress * 100)}%` }} /></span>}
       </div>
       <article className="introPaper" aria-label="Buddhabrot, from Wikipedia">

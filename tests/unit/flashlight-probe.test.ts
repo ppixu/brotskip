@@ -13,6 +13,8 @@ import {
   INTRO_TRAIL_FADE_MS,
   INTRO_MAX_DEPTH,
   INTRO_NEBULA_SEEDS_PER_WAVE,
+  MRI_CYCLE_SECONDS,
+  MRI_PREITERATE_MS,
   PLAY_ATMOSPHERE,
   displayLayerGains,
   introMriSlice,
@@ -48,13 +50,17 @@ test("display layer gains match intro, play, and aiming", () => {
 
 test("intro MRI slice sweeps hop-iteration like a cutting plane, not max-iter fill", () => {
   const start = introMriSlice(0);
-  const mid = introMriSlice(9);
-  const end = introMriSlice(18);
-  assert.ok(start.zCamera < 0.2);
-  assert.ok(mid.zCamera > 0.7);
+  const mid = introMriSlice(MRI_CYCLE_SECONDS / 2);
+  const end = introMriSlice(MRI_CYCLE_SECONDS);
+  assert.ok(start.zCamera < 0.1);
+  assert.ok(mid.zCamera > 0.2);
   assert.ok(Math.abs(end.zCamera - start.zCamera) < 0.05);
   assert.ok(start.sliceHalf > 0 && start.sliceHalf < 0.12);
   assert.ok(mid.zoom > start.zoom);
+  const beforeTurn = introMriSlice(MRI_CYCLE_SECONDS / 2 - 0.01);
+  const afterTurn = introMriSlice(MRI_CYCLE_SECONDS / 2 + 0.01);
+  assert.ok(Math.abs(beforeTurn.zCamera - afterTurn.zCamera) < 0.001);
+  assert.ok(MRI_PREITERATE_MS >= 1000 && MRI_PREITERATE_MS < INTRO_SETTLE_MS);
 });
 
 test("flashlight cone falloff is 1-ish on the aim ray and 0 outside the cone", () => {
@@ -123,12 +129,13 @@ test("opening throws rocks from random points instead of the throw stone", () =>
   assert.ok(origins.some((origin) => Math.hypot(origin.x - stone.x, origin.y - stone.y) > 80));
 });
 
-test("opening keeps iterating a dim background Buddhabrot after the volley", () => {
+test("opening pre-iterates a dense Buddhabrot pool before the scan loop", () => {
   assert.ok(INTRO_SETTLE_MS >= 5000);
   assert.ok(INTRO_BACKGROUND_SPAWN_MS <= 50);
   assert.ok(INTRO_MAX_DEPTH >= 500_000);
   assert.ok(INTRO_TRAIL_FADE_MS >= 3500);
   assert.ok(INTRO_NEBULA_SEEDS_PER_WAVE >= 64);
+  assert.ok(MRI_PREITERATE_MS < INTRO_SETTLE_MS);
 });
 
 test("intro nebula seeds escape often enough that loading stays live", () => {

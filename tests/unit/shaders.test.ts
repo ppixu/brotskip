@@ -51,7 +51,7 @@ test("orbit trails accumulate in native-pixel pond and throw layers", () => {
   assert.match(source, /incomingLength <= 0\.12 && length\(z - previousZ\) <= 0\.12/);
 });
 
-test("loading Buddhabrot is vertical, GPU-dense, and pond-led instead of sparkly live dust", () => {
+test("loading Buddhabrot precomputes a dedicated GPU depth texture before looping", () => {
   const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
   assert.match(source, /const DEFAULT_TUNING: Tuning = \{[\s\S]*?rotateRight: true/);
   assert.match(source, /const POINT_BUDGET = 400_000/);
@@ -61,8 +61,19 @@ test("loading Buddhabrot is vertical, GPU-dense, and pond-led instead of sparkly
   assert.match(source, /gpuPixelRatio\(/);
   assert.match(source, /introMriSlice\(/);
   assert.match(source, /sliceEnabled/);
-  assert.match(source, /const mriRetention = mriEnabled/);
-  assert.match(source, /throwDestination\.createView\(\), loadOp: "load"/);
+  assert.match(source, /const mriTime = mriFrozen/);
+  assert.match(source, /writeBuffer\(fadeBuffer, 0, new Float32Array\(\[1, 0, 0, 0\]\)\)/);
+  assert.match(source, /!mriEnabled \|\| !mriFrozen/);
+  assert.match(source, /now - mriWarmupStartedAt >= MRI_PREITERATE_MS/);
+  assert.match(source, /isMriReady/);
+  assert.match(source, /let inferredDepth = clamp\(depthNumerator \/ depthDenominator/);
+  assert.match(source, /let mriTexture: any = null/);
+  assert.match(source, /const mriCapture = encoder\.beginRenderPass/);
+  assert.match(source, /label: "mri-capture-reset"/);
+  assert.match(source, /let mriRaw = select/);
+  assert.match(source, /displayView\[28\] = mriEnabled && mriFrozen \? 1 : 0/);
+  assert.match(source, /displayView\[31\] = slice\.zoom/);
+  assert.doesNotMatch(source, /styleSliceBuffer|pointAtlasSliceBind|const mriPass/);
   assert.match(source, /doublePixels: true/);
   assert.match(source, /createOrbitEngine\(canvas, acquired, introActiveRef\.current\)/);
   assert.match(source, /className="gpuCanvas"/);
@@ -151,7 +162,7 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(intro, /ready/);
   assert.match(intro, />Play</);
   assert.match(intro, /introMode/);
-  assert.match(intro, /Live GPU/);
+  assert.match(intro, /GPU pre-iterate/);
   assert.doesNotMatch(intro, /introTraverse|gif\.file/);
   assert.match(intro, /BUDDHABROT_EXPLAIN/);
   assert.match(intro, /wikipedia/);

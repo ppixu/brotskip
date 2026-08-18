@@ -31,7 +31,7 @@ test("a trapped seed stays inside the radius-2 circle", () => {
   assert.ok(orbit.every((point) => magnitudeSq(point) <= 4));
 });
 
-test("the overlay explains the live GPU escape-depth scan", () => {
+test("the overlay explains the pre-iterated GPU escape-depth scan", () => {
   const copy = BUDDHABROT_EXPLAIN.paragraphs.join(" ");
   assert.equal(BUDDHABROT_EXPLAIN.trigger, "Buddhabrot");
   assert.equal(BUDDHABROT_EXPLAIN.formula, "z → z² + c");
@@ -39,7 +39,8 @@ test("the overlay explains the live GPU escape-depth scan", () => {
   assert.match(copy, /escape/);
   assert.match(copy, /Melinda Green/);
   assert.match(copy, /density|trajector/i);
-  assert.match(copy, /GPU-computed escape-depth slice/i);
+  assert.match(copy, /GPU pre-iterates the orbit pool/i);
+  assert.match(copy, /loops smoothly back and forth/i);
   assert.doesNotMatch(copy, /iteration means/i);
   assert.equal("gif" in BUDDHABROT_EXPLAIN, false);
 });
@@ -66,10 +67,10 @@ test("the pre-rendered Buddhabrot GIF is no longer vendored", () => {
   assert.equal(existsSync(gif), false);
 });
 
-test("HowItWorks describes the live GPU intro instead of embedding a film", () => {
+test("HowItWorks describes the pre-iterated GPU intro instead of embedding a film", () => {
   const source = readFileSync(new URL("../../app/HowItWorks.tsx", import.meta.url), "utf8");
   assert.match(source, /BUDDHABROT_EXPLAIN/);
-  assert.match(source, /Opening visual computed live on your GPU/);
+  assert.match(source, /Pre-iterated on your GPU, then looped live/);
   assert.doesNotMatch(source, /<img|gif\.file|buddhabrot-iterations/);
   assert.doesNotMatch(source, /How does this work/);
   assert.doesNotMatch(source, /HowItWorksFilm/);
