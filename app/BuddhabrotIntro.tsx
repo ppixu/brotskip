@@ -9,22 +9,19 @@ function paperWords(text: string) {
 }
 
 export default function BuddhabrotIntro({
-  progress, fading, ready, onPlay, rotateRight,
+  progress, fading, ready, onPlay,
 }: {
   progress: number;
   fading: boolean;
   ready?: boolean;
   onPlay?: () => void;
-  rotateRight?: boolean;
 }) {
-  const { gif, wikipedia } = BUDDHABROT_EXPLAIN;
+  const { wikipedia } = BUDDHABROT_EXPLAIN;
   return (
     <div className={`introOverlay ${fading ? "fading" : ""}`} role="status" aria-label="Charting the pond">
-      <div className={`introTraverse${rotateRight === false ? "" : " rotated"}`}>
-        <img src={gif.file} alt={gif.alt} width={600} height={337} />
-      </div>
       <div className="introChrome">
         <span className="introTitle">Mandelbrot Skipping</span>
+        <span className="introMode">Live GPU · escape-depth slice</span>
         {!ready && <span className="liveProgress"><i style={{ width: `${Math.max(2, progress * 100)}%` }} /></span>}
       </div>
       <article className="introPaper" aria-label="Buddhabrot, from Wikipedia">

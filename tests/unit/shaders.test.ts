@@ -51,7 +51,7 @@ test("orbit trails accumulate in native-pixel pond and throw layers", () => {
   assert.match(source, /incomingLength <= 0\.12 && length\(z - previousZ\) <= 0\.12/);
 });
 
-test("loading Buddhabrot is vertical, high-res, and pond-led instead of sparkly live dust", () => {
+test("loading Buddhabrot is vertical, GPU-dense, and pond-led instead of sparkly live dust", () => {
   const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
   assert.match(source, /const DEFAULT_TUNING: Tuning = \{[\s\S]*?rotateRight: true/);
   assert.match(source, /const POINT_BUDGET = 400_000/);
@@ -61,7 +61,12 @@ test("loading Buddhabrot is vertical, high-res, and pond-led instead of sparkly 
   assert.match(source, /gpuPixelRatio\(/);
   assert.match(source, /introMriSlice\(/);
   assert.match(source, /sliceEnabled/);
-  assert.match(source, /introStashed/);
+  assert.match(source, /const mriRetention = mriEnabled/);
+  assert.match(source, /throwDestination\.createView\(\), loadOp: "load"/);
+  assert.match(source, /doublePixels: true/);
+  assert.match(source, /createOrbitEngine\(canvas, acquired, introActiveRef\.current\)/);
+  assert.match(source, /className="gpuCanvas"/);
+  assert.doesNotMatch(source, /introStashed/);
   assert.match(source, /displayView\[6\] = mriEnabled \? 0 : liveGain/);
   assert.match(source, /displayView\[7\] = contrast/);
   assert.match(source, /pow\(clamp\(mapped, vec3f\(0\.0\), vec3f\(1\.0\)\), vec3f\(contrast\)\) \* pondGain \* cone/);
@@ -124,7 +129,7 @@ test("opening and flashlight hide orbit lines, go grayscale, and throw overlappi
 
 test("the game render loop only calls drawing helpers that exist", () => {
   const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
-  const renderMatch = source.match(/function render\(now: number\) \{([\s\S]*?)\n    \}\n/);
+  const renderMatch = source.match(/function render\(now: number\) \{([\s\S]*?)\n {4}\}\n/);
   assert.ok(renderMatch, "render() missing");
   const skip = new Set(["if", "for", "while", "switch", "catch", "function"]);
   const names = [...renderMatch[1].matchAll(/(?<![\w.])([A-Za-z_][A-Za-z0-9_]*)\(/g)]
@@ -145,13 +150,14 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   const css = readFileSync(new URL("../../app/globals.css", import.meta.url), "utf8");
   assert.match(intro, /ready/);
   assert.match(intro, />Play</);
-  assert.match(intro, /introTraverse/);
-  assert.match(intro, /gif\.file/);
+  assert.match(intro, /introMode/);
+  assert.match(intro, /Live GPU/);
+  assert.doesNotMatch(intro, /introTraverse|gif\.file/);
   assert.match(intro, /BUDDHABROT_EXPLAIN/);
   assert.match(intro, /wikipedia/);
   assert.match(intro, /introPaper/);
-  assert.match(intro, /rotateRight/);
-  assert.match(css, /introBuddhaZoom/);
+  assert.doesNotMatch(intro, /rotateRight/);
+  assert.doesNotMatch(css, /introBuddhaZoom/);
   assert.match(css, /introPaper/);
-  assert.match(css, /gpuCanvas\.introStashed/);
+  assert.doesNotMatch(css, /gpuCanvas\.introStashed/);
 });

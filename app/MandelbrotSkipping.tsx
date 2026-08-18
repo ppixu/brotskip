@@ -818,7 +818,7 @@ function storeScores(entries: ScoreEntry[]) {
   try { localStorage.setItem(SCORE_KEY, JSON.stringify({ version: 2, entries })); } catch { /* local play still works */ }
 }
 
-async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Promise<OrbitEngine | null> {
+async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, introLowRes = false): Promise<OrbitEngine | null> {
   const device = gpu.device;
   const context = canvas.getContext("webgpu") as any;
   const canvasFormat = gpu.preferredFormat;
@@ -953,7 +953,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
   let linePersist = DEFAULT_TUNING.linePersist;
   let skipColors = DEFAULT_TUNING.skipColors;
   let rotateRight = DEFAULT_TUNING.rotateRight;
-  let doublePixels = DEFAULT_TUNING.doublePixels;
+  let doublePixels = introLowRes;
   let drawLines = PLAY_ATMOSPHERE.drawLines;
   let grayscale = PLAY_ATMOSPHERE.grayscale;
   let pointEnergy = PLAY_ATMOSPHERE.energy;
@@ -1087,11 +1087,12 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
     writeParams(paramsAtlasBuffer, 1);
     const slice = mriEnabled ? introMriSlice(now / 1000) : { zCamera: 0, sliceHalf: 1, zoom: 1 };
     device.queue.writeBuffer(styleBuffer, 0, new Float32Array([pointEnergy, grayscale ? 1 : 0, skipColors ? 1 : 0, 0]));
-    device.queue.writeBuffer(styleSliceBuffer, 0, new Float32Array([Math.min(1.2, pointEnergy * 4.2), grayscale ? 1 : 0, skipColors ? 1 : 0, 1]));
+    device.queue.writeBuffer(styleSliceBuffer, 0, new Float32Array([Math.min(1.2, pointEnergy * 4.2), 0, 0, 1]));
     device.queue.writeBuffer(sliceBuffer, 0, new Float32Array([slice.zCamera, slice.sliceHalf, slice.zoom, 0]));
     device.queue.writeBuffer(indirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
     device.queue.writeBuffer(lineIndirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
-    device.queue.writeBuffer(fadeBuffer, 0, new Float32Array([1, 0, 0, 0]));
+    const mriRetention = mriEnabled ? Math.pow(0.965, dt * 60) : 1;
+    device.queue.writeBuffer(fadeBuffer, 0, new Float32Array([mriRetention, 0, 0, 0]));
     device.queue.writeBuffer(lineFadeBuffer, 0, new Float32Array([lineRetention, 0, 0, 0]));
     const displayView = new Float32Array(32);
     displayView[0] = view.centerX;
@@ -1140,6 +1141,13 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       fade.setBindGroup(0, pondFadeBinds[pondIndex]);
       fade.draw(3);
       fade.end();
+      if (mriEnabled) {
+        const mriFade = encoder.beginRenderPass({ colorAttachments: [{ view: throwDestination.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
+        mriFade.setPipeline(fadePipeline);
+        mriFade.setBindGroup(0, throwFadeBinds[throwIndex]);
+        mriFade.draw(3);
+        mriFade.end();
+      }
     } else {
       const fade = encoder.beginRenderPass({ colorAttachments: [{ view: throwDestination.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
       fade.setPipeline(fadePipeline);
@@ -1165,7 +1173,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
       layerPoints.drawIndirect(indirectBuffer, 0);
       layerPoints.end();
       if (mriEnabled && layer === "pond") {
-        const mriPass = encoder.beginRenderPass({ colorAttachments: [{ view: throwTextures[throwIndex].createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
+        const mriPass = encoder.beginRenderPass({ colorAttachments: [{ view: throwDestination.createView(), loadOp: "load", storeOp: "store" }] });
         mriPass.setPipeline(pointPipeline);
         mriPass.setBindGroup(0, pointAtlasSliceBind);
         mriPass.setVertexBuffer(0, vertexBuffer);
@@ -1191,8 +1199,12 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext): Pr
         persistentLinePass.end();
       }
     }
-    if (layer === "pond") pondIndex = 1 - pondIndex;
-    else throwIndex = 1 - throwIndex;
+    if (layer === "pond") {
+      pondIndex = 1 - pondIndex;
+      if (mriEnabled) throwIndex = 1 - throwIndex;
+    } else {
+      throwIndex = 1 - throwIndex;
+    }
     const display = encoder.beginRenderPass({ colorAttachments: [{ view: context.getCurrentTexture().createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } }] });
     display.setPipeline(displayPipeline);
     display.setBindGroup(0, displayBinds[pondIndex * 2 + throwIndex]);
@@ -1399,20 +1411,20 @@ export default function MandelbrotSkipping() {
         acquired.destroy();
         return;
       }
-      const engine = await createOrbitEngine(canvas, acquired);
+      const engine = await createOrbitEngine(canvas, acquired, introActiveRef.current);
       if (cancelled) {
         engine?.destroy();
         return;
       }
       engineRef.current = engine;
       engine?.setView(viewRef.current);
-      engine?.setTuning(tuningRef.current);
       if (introActiveRef.current) {
-        engine?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
+        engine?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH, doublePixels: true });
         engine?.setAtmosphere(INTRO_ATMOSPHERE);
         engine?.setLayer("pond");
         engine?.setDisplay({ ...displayLayerGains("intro"), cone: null, cssWidth: 1, cssHeight: 1, mri: true });
       } else {
+        engine?.setTuning(tuningRef.current);
         engine?.setAtmosphere(PLAY_ATMOSPHERE);
         engine?.setLayer("throw");
         engine?.setDisplay({ ...displayLayerGains("play"), cone: null, cssWidth: 1, cssHeight: 1 });
@@ -1469,7 +1481,7 @@ export default function MandelbrotSkipping() {
     engineRef.current?.clearPond();
     engineRef.current?.clear();
     engineRef.current?.setLayer("pond");
-    engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
+    engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH, doublePixels: true });
     engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
     engineRef.current?.setDisplay({ ...displayLayerGains("intro"), cone: null, cssWidth: 1, cssHeight: 1, mri: true });
     applyViewRef.current({ centerX: INTRO_POND_CENTER.x, centerY: INTRO_POND_CENTER.y, halfY: INTRO_VIEW_HALF_Y });
@@ -3049,7 +3061,11 @@ export default function MandelbrotSkipping() {
       if (lastIntroBackground !== 0 && now - lastIntroBackground < INTRO_BACKGROUND_SPAWN_MS) return;
       lastIntroBackground = now;
       engineRef.current?.setLayer("pond");
-      engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
+      engineRef.current?.setTuning({
+        ...tuningRef.current,
+        maxDepth: INTRO_MAX_DEPTH,
+        doublePixels: introActiveRef.current ? true : tuningRef.current.doublePixels,
+      });
       engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
       const seeds = Array.from({ length: INTRO_NEBULA_SEEDS_PER_WAVE }, () => introNebulaSeed());
       engineRef.current?.spawnAppend(seeds, 1, INTRO_SOURCE_CAP);
@@ -3076,7 +3092,7 @@ export default function MandelbrotSkipping() {
       if (lastIntroLaunch !== 0 && now - lastIntroLaunch < interval) return;
       lastIntroLaunch = now;
       spectatorRef.current = true;
-      engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
+      engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH, doublePixels: true });
       engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
       throwIntroRock();
       spawnIntroPondRipple(now);
@@ -3353,7 +3369,7 @@ export default function MandelbrotSkipping() {
   return (
     <main className={`gameShell ${replayMode ? "replayMode" : ""}`}>
       <section className="playfield" aria-label="Mandelbrot rock skipping game">
-        <canvas ref={gpuCanvasRef} className={`gpuCanvas${intro ? " introStashed" : ""}`} aria-hidden="true" />
+        <canvas ref={gpuCanvasRef} className="gpuCanvas" aria-hidden="true" />
         <canvas ref={gameCanvasRef} className="gameCanvas" tabIndex={0} aria-label="Throw ready. Drag the white orb backward and release it across the water" />
         {replayMode && (
           <p className="replayBanner" aria-live="polite">
@@ -3366,7 +3382,6 @@ export default function MandelbrotSkipping() {
             progress={intro.progress}
             fading={introFading}
             ready={intro.ready}
-            rotateRight={tuning.rotateRight}
             onPlay={finishOpening}
           />
         )}

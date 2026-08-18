@@ -45,7 +45,6 @@ button, input { font: inherit; }
   image-rendering: pixelated;
 }
 .gpuCanvas { z-index: 0; }
-.gpuCanvas.introStashed { opacity: 0; pointer-events: none; }
 .gameCanvas { z-index: 1; cursor: grab; }
 .gameCanvas:active { cursor: grabbing; }
 .gameCanvas:focus-visible { outline: 1px solid rgba(98, 232, 255, .65); outline-offset: -2px; }
@@ -189,26 +188,12 @@ button, input { font: inherit; }
   letter-spacing: .14em;
   text-transform: uppercase;
 }
-.howItWorksFilm {
-  display: block;
-  width: 100%;
-  height: auto;
-  margin: 0 0 8px;
-  border-radius: 8px;
-  background: #071014;
-  image-rendering: auto;
-}
 .howItWorksFormula {
   margin: -2px 0 6px;
   color: #dffbff;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;
   font-weight: 650;
-}
-.howItWorksCredit {
-  color: #7f9aa4;
-  font-size: 10px;
-  line-height: 1.4;
 }
 .howItWorksPanel p { margin: 0 0 8px; }
 .howItWorksPanel p:last-child { margin: 0; }
@@ -482,41 +467,12 @@ button, input { font: inherit; }
   display: grid;
   place-items: start center;
   padding-top: 28px;
-  background: #000;
+  background:
+    radial-gradient(circle at 50% 46%, transparent 16%, rgba(0, 0, 0, .12) 58%, rgba(0, 0, 0, .62) 100%);
   pointer-events: auto;
   transition: opacity 600ms ease;
 }
 .introOverlay.fading { opacity: 0; pointer-events: none; }
-.introTraverse {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-  background: #000;
-}
-.introTraverse img {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 118%;
-  height: 118%;
-  object-fit: cover;
-  image-rendering: auto;
-  animation: introBuddhaZoom 26s ease-in-out alternate infinite;
-}
-.introTraverse.rotated img {
-  width: 168%;
-  height: 168%;
-  animation-name: introBuddhaZoomRotated;
-}
-@keyframes introBuddhaZoom {
-  from { transform: translate(-50%, -50%) scale(1); }
-  to { transform: translate(-50%, -50%) scale(1.38); }
-}
-@keyframes introBuddhaZoomRotated {
-  from { transform: translate(-50%, -50%) rotate(90deg) scale(1.08); }
-  to { transform: translate(-50%, -50%) rotate(90deg) scale(1.48); }
-}
 .introPaper {
   position: absolute;
   left: 50%;
@@ -682,6 +638,15 @@ button, input { font: inherit; }
   letter-spacing: .22em;
   text-transform: uppercase;
 }
+.introMode {
+  display: block;
+  margin-top: 5px;
+  color: rgba(174, 217, 226, .58);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 8px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
 
 @media (max-width: 760px) {
   .gameShell { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 280px; }
@@ -735,7 +700,5 @@ button, input { font: inherit; }
 @media (prefers-reduced-motion: reduce) {
   .liveProgress i, .liveNumber { transition: none; }
   .introOverlay { transition: none; }
-  .introTraverse img { animation: none; transform: translate(-50%, -50%); }
-  .introTraverse.rotated img { transform: translate(-50%, -50%) rotate(90deg) scale(1.2); }
   .howItWorksPanel { transition: none; }
 }

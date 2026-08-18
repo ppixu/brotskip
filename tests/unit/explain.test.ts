@@ -31,7 +31,7 @@ test("a trapped seed stays inside the radius-2 circle", () => {
   assert.ok(orbit.every((point) => magnitudeSq(point) <= 4));
 });
 
-test("the overlay summarizes Wikipedia's Buddhabrot with the article GIF", () => {
+test("the overlay explains the live GPU escape-depth scan", () => {
   const copy = BUDDHABROT_EXPLAIN.paragraphs.join(" ");
   assert.equal(BUDDHABROT_EXPLAIN.trigger, "Buddhabrot");
   assert.equal(BUDDHABROT_EXPLAIN.formula, "z → z² + c");
@@ -39,12 +39,9 @@ test("the overlay summarizes Wikipedia's Buddhabrot with the article GIF", () =>
   assert.match(copy, /escape/);
   assert.match(copy, /Melinda Green/);
   assert.match(copy, /density|trajector/i);
+  assert.match(copy, /GPU-computed escape-depth slice/i);
   assert.doesNotMatch(copy, /iteration means/i);
-  assert.equal(BUDDHABROT_EXPLAIN.gif.file, "buddhabrot-iterations.gif");
-  assert.match(BUDDHABROT_EXPLAIN.gif.alt, /iteration/i);
-  assert.equal(BUDDHABROT_EXPLAIN.gif.license, "CC BY-SA 4.0");
-  assert.match(BUDDHABROT_EXPLAIN.gif.sourceUrl, /BuddhabrotIterationAnimation7729\.gif/);
-  assert.equal(BUDDHABROT_EXPLAIN.gif.articleUrl, "https://en.wikipedia.org/wiki/Buddhabrot");
+  assert.equal("gif" in BUDDHABROT_EXPLAIN, false);
 });
 
 test("loading paper quotes Wikipedia's first paragraph with numbered references", () => {
@@ -64,18 +61,16 @@ test("loading paper quotes Wikipedia's first paragraph with numbered references"
   assert.match(paper.journal, /fractal/i);
 });
 
-test("the Wikipedia Buddhabrot GIF is vendored next to the app", () => {
+test("the pre-rendered Buddhabrot GIF is no longer vendored", () => {
   const gif = new URL("../../public/buddhabrot-iterations.gif", import.meta.url);
-  assert.ok(existsSync(gif), "public/buddhabrot-iterations.gif missing");
-  const bytes = readFileSync(gif);
-  assert.ok(bytes.length > 100_000, "GIF looks too small to be the Wikipedia animation");
-  assert.equal(bytes.subarray(0, 6).toString("ascii"), "GIF89a");
+  assert.equal(existsSync(gif), false);
 });
 
-test("HowItWorks shows the Wikipedia summary instead of the homemade films", () => {
+test("HowItWorks describes the live GPU intro instead of embedding a film", () => {
   const source = readFileSync(new URL("../../app/HowItWorks.tsx", import.meta.url), "utf8");
   assert.match(source, /BUDDHABROT_EXPLAIN/);
-  assert.match(source, /src=\{gif\.file\}/);
+  assert.match(source, /Opening visual computed live on your GPU/);
+  assert.doesNotMatch(source, /<img|gif\.file|buddhabrot-iterations/);
   assert.doesNotMatch(source, /How does this work/);
   assert.doesNotMatch(source, /HowItWorksFilm/);
   assert.doesNotMatch(source, /EXPLAIN_PARTS/);

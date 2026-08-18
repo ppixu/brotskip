@@ -31,10 +31,10 @@ test("server-renders Mandelbrot Skipping", async () => {
   assert.match(html, /Share throw/);
   assert.match(html, /Replay throw/);
   assert.match(html, />Buddhabrot</);
-  assert.match(html, /buddhabrot-iterations\.gif/);
+  assert.match(html, /Opening visual computed live on your GPU/);
+  assert.doesNotMatch(html, /buddhabrot-iterations\.gif|<video/i);
   assert.match(html, /Melinda Green/);
   assert.match(html, /z → z² \+ c/);
-  assert.match(html, /CC BY-SA 4\.0/);
   assert.doesNotMatch(html, /How does this work/);
   assert.doesNotMatch(html, /Iteration means/);
   assert.doesNotMatch(html, /waterGrain|resultCard|gameTitle|hudPill/);
