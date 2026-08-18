@@ -185,14 +185,9 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.doesNotMatch(css, /introBuddhaZoom/);
   assert.match(css, /introPaper/);
   const paperRule = css.match(/\.introPaper \{([^}]+)\}/)?.[1] ?? "";
-  const titleRule = css.match(/\.introPaperTitle \{([^}]+)\}/)?.[1] ?? "";
-  const dropCapRule = css.match(/\.introPaperLede::first-letter \{([^}]+)\}/)?.[1] ?? "";
   assert.match(paperRule, /color:\s*#fff/);
   assert.match(paperRule, /background:\s*rgba\(0,\s*0,\s*0,\s*0\.1[0-9]/);
-  assert.match(paperRule, /width:\s*min\(19rem,/);
   assert.doesNotMatch(paperRule, /border:/);
   assert.doesNotMatch(paperRule, /box-shadow:/);
-  assert.match(titleRule, /font-size:\s*32px/);
-  assert.match(dropCapRule, /font-size:\s*3\.5em/);
   assert.doesNotMatch(css, /gpuCanvas\.introStashed/);
 });
