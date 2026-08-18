@@ -31,7 +31,7 @@ test("a trapped seed stays inside the radius-2 circle", () => {
   assert.ok(orbit.every((point) => magnitudeSq(point) <= 4));
 });
 
-test("the overlay explains the fixed GPU orbit-time scan", () => {
+test("the overlay explains the precomputed 3D Gaussian cloud", () => {
   const copy = BUDDHABROT_EXPLAIN.paragraphs.join(" ");
   assert.equal(BUDDHABROT_EXPLAIN.trigger, "Buddhabrot");
   assert.equal(BUDDHABROT_EXPLAIN.formula, "z → z² + c");
@@ -39,9 +39,9 @@ test("the overlay explains the fixed GPU orbit-time scan", () => {
   assert.match(copy, /escape/);
   assert.match(copy, /Melinda Green/);
   assert.match(copy, /density|trajector/i);
-  assert.match(copy, /GPU computes a fixed volume/i);
-  assert.match(copy, /orbit-time slice/i);
-  assert.match(copy, /loops smoothly back and forth/i);
+  assert.match(copy, /Complex Hénon escape cloud/i);
+  assert.match(copy, /one million tiny Gaussian splats/i);
+  assert.match(copy, /rotated live/i);
   assert.doesNotMatch(copy, /iteration means/i);
   assert.equal("gif" in BUDDHABROT_EXPLAIN, false);
 });
@@ -68,10 +68,10 @@ test("the pre-rendered Buddhabrot GIF is no longer vendored", () => {
   assert.equal(existsSync(gif), false);
 });
 
-test("HowItWorks describes the pre-iterated GPU intro instead of embedding a film", () => {
+test("HowItWorks describes the precomputed 3D cloud instead of embedding a film", () => {
   const source = readFileSync(new URL("../../app/HowItWorks.tsx", import.meta.url), "utf8");
   assert.match(source, /BUDDHABROT_EXPLAIN/);
-  assert.match(source, /Pre-iterated on your GPU, then looped live/);
+  assert.match(source, /Precomputed 3D Gaussian cloud/);
   assert.doesNotMatch(source, /<img|gif\.file|buddhabrot-iterations/);
   assert.doesNotMatch(source, /How does this work/);
   assert.doesNotMatch(source, /HowItWorksFilm/);

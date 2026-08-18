@@ -31,7 +31,7 @@ test("server-renders Mandelbrot Skipping", async () => {
   assert.match(html, /Share throw/);
   assert.match(html, /Replay throw/);
   assert.match(html, />Buddhabrot</);
-  assert.match(html, /Pre-iterated on your GPU, then looped live/);
+  assert.match(html, /Precomputed 3D Gaussian cloud/);
   assert.doesNotMatch(html, /buddhabrot-iterations\.gif|<video/i);
   assert.match(html, /Melinda Green/);
   assert.match(html, /z → z² \+ c/);

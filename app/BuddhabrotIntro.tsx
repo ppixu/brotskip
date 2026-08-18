@@ -1,8 +1,7 @@
 "use client";
 
 import { BUDDHABROT_EXPLAIN } from "@/lib/buddhabrot/explain";
-import type { GpuContext } from "@/lib/gpu";
-import BuddhabrotMriCanvas from "./BuddhabrotMriCanvas";
+import BuddhabrotCloudCanvas from "./BuddhabrotCloudCanvas";
 
 function paperWords(text: string) {
   return text.split(/\b(tika|ushnisha)\b/).map((part, index) => (
@@ -11,21 +10,20 @@ function paperWords(text: string) {
 }
 
 export default function BuddhabrotIntro({
-  progress, fading, ready, gpuContext, onPlay,
+  progress, fading, ready, onPlay,
 }: {
   progress: number;
   fading: boolean;
   ready?: boolean;
-  gpuContext: Promise<GpuContext | null> | null;
   onPlay?: () => void;
 }) {
   const { wikipedia } = BUDDHABROT_EXPLAIN;
   return (
     <div className={`introOverlay ${fading ? "fading" : ""}`} role="status" aria-label="Charting the pond">
-      <BuddhabrotMriCanvas gpuContext={gpuContext} fading={fading} />
+      <BuddhabrotCloudCanvas fading={fading} />
       <div className="introChrome">
         <span className="introTitle">Mandelbrot Skipping</span>
-        <span className="introMode">Precalculated GPU volume · orbit-time MRI</span>
+        <span className="introMode">Precomputed 3D Gaussian cloud · rotating live</span>
         {!ready && <span className="liveProgress"><i style={{ width: `${Math.max(2, progress * 100)}%` }} /></span>}
       </div>
       <article className="introPaper" aria-label="Buddhabrot, from Wikipedia">

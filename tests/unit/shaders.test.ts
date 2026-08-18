@@ -51,9 +51,9 @@ test("orbit trails accumulate in native-pixel pond and throw layers", () => {
   assert.match(source, /incomingLength <= 0\.12 && length\(z - previousZ\) <= 0\.12/);
 });
 
-test("loading Buddhabrot uses a fixed layer-major Gaussian splat volume", () => {
+test("loading Buddhabrot uses the precomputed rotating Gaussian cloud", () => {
   const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
-  const mri = readFileSync(new URL("../../app/BuddhabrotMriCanvas.tsx", import.meta.url), "utf8");
+  const cloud = readFileSync(new URL("../../app/BuddhabrotCloudCanvas.tsx", import.meta.url), "utf8");
   assert.match(source, /const DEFAULT_TUNING: Tuning = \{[\s\S]*?rotateRight: true/);
   assert.match(source, /const POINT_BUDGET = 400_000/);
   assert.match(source, /const INTRO_SOURCE_CAP = 4096/);
@@ -81,15 +81,12 @@ test("loading Buddhabrot uses a fixed layer-major Gaussian splat volume", () => 
   assert.doesNotMatch(source, /introStashed/);
   assert.match(source, /engine\?\.setSuspended\(true\)/);
   assert.match(source, /engineRef\.current\?\.setSuspended\(false\)/);
-  assert.match(mri, /const SEED_COUNT = 32_768/);
-  assert.match(mri, /const SHARD_COUNT = SEED_COUNT \/ SEEDS_PER_SHARD/);
-  assert.match(mri, /const LAYER_COUNT = 144/);
-  assert.match(mri, /let slot = layer \* params\.seedCount \+ localSeed/);
-  assert.match(mri, /label: `buddhabrot-mri-fixed-volume-\$\{shard\}`/);
-  assert.match(mri, /computePass\.dispatchWorkgroups/);
-  assert.match(mri, /Math\.cos\(phase \* Math\.PI \* 2\)/);
-  assert.match(mri, /firstLayer \* SEEDS_PER_SHARD/);
-  assert.doesNotMatch(mri, /epoch\+\+/);
+  assert.match(cloud, /SparkRenderer/);
+  assert.match(cloud, /SplatMesh/);
+  assert.match(cloud, /henon-buddhabrot-4096\.spz/);
+  assert.match(cloud, /yaw \+= delta \* 0\.000055/);
+  assert.match(cloud, /blurAmount: 0/);
+  assert.doesNotMatch(cloud, /dispatchWorkgroups|pointScale|epoch\+\+/);
   assert.match(source, /displayView\[6\] = mriEnabled \? 0 : liveGain/);
   assert.match(source, /displayView\[7\] = contrast/);
   assert.match(source, /pow\(clamp\(mapped, vec3f\(0\.0\), vec3f\(1\.0\)\), vec3f\(contrast\)\) \* pondGain \* cone/);
@@ -174,8 +171,8 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(intro, /ready/);
   assert.match(intro, />Play</);
   assert.match(intro, /introMode/);
-  assert.match(intro, /Precalculated GPU volume/);
-  assert.match(intro, /BuddhabrotMriCanvas/);
+  assert.match(intro, /Precomputed 3D Gaussian cloud/);
+  assert.match(intro, /BuddhabrotCloudCanvas/);
   assert.doesNotMatch(intro, /introTraverse|gif\.file/);
   assert.match(intro, /BUDDHABROT_EXPLAIN/);
   assert.match(intro, /wikipedia/);

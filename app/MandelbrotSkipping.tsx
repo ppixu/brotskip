@@ -3429,7 +3429,6 @@ export default function MandelbrotSkipping() {
             progress={intro.progress}
             fading={introFading}
             ready={intro.ready}
-            gpuContext={gpuPromiseRef.current}
             onPlay={finishOpening}
           />
         )}
