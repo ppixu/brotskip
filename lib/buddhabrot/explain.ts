@@ -17,6 +17,32 @@ export const BUDDHABROT_EXPLAIN = {
     sourceUrl: "https://commons.wikimedia.org/wiki/File:BuddhabrotIterationAnimation7729.gif",
     articleUrl: "https://en.wikipedia.org/wiki/Buddhabrot",
   },
+  wikipedia: {
+    journal: "Notes on fractal geometry",
+    title: "The Buddhabrot",
+    sentences: [
+      {
+        text: "The Buddhabrot is the probability distribution over the trajectories of points that escape the Mandelbrot fractal.",
+        cite: 1,
+      },
+      {
+        text: "Its name reflects its pareidolic resemblance to classical depictions of Gautama Buddha, seated in a meditation pose with a forehead mark (tika), a traditional oval crown (ushnisha), and ringlet of hair.",
+        cite: 2,
+      },
+    ],
+    references: [
+      {
+        n: 1,
+        text: "Green, M. The Buddhabrot Technique. Superliminal, 1993.",
+        url: "https://www.superliminal.com/fractals/bbrot/bbrot.htm",
+      },
+      {
+        n: 2,
+        text: "Wikipedia contributors. Buddhabrot. Wikipedia, The Free Encyclopedia. CC BY-SA 4.0.",
+        url: "https://en.wikipedia.org/wiki/Buddhabrot",
+      },
+    ],
+  },
 } as const;
 
 export function squarePlus(z: Complex, c: Complex): Complex {

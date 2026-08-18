@@ -47,6 +47,23 @@ test("the overlay summarizes Wikipedia's Buddhabrot with the article GIF", () =>
   assert.equal(BUDDHABROT_EXPLAIN.gif.articleUrl, "https://en.wikipedia.org/wiki/Buddhabrot");
 });
 
+test("loading paper quotes Wikipedia's first paragraph with numbered references", () => {
+  const paper = BUDDHABROT_EXPLAIN.wikipedia;
+  const lede = paper.sentences.map((sentence) => sentence.text).join(" ");
+  assert.equal(
+    lede,
+    "The Buddhabrot is the probability distribution over the trajectories of points that escape the Mandelbrot fractal. Its name reflects its pareidolic resemblance to classical depictions of Gautama Buddha, seated in a meditation pose with a forehead mark (tika), a traditional oval crown (ushnisha), and ringlet of hair.",
+  );
+  assert.equal(paper.sentences[0].cite, 1);
+  assert.equal(paper.sentences[1].cite, 2);
+  assert.equal(paper.references.length, 2);
+  assert.match(paper.references[0].text, /Green, M\./);
+  assert.match(paper.references[0].text, /Buddhabrot Technique/);
+  assert.match(paper.references[1].text, /Wikipedia/);
+  assert.equal(paper.references[1].url, "https://en.wikipedia.org/wiki/Buddhabrot");
+  assert.match(paper.journal, /fractal/i);
+});
+
 test("the Wikipedia Buddhabrot GIF is vendored next to the app", () => {
   const gif = new URL("../../public/buddhabrot-iterations.gif", import.meta.url);
   assert.ok(existsSync(gif), "public/buddhabrot-iterations.gif missing");

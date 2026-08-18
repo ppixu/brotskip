@@ -3353,7 +3353,7 @@ export default function MandelbrotSkipping() {
   return (
     <main className={`gameShell ${replayMode ? "replayMode" : ""}`}>
       <section className="playfield" aria-label="Mandelbrot rock skipping game">
-        <canvas ref={gpuCanvasRef} className="gpuCanvas" aria-hidden="true" />
+        <canvas ref={gpuCanvasRef} className={`gpuCanvas${intro ? " introStashed" : ""}`} aria-hidden="true" />
         <canvas ref={gameCanvasRef} className="gameCanvas" tabIndex={0} aria-label="Throw ready. Drag the white orb backward and release it across the water" />
         {replayMode && (
           <p className="replayBanner" aria-live="polite">
@@ -3366,6 +3366,7 @@ export default function MandelbrotSkipping() {
             progress={intro.progress}
             fading={introFading}
             ready={intro.ready}
+            rotateRight={tuning.rotateRight}
             onPlay={finishOpening}
           />
         )}
