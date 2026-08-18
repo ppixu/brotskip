@@ -11,7 +11,7 @@ export const DEFAULT_BPM = 90;
 export const TICK_MS = 25;
 export const REVERB_SECONDS = 2.2;
 
-export function softClipCurve(length = 1024, amount = 2.35): Float32Array {
+export function softClipCurve(length = 1024, amount = 2.35): Float32Array<ArrayBuffer> {
   const curve = new Float32Array(length);
   for (let index = 0; index < length; index++) {
     const x = index / (length - 1) * 2 - 1;
@@ -24,9 +24,9 @@ export function buildImpulseResponse(
   sampleRate: number,
   seconds = REVERB_SECONDS,
   decayPower = 2.6,
-): [Float32Array, Float32Array] {
+): [Float32Array<ArrayBuffer>, Float32Array<ArrayBuffer>] {
   const length = Math.max(1, Math.round(sampleRate * seconds));
-  const channels: [Float32Array, Float32Array] = [new Float32Array(length), new Float32Array(length)];
+  const channels: [Float32Array<ArrayBuffer>, Float32Array<ArrayBuffer>] = [new Float32Array(length), new Float32Array(length)];
   let state = 0x2fca9d1;
   for (const data of channels) {
     for (let index = 0; index < length; index++) {
