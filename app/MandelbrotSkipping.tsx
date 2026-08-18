@@ -133,6 +133,9 @@ type Tuning = {
   coordinateAxes: boolean;
   rotateRight: boolean;
   doublePixels: boolean;
+  soundEngine: "melodic" | "resonant";
+  soundVolume: number;
+  soundMuted: boolean;
 };
 
 type OrbitEngine = {
@@ -211,6 +214,9 @@ const DEFAULT_TUNING: Tuning = {
   coordinateAxes: false,
   rotateRight: true,
   doublePixels: false,
+  soundEngine: "melodic",
+  soundVolume: 0.8,
+  soundMuted: false,
 };
 const TUNING_KEY = "mandelbrot-skipping:tuning:v5";
 const SOURCE_RADIUS_PX = 10;
@@ -699,7 +705,11 @@ function sanitizeTuning(value: Partial<Tuning> | null | undefined): Tuning {
     MIN_PREVIEW_ITERATIONS,
     Math.min(MAX_PREVIEW_ITERATIONS, requestedPreview),
   );
-  return { sourceDots, maxDepth, acceleration, linePersist, previewOrbits, previewIterations, skipColors, coordinateAxes, rotateRight, doublePixels };
+  const soundEngine = value?.soundEngine === "resonant" ? "resonant" as const : "melodic" as const;
+  const rawVolume = Number(value?.soundVolume);
+  const soundVolume = Number.isFinite(rawVolume) ? Math.max(0, Math.min(1, rawVolume)) : DEFAULT_TUNING.soundVolume;
+  const soundMuted = value?.soundMuted === true;
+  return { sourceDots, maxDepth, acceleration, linePersist, previewOrbits, previewIterations, skipColors, coordinateAxes, rotateRight, doublePixels, soundEngine, soundVolume, soundMuted };
 }
 
 function loadTuning(): Tuning {
@@ -1573,7 +1583,7 @@ export default function MandelbrotSkipping() {
     let impacts: Array<{ cr: number; ci: number; born: number; index: number }> = [];
     let ripples: Array<{ cr: number; ci: number; born: number; index: number; lifetime?: number; maxRadius?: number }> = [];
     let orbitScores: OrbitScore[] = [];
-    const gameAudio = createGameAudio();
+    const gameAudio = createGameAudio(tuningRef.current.soundEngine);
     gameAudioRef.current = gameAudio;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const gridCanvas = document.createElement("canvas");
@@ -2930,6 +2940,14 @@ export default function MandelbrotSkipping() {
     };
   }, []);
 
+  useEffect(() => {
+    const audio = gameAudioRef.current;
+    if (!audio) return;
+    audio.setMode(tuning.soundEngine);
+    audio.setVolume(tuning.soundVolume);
+    audio.setMuted(tuning.soundMuted);
+  }, [tuning.soundEngine, tuning.soundVolume, tuning.soundMuted]);
+
   const instruction = hud.phase === "ready" ? "Grab the white orb. Pull back and release."
     : hud.phase === "aiming" ? "Aim for deep water · farther pull = faster throw"
     : hud.phase === "flying" ? `Each splash launches a new ${tuning.sourceDots}-point glyph`
@@ -3127,6 +3145,25 @@ export default function MandelbrotSkipping() {
               aria-valuetext={`${tuning.previewIterations} iterations`}
               onChange={(event) => updateTuning({ previewIterations: Number(event.target.value) })} />
           </div>
+          <label className="tuningCheck">
+            <input type="checkbox" checked={tuning.soundEngine === "resonant"}
+              aria-label="Use the resonant pond sound engine instead of the melodic engine"
+              onChange={(event) => updateTuning({ soundEngine: event.target.checked ? "resonant" : "melodic" })} />
+            Resonant sound engine
+          </label>
+          <div className="tuningControl">
+            <span><span>Sound volume</span><output>{Math.round(tuning.soundVolume * 100)}%</output></span>
+            <input type="range" min="0" max="1" step="0.05" value={tuning.soundVolume}
+              aria-label="Sound volume"
+              aria-valuetext={`${Math.round(tuning.soundVolume * 100)} percent`}
+              onChange={(event) => updateTuning({ soundVolume: Number(event.target.value) })} />
+          </div>
+          <label className="tuningCheck">
+            <input type="checkbox" checked={tuning.soundMuted}
+              aria-label="Mute all game sound"
+              onChange={(event) => updateTuning({ soundMuted: event.target.checked })} />
+            Mute sound
+          </label>
           <p className="tuningNote">Higher curve starts slower, then ramps harder. Line persist is time to fade. Aim preview draws each predicted skip from its splash point, halving iterations each skip. Skip colors tint preview and live trails per splash.</p>
         </section>
 
