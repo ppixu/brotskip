@@ -167,8 +167,14 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(intro, /BUDDHABROT_EXPLAIN/);
   assert.match(intro, /wikipedia/);
   assert.match(intro, /introPaper/);
+  assert.doesNotMatch(intro, /introPaperRefs/);
   assert.doesNotMatch(intro, /rotateRight/);
   assert.doesNotMatch(css, /introBuddhaZoom/);
   assert.match(css, /introPaper/);
+  const paperRule = css.match(/\.introPaper \{([^}]+)\}/)?.[1] ?? "";
+  assert.match(paperRule, /color:\s*#fff/);
+  assert.match(paperRule, /background:\s*rgba\(0,\s*0,\s*0,\s*0\.1[0-9]/);
+  assert.doesNotMatch(paperRule, /border:/);
+  assert.doesNotMatch(paperRule, /box-shadow:/);
   assert.doesNotMatch(css, /gpuCanvas\.introStashed/);
 });

@@ -40,13 +40,6 @@ export default function BuddhabrotIntro({
             </span>
           ))}
         </p>
-        <ol className="introPaperRefs">
-          {wikipedia.references.map((reference) => (
-            <li key={reference.n} value={reference.n}>
-              <a href={reference.url} target="_blank" rel="noreferrer">{reference.text}</a>
-            </li>
-          ))}
-        </ol>
       </article>
       {ready && (
         <button type="button" className="introPlay" onClick={onPlay} aria-label="Play">Play</button>
