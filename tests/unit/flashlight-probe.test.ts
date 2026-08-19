@@ -48,8 +48,8 @@ test("display layer gains match intro, play, and aiming", () => {
   assert.deepEqual(displayLayerGains("play"), { pondGain: 0, throwGain: 1, coneEnabled: false });
   assert.deepEqual(displayLayerGains("aiming"), { pondGain: AIMING_POND_GAIN, throwGain: 0, coneEnabled: true });
   assert.equal(displayLayerGains("play").pondGain, 0);
-  assert.ok(displayLayerGains("aiming").pondGain > 0.28);
-  assert.ok(displayLayerGains("aiming").pondGain <= 0.42);
+  assert.ok(displayLayerGains("aiming").pondGain > 0.75);
+  assert.ok(displayLayerGains("aiming").pondGain <= 1.15);
   assert.equal(displayLayerGains("aiming").coneEnabled, true);
 });
 
@@ -210,7 +210,7 @@ test("aiming flashlight shows fading random pond orbits inside the cone", () => 
   assert.ok((AIMING_ATMOSPHERE.pondPersist ?? 0) >= 2);
   assert.ok((AIMING_ATMOSPHERE.pondPersist ?? 0) <= 4);
   assert.ok(AIMING_ATMOSPHERE.liveGain > (INTRO_ATMOSPHERE.liveGain ?? 0));
-  assert.ok(AIMING_ATMOSPHERE.liveGain >= 0.4);
+  assert.ok(AIMING_ATMOSPHERE.liveGain >= 0.8);
   assert.ok(AIMING_ATMOSPHERE.energy >= INTRO_ATMOSPHERE.energy);
   assert.equal(displayLayerGains("aiming").coneEnabled, true);
   assert.equal(displayLayerGains("play").pondGain, 0);

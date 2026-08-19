@@ -110,7 +110,7 @@ export const AIMING_ATMOSPHERE: OrbitAtmosphere = {
   grayscale: true,
   energy: 0.28,
   hiddenSteps: 1,
-  liveGain: 0.55,
+  liveGain: 0.95,
   contrast: 1.22,
   atlasGain: 1,
   pondPersist: 2.8,
@@ -118,7 +118,7 @@ export const AIMING_ATMOSPHERE: OrbitAtmosphere = {
 
 export type DisplayLayerMode = "intro" | "play" | "aiming";
 
-export const AIMING_POND_GAIN = 0.34;
+export const AIMING_POND_GAIN = 0.95;
 export const AIMING_POND_ZOOM = 1.4;
 export const MRI_CYCLE_SECONDS = 12;
 export const MRI_SLICE_HALF = 0.075;
