@@ -13,7 +13,7 @@ import {
   TINY_HOP_STREAK,
   updateOrbitEnd,
 } from "@/lib/orbit-end";
-import { MAX_SKIPS, MIN_SKIPS, sampleSkipCount } from "@/lib/skip-count";
+import { MIN_SKIPS, sampleSkipCount } from "@/lib/skip-count";
 import { allocateSources, allocateSourcesAppend } from "@/lib/orbit-sources";
 import { createBuddhabrotGenerator } from "@/lib/buddhabrot/generator";
 import {
@@ -72,6 +72,8 @@ import {
   throwShareUrl,
   type SharedThrow,
 } from "@/lib/throw-share";
+import { COVERAGE_GRID, COVERAGE_WORDS, orbitShape } from "@/lib/orbit-shape";
+import { createGameAudio, type GameAudio } from "@/lib/audio/index";
 
 type Phase = "ready" | "aiming" | "flying" | "resolving" | "result";
 
@@ -219,9 +221,6 @@ const HIDDEN_INITIAL_STEPS = 0;
 const CURVE_SEGMENTS = 6;
 const LINE_SEGMENT_BUDGET = 25_000;
 const LINE_SEGMENT_CAPACITY = LINE_SEGMENT_BUDGET + MAX_SOURCES;
-const COVERAGE_GRID = 32;
-const COVERAGE_WORDS = COVERAGE_GRID * COVERAGE_GRID / 32;
-const FULL_GRID_VARIANCE = (COVERAGE_GRID * COVERAGE_GRID - 1) / 12;
 const SCORE_SAMPLE_STRIDE = 4;
 const MAX_HOP_SCREEN_MULTIPLIER = 2;
 const SCORE_KEY = "mandelbrot-skipping:scores:v2";
@@ -233,13 +232,6 @@ const INTRO_POND_CENTER = { x: -0.55, y: 0 };
 const INTRO_VIEW_HALF_Y = 1.52;
 const SCORE_HALF_X = 1.6;
 const SCORE_HALF_Y = 1.15;
-const SONIC_SCALES = [
-  [0, 2, 3, 5, 7, 9, 10], // dorian
-  [0, 1, 4, 6, 7, 10], // crystalline synthetic
-  [0, 2, 4, 6, 8, 10], // whole tone
-  [0, 3, 5, 7, 10], // minor pentatonic
-  [0, 1, 5, 7, 8], // in-sen
-] as const;
 
 const computeShader = /* wgsl */ `
 struct Params {
@@ -646,36 +638,6 @@ fn coneMask(uv: vec2f, view: DisplayView) -> f32 {
 
 function formatNumber(value: number) {
   return Math.round(value).toLocaleString();
-}
-
-function orbitShape(orbit: OrbitScore) {
-  const n = orbit.distinct;
-  if (!n) return { area: 0, coverage: 0, spread: 0, elongation: 0, orientation: 0, density: 0, centroidX: 0, centroidY: 0 };
-  const meanX = orbit.sumX / n;
-  const meanY = orbit.sumY / n;
-  const varianceX = Math.max(0, orbit.sumXX / n - meanX * meanX);
-  const varianceY = Math.max(0, orbit.sumYY / n - meanY * meanY);
-  const covariance = orbit.sumXY / n - meanX * meanY;
-  const determinant = Math.max(0, varianceX * varianceY - covariance * covariance);
-  const discriminant = Math.sqrt((varianceX - varianceY) ** 2 + 4 * covariance * covariance);
-  const major = Math.max(0, (varianceX + varianceY + discriminant) * .5);
-  const minor = Math.max(0, (varianceX + varianceY - discriminant) * .5);
-  const area = Math.min(1, Math.sqrt(determinant) / FULL_GRID_VARIANCE);
-  const coverage = Math.min(1, Math.log2(1 + n) / Math.log2(1 + COVERAGE_GRID * COVERAGE_GRID));
-  const elongation = major > .001 ? Math.min(1, 1 - Math.sqrt(minor / major)) : 0;
-  const orientation = .5 * Math.atan2(2 * covariance, varianceX - varianceY);
-  const estimatedCells = Math.max(1, Math.min(COVERAGE_GRID * COVERAGE_GRID, 4 * Math.PI * Math.sqrt(determinant)));
-  const density = Math.min(1, n / estimatedCells);
-  return {
-    area,
-    coverage,
-    spread: Math.sqrt(area),
-    elongation,
-    orientation,
-    density,
-    centroidX: meanX / (COVERAGE_GRID - 1) * 2 - 1,
-    centroidY: meanY / (COVERAGE_GRID - 1) * 2 - 1,
-  };
 }
 
 function scoreForOrbit(orbit: OrbitScore, depth: number) {
@@ -1394,6 +1356,7 @@ export default function MandelbrotSkipping() {
   const gpuCanvasRef = useRef<HTMLCanvasElement>(null);
   const gameCanvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<OrbitEngine | null>(null);
+  const gameAudioRef = useRef<GameAudio | null>(null);
   const gpuPromiseRef = useRef<Promise<GpuContext | null> | null>(null);
   const viewRef = useRef<ViewTransform>({ centerX: INTRO_POND_CENTER.x, centerY: INTRO_POND_CENTER.y, halfY: INTRO_VIEW_HALF_Y });
   const restartRef = useRef<() => void>(() => {});
@@ -1610,41 +1573,8 @@ export default function MandelbrotSkipping() {
     let impacts: Array<{ cr: number; ci: number; born: number; index: number; glyph: number }> = [];
     let ripples: Array<{ cr: number; ci: number; born: number; index: number; lifetime?: number; maxRadius?: number }> = [];
     let orbitScores: OrbitScore[] = [];
-    let audio: AudioContext | null = null;
-    let iterationSynth: {
-      carrier: OscillatorNode;
-      overtone: OscillatorNode;
-      sideband: OscillatorNode;
-      sub: OscillatorNode;
-      modulator: OscillatorNode;
-      pulse: OscillatorNode;
-      carrierGain: GainNode;
-      overtoneGain: GainNode;
-      sidebandGain: GainNode;
-      subGain: GainNode;
-      modGain: GainNode;
-      pulseGain: GainNode;
-      noise: AudioBufferSourceNode;
-      noiseGain: GainNode;
-      noiseBurstGain: GainNode;
-      noiseFilter: BiquadFilterNode;
-      resonatorGain: GainNode;
-      filter: BiquadFilterNode;
-      drive: GainNode;
-      delay: DelayNode;
-      feedback: GainNode;
-      wet: GainNode;
-      dry: GainNode;
-      gain: GainNode;
-      pan: StereoPannerNode;
-      shapeVoices: Array<{ oscillator: OscillatorNode; gain: GainNode; pan: StereoPannerNode }>;
-    } | null = null;
-    let lastSonification = 0;
-    let lastIterationPulse = 0;
-    let lastAudibleDepth = 0;
-    let lastAudibleCoverage = 0;
-    let pulseCounter = 0;
-    const lastShapeCoverage = new Map<number, number>();
+    const gameAudio = createGameAudio();
+    gameAudioRef.current = gameAudio;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const gridCanvas = document.createElement("canvas");
     const gridContext = gridCanvas.getContext("2d");
@@ -1749,358 +1679,6 @@ export default function MandelbrotSkipping() {
       }
     }
 
-    function ensureAudio() {
-      audio ||= new AudioContext();
-      if (audio.state === "suspended") void audio.resume();
-      return audio;
-    }
-
-    function tone(frequency: number, duration = 0.08, volume = 0.05) {
-      try {
-        const context = ensureAudio();
-        const oscillator = context.createOscillator();
-        const gain = context.createGain();
-        oscillator.type = "triangle";
-        oscillator.frequency.value = frequency;
-        gain.gain.setValueAtTime(volume, context.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + duration);
-        oscillator.connect(gain).connect(context.destination);
-        oscillator.start();
-        oscillator.stop(context.currentTime + duration);
-      } catch { /* audio is optional */ }
-    }
-
-    function ensureIterationSynth() {
-      if (iterationSynth) return iterationSynth;
-      const context = ensureAudio();
-      const carrier = context.createOscillator();
-      const overtone = context.createOscillator();
-      const sideband = context.createOscillator();
-      const sub = context.createOscillator();
-      const modulator = context.createOscillator();
-      const pulse = context.createOscillator();
-      const carrierGain = context.createGain();
-      const overtoneGain = context.createGain();
-      const sidebandGain = context.createGain();
-      const subGain = context.createGain();
-      const modGain = context.createGain();
-      const pulseGain = context.createGain();
-      const filter = context.createBiquadFilter();
-      const drive = context.createGain();
-      const shaper = context.createWaveShaper();
-      const delay = context.createDelay(.4);
-      const feedback = context.createGain();
-      const wet = context.createGain();
-      const dry = context.createGain();
-      const pan = context.createStereoPanner();
-      const gain = context.createGain();
-      const compressor = context.createDynamicsCompressor();
-      const noiseGain = context.createGain();
-      const noiseBurstGain = context.createGain();
-      const noiseFilter = context.createBiquadFilter();
-      const resonatorGain = context.createGain();
-      const noise = context.createBufferSource();
-      const shapeVoices = Array.from({ length: MAX_SKIPS }, (_, index) => {
-        const oscillator = context.createOscillator();
-        const voiceGain = context.createGain();
-        const voicePan = context.createStereoPanner();
-        oscillator.type = (["sine", "triangle", "sine", "sawtooth", "triangle", "square", "sine"] as OscillatorType[])[index % GLYPH_COUNT];
-        oscillator.frequency.value = 110;
-        voiceGain.gain.value = .0001;
-        oscillator.connect(voiceGain).connect(voicePan).connect(filter);
-        return { oscillator, gain: voiceGain, pan: voicePan };
-      });
-      const noiseBuffer = context.createBuffer(1, Math.round(context.sampleRate * .75), context.sampleRate);
-      const noiseData = noiseBuffer.getChannelData(0);
-      let noiseState = 0x51f15e;
-      for (let index = 0; index < noiseData.length; index++) {
-        noiseState ^= noiseState << 13;
-        noiseState ^= noiseState >>> 17;
-        noiseState ^= noiseState << 5;
-        noiseData[index] = ((noiseState >>> 0) / 2147483648 - 1) * .55;
-      }
-      noise.buffer = noiseBuffer;
-      noise.loop = true;
-      carrier.type = "sine";
-      overtone.type = "triangle";
-      sideband.type = "sawtooth";
-      sub.type = "sine";
-      modulator.type = "sine";
-      pulse.type = "sine";
-      carrierGain.gain.value = .42;
-      overtoneGain.gain.value = .16;
-      sidebandGain.gain.value = .02;
-      subGain.gain.value = .08;
-      modulator.frequency.value = 1.5;
-      modGain.gain.value = 12;
-      pulseGain.gain.value = .0001;
-      noiseGain.gain.value = .0001;
-      noiseBurstGain.gain.value = .0001;
-      noiseFilter.type = "bandpass";
-      noiseFilter.frequency.value = 900;
-      noiseFilter.Q.value = 5;
-      resonatorGain.gain.value = .2;
-      filter.type = "lowpass";
-      filter.frequency.value = 420;
-      filter.Q.value = 2.2;
-      drive.gain.value = 1;
-      const saturationCurve = new Float32Array(1024);
-      for (let index = 0; index < saturationCurve.length; index++) {
-        const x = index / (saturationCurve.length - 1) * 2 - 1;
-        saturationCurve[index] = Math.tanh(x * 2.35) / Math.tanh(2.35);
-      }
-      shaper.curve = saturationCurve;
-      shaper.oversample = "2x";
-      gain.gain.value = .0001;
-      compressor.threshold.value = -27;
-      compressor.knee.value = 18;
-      compressor.ratio.value = 5;
-      delay.delayTime.value = .08;
-      feedback.gain.value = .1;
-      wet.gain.value = .08;
-      dry.gain.value = .9;
-      modulator.connect(modGain);
-      modGain.connect(carrier.detune);
-      modGain.connect(overtone.detune);
-      modGain.connect(sideband.detune);
-      carrier.connect(carrierGain).connect(filter);
-      overtone.connect(overtoneGain).connect(filter);
-      sideband.connect(sidebandGain).connect(filter);
-      sub.connect(subGain).connect(filter);
-      pulse.connect(pulseGain).connect(filter);
-      noise.connect(noiseGain).connect(noiseFilter);
-      noise.connect(noiseBurstGain).connect(noiseFilter);
-      noiseFilter.connect(resonatorGain).connect(pan);
-      resonatorGain.connect(delay);
-      filter.connect(drive).connect(shaper);
-      shaper.connect(dry).connect(pan);
-      shaper.connect(delay);
-      delay.connect(feedback).connect(delay);
-      delay.connect(wet).connect(pan);
-      pan.connect(gain).connect(compressor).connect(context.destination);
-      carrier.start();
-      overtone.start();
-      sideband.start();
-      sub.start();
-      modulator.start();
-      pulse.start();
-      noise.start();
-      shapeVoices.forEach((voice) => voice.oscillator.start());
-      iterationSynth = {
-        carrier, overtone, sideband, sub, modulator, pulse,
-        carrierGain, overtoneGain, sidebandGain, subGain, modGain, pulseGain,
-        noise, noiseGain, noiseBurstGain, noiseFilter, resonatorGain,
-        filter, drive, delay, feedback, wet, dry, gain, pan, shapeVoices,
-      };
-      return iterationSynth;
-    }
-
-    function updateIterationSound(now: number) {
-      if (!audio) return;
-      const shouldPlay = (phase === "flying" || phase === "resolving") && orbitScores.length > 0;
-      if (!shouldPlay) {
-        if (iterationSynth) iterationSynth.gain.gain.setTargetAtTime(.0001, audio.currentTime, .08);
-        return;
-      }
-      if (now - lastSonification < 42) return;
-      lastSonification = now;
-      const synth = ensureIterationSynth();
-      const context = audio;
-      const activeCount = orbitScores.reduce((count, orbit) => count + (orbit.resolved ? 0 : 1), 0);
-      const activeRatio = activeCount / orbitScores.length;
-      const deepest = orbitScores.reduce((best, orbit) => Math.max(best, orbit.shownDepth), 0);
-      const depthBand = Math.log2(deepest + 1);
-      const shapes = orbitScores.map(orbitShape);
-      const shapeGroups = Array.from(new Set(orbitScores.map((orbit) => orbit.skip))).sort((a, b) => a - b).map((skip) => {
-        const indices = orbitScores.flatMap((orbit, index) => orbit.skip === skip ? [index] : []);
-        const groupShapes = indices.map((index) => shapes[index]);
-        const average = (key: "area" | "spread" | "elongation" | "density" | "centroidX" | "centroidY") =>
-          groupShapes.reduce((sum, shape) => sum + shape[key], 0) / Math.max(1, groupShapes.length);
-        const orientationSin = groupShapes.reduce((sum, shape) => sum + Math.sin(shape.orientation * 2), 0) / Math.max(1, groupShapes.length);
-        const orientationCos = groupShapes.reduce((sum, shape) => sum + Math.cos(shape.orientation * 2), 0) / Math.max(1, groupShapes.length);
-        const coverage = indices.reduce((sum, index) => sum + orbitScores[index].distinct, 0);
-        const previousCoverage = lastShapeCoverage.get(skip) || 0;
-        const coverageMotion = Math.max(0, coverage - previousCoverage);
-        lastShapeCoverage.set(skip, coverage);
-        return {
-          skip,
-          glyph: orbitScores[indices[0]].glyph,
-          area: average("area"),
-          spread: average("spread"),
-          elongation: average("elongation"),
-          density: average("density"),
-          centroidX: average("centroidX"),
-          centroidY: average("centroidY"),
-          orientation: .5 * Math.atan2(orientationSin, orientationCos),
-          coverage,
-          presence: Math.min(1, Math.log2(coverage + 1) / 10),
-          activity: Math.min(1, Math.log2(coverageMotion + 1) / 5),
-          deepest: indices.reduce((best, index) => Math.max(best, orbitScores[index].shownDepth), 0),
-        };
-      });
-      const visibleShapeGroups = shapeGroups.filter((group) => group.coverage > 0);
-      const shapeCountEnergy = visibleShapeGroups.length / MAX_SKIPS;
-      const formationGroup = shapeGroups.reduce((best, group) => group.activity > best.activity ? group : best, shapeGroups[0]);
-      const formationActivity = formationGroup?.activity || 0;
-      const averageShape = (key: "area" | "spread" | "elongation" | "density" | "centroidX" | "centroidY") =>
-        shapes.reduce((sum, shape) => sum + shape[key], 0) / shapes.length;
-      const shapeVariance = (key: "spread" | "elongation" | "density", mean: number) =>
-        shapes.reduce((sum, shape) => sum + (shape[key] - mean) ** 2, 0) / shapes.length;
-      const area = averageShape("area");
-      const spread = averageShape("spread");
-      const elongation = averageShape("elongation");
-      const density = averageShape("density");
-      const centroidX = averageShape("centroidX");
-      const centroidY = averageShape("centroidY");
-      const dispersion = Math.min(1, Math.sqrt(shapes.reduce((sum, shape) =>
-        sum + (shape.centroidX - centroidX) ** 2 + (shape.centroidY - centroidY) ** 2, 0) / shapes.length * .5));
-      const featureVariance = Math.min(1, Math.sqrt(
-        shapeVariance("spread", spread) + shapeVariance("elongation", elongation) + shapeVariance("density", density),
-      ));
-      const orientationSin = shapes.reduce((sum, shape) => sum + Math.sin(shape.orientation * 2), 0) / shapes.length;
-      const orientationCos = shapes.reduce((sum, shape) => sum + Math.cos(shape.orientation * 2), 0) / shapes.length;
-      const orientation = .5 * Math.atan2(orientationSin, orientationCos);
-      const orientationCoherence = Math.min(1, Math.hypot(orientationSin, orientationCos));
-      const coverage = orbitScores.reduce((sum, orbit) => sum + orbit.distinct, 0);
-      const coverageRatio = Math.min(1, coverage / Math.max(1, orbitScores.length * 96));
-      const instability = orbitScores.reduce((sum, orbit) => sum + Math.min(1, Math.hypot(orbit.zr, orbit.zi) / 2), 0) / orbitScores.length;
-      const glyphDensity = Math.min(1, orbitScores.length / Math.max(1, rock.skips * MAX_SOURCE_DOTS));
-      const dominantIndex = orbitScores.reduce((best, orbit, index) => {
-        const weight = orbit.distinct * (.35 + shapes[index].spread) * (.6 + shapes[index].density);
-        const bestWeight = orbitScores[best].distinct * (.35 + shapes[best].spread) * (.6 + shapes[best].density);
-        return weight > bestWeight ? index : best;
-      }, 0);
-      const dominant = shapes[dominantIndex];
-      const symmetry = Math.min(1, (1 - dominant.elongation) * .58 + orientationCoherence * .42);
-      const chaos = Math.min(1, featureVariance * 1.7 + (1 - density) * .24 + instability * .28);
-      const coverageMotion = Math.max(0, coverage - lastAudibleCoverage);
-      const growth = Math.min(1, Math.log2(coverageMotion + 1) / 4.5);
-      lastAudibleCoverage = coverage;
-      const travelSamples = orbitScores
-        .filter((orbit) => Number.isFinite(orbit.stepDistance) && orbit.stepDistance > 0)
-        .map((orbit) => ({
-          proximity: Math.max(0, Math.min(1, (-Math.log2(Math.max(orbit.stepDistance, 1e-12)) - .25) / 15)),
-          contraction: Math.max(0, Math.min(1, orbit.distanceContraction / 1.5)),
-        }));
-      const upperQuantile = (values: number[]) => {
-        if (!values.length) return 0;
-        values.sort((a, b) => a - b);
-        return values[Math.min(values.length - 1, Math.floor(values.length * .8))];
-      };
-      // The upper quantile lets a visible tightening family pull the pitch up
-      // without one numerical outlier hijacking the complete chord.
-      const distanceProximity = upperQuantile(travelSamples.map((sample) => sample.proximity));
-      const contractionSignal = upperQuantile(travelSamples.map((sample) => sample.contraction));
-      const distancePitchRatio = 2 ** ((distanceProximity * 14 + contractionSignal * 3) / 12);
-
-      // Landing position selects a stable musical palette. Live topology then
-      // moves independent voices through it instead of collapsing to one mean.
-      const origin = orbitScores[0];
-      const paletteSeed = Math.abs(Math.round((origin.cr + 2.2) * 137 + (origin.ci + 1.5) * 211));
-      const scale = SONIC_SCALES[paletteSeed % SONIC_SCALES.length];
-      const rootMidi = 34 + (paletteSeed * 7) % 12;
-      const frequencyForDegree = (degree: number) => {
-        const rounded = Math.round(degree);
-        const wrapped = ((rounded % scale.length) + scale.length) % scale.length;
-        const octave = Math.floor(rounded / scale.length);
-        const midi = rootMidi + scale[wrapped] + octave * 12;
-        return 440 * 2 ** ((midi - 69) / 12);
-      };
-      const topologyDegree = depthBand * .20 + dominant.spread * 3.7 + dominant.elongation * 2.8
-        + (dominant.orientation / Math.PI + .5) * 2.4 + dominant.centroidY * 1.6;
-      const chordWidth = 1 + Math.round(dispersion * 4 + featureVariance * 3 + shapeCountEnergy * 2);
-      const frequency = Math.min(900, frequencyForDegree(topologyDegree) * distancePitchRatio);
-      const overtoneFrequency = Math.min(1900,
-        frequencyForDegree(topologyDegree + 2 + Math.round(symmetry * 2)) * distancePitchRatio);
-      const sidebandFrequency = Math.min(2400,
-        frequencyForDegree(topologyDegree + chordWidth + 3) * distancePitchRatio);
-      const cutoff = Math.min(7600,
-        150 + area * 2700 + density * 1500 + depthBand * 48 + chaos * 1500 + distanceProximity * 1800);
-      const level = Math.min(.045,
-        .007 + activeRatio * .010 + spread * .007 + coverageRatio * .006 + glyphDensity * .003
-        + growth * .004 + shapeCountEnergy * .006 + formationActivity * .004);
-      const panning = Math.max(-.76, Math.min(.76,
-        centroidX * .52 + Math.sin(now * .001 * (.22 + dispersion * 1.7) + orientation) * dispersion * .34,
-      ));
-      const at = context.currentTime;
-      const glyphDegrees = [0, 2, 1, 3, 4, 5, 6];
-      const degreeForGroup = (group: (typeof shapeGroups)[number]) =>
-        Math.log2(group.deepest + 1) * .16 + glyphDegrees[group.glyph]
-        + group.spread * 3.2 + group.elongation * 2.4
-        + (group.orientation / Math.PI + .5) * 2 + group.centroidY * 1.4;
-      synth.shapeVoices.forEach((voice, voiceIndex) => {
-        const group = shapeGroups.find((candidate) => candidate.skip === voiceIndex + 1);
-        if (!group || group.coverage === 0) {
-          voice.gain.gain.setTargetAtTime(.0001, at, .08);
-          return;
-        }
-        const waveforms: OscillatorType[] = ["sine", "triangle", "sine", "sawtooth", "triangle", "square", "sine"];
-        voice.oscillator.type = waveforms[group.glyph];
-        voice.oscillator.frequency.setTargetAtTime(
-          Math.min(1800, frequencyForDegree(degreeForGroup(group)) * distancePitchRatio), at, .065);
-        voice.gain.gain.setTargetAtTime(
-          .002 + group.presence * .028 + group.activity * .070 + shapeCountEnergy * .004, at, .045);
-        voice.pan.pan.setTargetAtTime(
-          Math.max(-.88, Math.min(.88, group.centroidX * .72 + Math.sin(group.orientation) * .15)), at, .07);
-      });
-      synth.carrier.frequency.setTargetAtTime(frequency, at, .055);
-      synth.overtone.frequency.setTargetAtTime(overtoneFrequency, at, .075);
-      synth.sideband.frequency.setTargetAtTime(sidebandFrequency, at, .085);
-      synth.sub.frequency.setTargetAtTime(Math.max(28, frequency * .5), at, .10);
-      synth.carrierGain.gain.setTargetAtTime(.16 + symmetry * .36, at, .10);
-      synth.overtoneGain.gain.setTargetAtTime(.035 + density * .25 + orientationCoherence * .08, at, .10);
-      synth.sidebandGain.gain.setTargetAtTime(.008 + dominant.elongation * .13 + chaos * .075, at, .10);
-      synth.subGain.gain.setTargetAtTime(.025 + area * .16 + symmetry * .035, at, .12);
-      synth.modulator.frequency.setTargetAtTime(
-        .18 + density * 3.6 + dispersion * 4.2 + activeRatio + contractionSignal * 2.4, at, .12);
-      synth.modGain.gain.setTargetAtTime(2 + chaos * 74 + featureVariance * 46 + contractionSignal * 18, at, .11);
-      synth.filter.frequency.setTargetAtTime(cutoff, at, .08);
-      synth.filter.Q.setTargetAtTime(.8 + dominant.elongation * 7.2 + symmetry * 2.6, at, .09);
-      synth.drive.gain.setTargetAtTime(.62 + chaos * 1.25 + density * .42, at, .10);
-      synth.noiseGain.gain.setTargetAtTime(.00015 + chaos * .010 + growth * .004, at, .07);
-      synth.noiseFilter.frequency.setTargetAtTime(Math.min(7200, frequency * (2.2 + density * 5.4 + dispersion * 2.5)), at, .08);
-      synth.noiseFilter.Q.setTargetAtTime(1.5 + density * 10 + orientationCoherence * 5, at, .09);
-      synth.resonatorGain.gain.setTargetAtTime(.10 + chaos * .28 + growth * .24, at, .09);
-      synth.delay.delayTime.setTargetAtTime(.024 + area * .12 + dispersion * .12, at, .12);
-      synth.feedback.gain.setTargetAtTime(.04 + dominant.elongation * .18 + dispersion * .18, at, .14);
-      synth.wet.gain.setTargetAtTime(.025 + spread * .10 + dispersion * .13 + shapeCountEnergy * .045, at, .14);
-      synth.dry.gain.setTargetAtTime(.90 - chaos * .14, at, .14);
-      synth.pan.pan.setTargetAtTime(panning, at, .08);
-      synth.gain.gain.setTargetAtTime(level * (phase === "resolving" ? .76 : 1), at, .09);
-
-      // A topology-derived pulse sequencer adds pitched FM strikes and modal
-      // noise bursts. Different landing palettes create different motifs.
-      const depthMotion = deepest - lastAudibleDepth;
-      const pulseInterval = Math.max(42,
-        310 - Math.min(155, depthBand * 11) - growth * 88 - chaos * 42
-        - distanceProximity * 72 - formationActivity * 92);
-      if ((depthMotion > 0 || formationActivity > .08) && now - lastIterationPulse >= pulseInterval) {
-        const patternStep = 1 + (paletteSeed + Math.round(dominant.elongation * 5)) % Math.max(2, scale.length - 1);
-        const motifRoot = formationActivity > .08 ? degreeForGroup(formationGroup) : topologyDegree;
-        const motifDegree = motifRoot + (pulseCounter * patternStep) % scale.length + (pulseCounter % 4 === 3 ? chordWidth : 0);
-        const accentCycle = 3 + paletteSeed % 5;
-        const accent = pulseCounter % accentCycle === 0 ? 1 : .54 + symmetry * .22;
-        const pulseLevel = Math.min(.88,
-          (.18 + area * .18 + density * .18 + growth * .18 + chaos * .10 + formationActivity * .28) * accent);
-        const pulseLength = .028 + area * .065 + symmetry * .04 + dispersion * .03
-          + (formationGroup?.spread || 0) * .035;
-        synth.pulse.frequency.setValueAtTime(
-          Math.min(2600, frequencyForDegree(motifDegree + scale.length) * distancePitchRatio), at);
-        synth.pulseGain.gain.cancelScheduledValues(at);
-        synth.pulseGain.gain.setValueAtTime(.0001, at);
-        synth.pulseGain.gain.exponentialRampToValueAtTime(pulseLevel, at + .008);
-        synth.pulseGain.gain.exponentialRampToValueAtTime(.0001, at + pulseLength);
-        const burstLevel = Math.min(.48, (.035 + chaos * .24 + growth * .18) * accent);
-        synth.noiseBurstGain.gain.cancelScheduledValues(at);
-        synth.noiseBurstGain.gain.setValueAtTime(.0001, at);
-        synth.noiseBurstGain.gain.exponentialRampToValueAtTime(Math.max(.0002, burstLevel), at + .004);
-        synth.noiseBurstGain.gain.exponentialRampToValueAtTime(.0001, at + .025 + dispersion * .06);
-        lastIterationPulse = now;
-        lastAudibleDepth = deepest;
-        pulseCounter += 1;
-      }
-    }
-
     function updateHud(force = false) {
       const now = performance.now();
       if (!force && now - lastHud < 33) return;
@@ -2153,11 +1731,7 @@ export default function MandelbrotSkipping() {
       introReady = false;
       lastIntroProgress = 0;
       shapeOffset = Math.floor(Math.random() * GLYPH_COUNT);
-      lastShapeCoverage.clear();
-      lastAudibleDepth = 0;
-      lastAudibleCoverage = 0;
-      lastIterationPulse = 0;
-      pulseCounter = 0;
+      gameAudio.reset();
       const a = anchor();
       pull = { ...a };
       rock = { x: a.x, y: a.y, vx: 0, vy: 0, z: 0, vz: 0, spin: 0, skips: 0, bounceAge: 10 };
@@ -2193,7 +1767,8 @@ export default function MandelbrotSkipping() {
       rock.skips = 0;
       rock.bounceAge = 10;
       phase = "flying";
-      tone(170, 0.12, 0.07);
+      gameAudio.init();
+      gameAudio.throwStart();
       flashlightDirty = true;
       updateHud(true);
     }
@@ -2252,7 +1827,7 @@ export default function MandelbrotSkipping() {
       }
       if (gpu) engineRef.current?.spawnAppend(sources, index);
       if (!introActiveRef.current) {
-        tone(320 + index * 62, 0.1, 0.06);
+        gameAudio.splash(index, glyph, width > 0 ? x / width * 2 - 1 : 0);
         if ("vibrate" in navigator) navigator.vibrate?.(12);
       }
       updateHud(true);
@@ -2304,7 +1879,7 @@ export default function MandelbrotSkipping() {
         history.replaceState(null, "", throwShareUrl(window.location.href, currentShareRef.current));
       }
       setHud({ phase, score: total, skips: rock.skips, deepest, progress: 1, coverage, spread });
-      tone(720, 0.18, 0.07);
+      gameAudio.finish(Math.min(1, total / 2_000_000));
     }
 
     function advanceOrbits(now: number, elapsed: number) {
@@ -3191,7 +2766,7 @@ export default function MandelbrotSkipping() {
       maybeOpeningThrow(now);
       spawnIntroBackgroundOrbits(now);
       advanceOrbits(now, elapsed);
-      updateIterationSound(now);
+      gameAudio.update(orbitScores, phase, now);
       render(now);
       frame = requestAnimationFrame(loop);
     }
@@ -3234,6 +2809,7 @@ export default function MandelbrotSkipping() {
       pointerId = event.pointerId;
       canvas.setPointerCapture(pointerId);
       if (phase === "ready" && Math.hypot(point.x - rock.x, point.y - rock.y) <= 48) {
+        gameAudio.init();
         pointerMode = "aim";
         phase = "aiming";
         plannedSkips = sampleSkipCount(Math.random);
@@ -3381,7 +2957,8 @@ export default function MandelbrotSkipping() {
       canvas.removeEventListener("pointerup", release);
       canvas.removeEventListener("pointercancel", cancelAim);
       window.removeEventListener("keydown", onKeyDown);
-      audio?.close();
+      gameAudioRef.current = null;
+      gameAudio.destroy();
       playThrowRef.current = null;
     };
   }, []);
