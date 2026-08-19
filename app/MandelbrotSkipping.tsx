@@ -78,6 +78,7 @@ import {
 } from "@/lib/throw-share";
 import { COVERAGE_GRID, COVERAGE_WORDS, orbitShape } from "@/lib/orbit-shape";
 import { createGameAudio, finishComplexity, type GameAudio } from "@/lib/audio/index";
+import { projectSacredBall, SACRED_BALL_RADIUS } from "@/lib/sacred-ball";
 
 type Phase = "ready" | "aiming" | "flying" | "resolving" | "result";
 
@@ -2471,16 +2472,42 @@ export default function MandelbrotSkipping() {
       const scaleY = 1 - bounce * .09;
       ctx.save();
       ctx.fillStyle = `rgba(0, 4, 9, ${0.30 * (1 - heightT * 0.72)})`;
-      ctx.beginPath(); ctx.ellipse(drawX, body.y, 10.5 * (1 + Math.max(0, bounce) * .08), 3.5, 0, 0, TAU); ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(
+        drawX,
+        body.y,
+        SACRED_BALL_RADIUS * 1.08 * (1 + Math.max(0, bounce) * .08),
+        SACRED_BALL_RADIUS * 0.36,
+        0,
+        0,
+        TAU,
+      );
+      ctx.fill();
       ctx.restore();
       ctx.save();
       ctx.translate(drawX, drawY);
       ctx.scale(scaleX, scaleY);
-      ctx.rotate(body.spin * .18);
-      const previewDots = introActiveRef.current
-        ? INTRO_SOURCE_DOTS
-        : Math.max(1, Math.round(tuningRef.current.sourceDots / 3));
-      drawSacredGlyph(nextShape, previewDots, "rgba(255, 255, 255, .34)", "#ffffff");
+      // Face the cuboctahedron down its 3-fold axis so the rest pose is Metatron’s hexagon, then tumble.
+      const yaw = Math.PI / 4 + body.spin * 0.62 + nextShape * 0.22;
+      const pitch = Math.asin(1 / Math.sqrt(3)) + (reduceMotion ? 0 : body.spin * 0.38);
+      const ball = projectSacredBall(yaw, pitch, SACRED_BALL_RADIUS);
+      for (const edge of [...ball.edges].sort((a, b) => a.depth - b.depth)) {
+        const near = (edge.depth + 1) / 2;
+        ctx.strokeStyle = `rgba(255, 255, 255, ${(0.10 + 0.28 * near).toFixed(3)})`;
+        ctx.lineWidth = 0.55;
+        ctx.beginPath();
+        ctx.moveTo(edge.ax, edge.ay);
+        ctx.lineTo(edge.bx, edge.by);
+        ctx.stroke();
+      }
+      for (const point of [...ball.points].sort((a, b) => a.depth - b.depth)) {
+        const near = (point.depth + 1) / 2;
+        const radius = (point.center ? 0.65 : 0.8) + 0.45 * near;
+        ctx.fillStyle = `rgba(255, 255, 255, ${(0.30 + 0.70 * near).toFixed(3)})`;
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, radius, 0, TAU);
+        ctx.fill();
+      }
       ctx.restore();
     }
 

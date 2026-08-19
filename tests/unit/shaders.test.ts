@@ -247,7 +247,19 @@ test("every skip stamps a tinted glyph and later skips keep iterating", () => {
   assert.match(source, /IMPACT_LABEL_FADE_MS/);
   assert.match(source, /SOURCE_RADIUS_PX \+ /);
   assert.doesNotMatch(source, /fillText\(String\(impact\.index\), point\.x, point\.y/);
-  assert.match(source, /previewDots[\s\S]*sourceDots \/ 3/);
+  assert.match(source, /drawSacredGlyph\(/);
+});
+
+test("the flying rock is a small rotating 3D sacred geometry ball", () => {
+  const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
+  assert.match(source, /projectSacredBall\(/);
+  assert.match(source, /SACRED_BALL_RADIUS/);
+  assert.match(source, /function drawFlyingRock/);
+  const flyingRock = source.match(/function drawFlyingRock\([\s\S]*?\n {4}\}/)?.[0] ?? "";
+  assert.match(flyingRock, /projectSacredBall\(/);
+  assert.doesNotMatch(flyingRock, /drawSacredGlyph\(/);
+  assert.doesNotMatch(flyingRock, /previewDots/);
+  assert.match(flyingRock, /depth/);
 });
 
 test("throw orbits stay alive across the pond even when they leave the camera", () => {
