@@ -11,11 +11,9 @@ function paperWords(text: string) {
 }
 
 export default function BuddhabrotIntro({
-  progress, fading, ready, onPlay,
+  fading, onPlay,
 }: {
-  progress: number;
   fading: boolean;
-  ready?: boolean;
   onPlay?: () => void;
 }) {
   const { wikipedia } = BUDDHABROT_EXPLAIN;
@@ -37,7 +35,6 @@ export default function BuddhabrotIntro({
           />
           <span>True z² + c Buddhabrot</span>
         </label>
-        {!ready && <span className="liveProgress"><i style={{ width: `${Math.max(2, progress * 100)}%` }} /></span>}
       </div>
       <article className="introPaper" aria-label="Buddhabrot, from Wikipedia">
         <p className="introPaperJournal">{wikipedia.journal}</p>
@@ -56,9 +53,7 @@ export default function BuddhabrotIntro({
           ))}
         </p>
       </article>
-      {ready && (
-        <button type="button" className="introPlay" onClick={onPlay} aria-label="Play">Play</button>
-      )}
+      <button type="button" className="introPlay" onClick={onPlay} aria-label="Play">Play</button>
     </div>
   );
 }

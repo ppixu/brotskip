@@ -28,7 +28,6 @@ import {
   INTRO_ATMOSPHERE,
   INTRO_BACKGROUND_SPAWN_MS,
   INTRO_MAX_DEPTH,
-  INTRO_SETTLE_MS,
   INTRO_SOURCE_DOTS,
   INTRO_THROW_STAGGER_MS,
   INTRO_THROWS_PER_WAVE,
@@ -1383,7 +1382,7 @@ export default function MandelbrotSkipping() {
   const spectatorRef = useRef(false);
   const savedTuningRef = useRef<Tuning | null>(null);
   const throwAgainRef = useRef<() => void>(() => {});
-  const [intro, setIntro] = useState<{ progress: number; ready?: boolean } | null>(null);
+  const [intro, setIntro] = useState(false);
   const [introFading, setIntroFading] = useState(false);
   const [pondReady, setPondReady] = useState(false);
   const [hasShare, setHasShare] = useState(false);
@@ -1464,7 +1463,7 @@ export default function MandelbrotSkipping() {
     spectatorRef.current = true;
     introThrowsRef.current = 0;
     introFadingRef.current = false;
-    setIntro({ progress: 0 });
+    setIntro(true);
   }, []);
 
   const finishOpening = useCallback(() => {
@@ -1483,7 +1482,7 @@ export default function MandelbrotSkipping() {
       engineRef.current?.setTuning(tuningRef.current);
       applyViewRef.current({ centerX: POND_CENTER.x, centerY: POND_CENTER.y, halfY: VIEW_HALF_Y });
       restartRef.current();
-      setIntro(null);
+      setIntro(false);
       setIntroFading(false);
     }, 600);
   }, []);
@@ -1504,7 +1503,7 @@ export default function MandelbrotSkipping() {
     applyViewRef.current({ centerX: INTRO_POND_CENTER.x, centerY: INTRO_POND_CENTER.y, halfY: INTRO_VIEW_HALF_Y });
     restartRef.current();
     setIntroFading(false);
-    setIntro({ progress: 0 });
+    setIntro(true);
   }, []);
 
   useEffect(() => {
@@ -1597,9 +1596,6 @@ export default function MandelbrotSkipping() {
     let introTrails: Array<{ path: Array<{ x: number; y: number }>; born: number }> = [];
     let lastIntroLaunch = 0;
     let lastIntroBackground = 0;
-    let introSettleAt = 0;
-    let introReady = false;
-    let lastIntroProgress = 0;
     let previewKey = "";
 
     invalidateFlashlightRef.current = () => { flashlightDirty = true; };
@@ -1735,9 +1731,6 @@ export default function MandelbrotSkipping() {
       introTrails = [];
       lastIntroLaunch = 0;
       lastIntroBackground = 0;
-      introSettleAt = 0;
-      introReady = false;
-      lastIntroProgress = 0;
       shapeOffset = Math.floor(Math.random() * GLYPH_COUNT);
       gameAudio.reset();
       const a = anchor();
@@ -2745,17 +2738,6 @@ export default function MandelbrotSkipping() {
 
     function maybeOpeningThrow(now: number) {
       if (!introActiveRef.current || introFadingRef.current) return;
-      if (!introSettleAt) introSettleAt = now;
-      if (!introReady) {
-        const progress = Math.min(1, (now - introSettleAt) / INTRO_SETTLE_MS);
-        if (progress >= 1) {
-          introReady = true;
-          setIntro({ progress: 1, ready: true });
-        } else if (now - lastIntroProgress > 40) {
-          lastIntroProgress = now;
-          setIntro({ progress });
-        }
-      }
       const inOpeningVolley = introThrowsRef.current < INTRO_THROWS_PER_WAVE * 2;
       const interval = inOpeningVolley ? 900 : 2400;
       if (lastIntroLaunch !== 0 && now - lastIntroLaunch < interval) return;
@@ -3050,9 +3032,7 @@ export default function MandelbrotSkipping() {
         )}
         {intro && (
           <BuddhabrotIntro
-            progress={intro.progress}
             fading={introFading}
-            ready={intro.ready}
             onPlay={finishOpening}
           />
         )}

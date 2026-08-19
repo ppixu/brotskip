@@ -6,7 +6,6 @@ export const INTRO_THROW_STAGGER_MS = 45;
 export const INTRO_ROCK_DRAW_EVERY = 50;
 export const INTRO_SOURCE_DOTS = 6;
 export const INTRO_MAX_DEPTH = 2_000_000;
-export const INTRO_SETTLE_MS = 5400;
 export const INTRO_BACKGROUND_SPAWN_MS = 40;
 export const INTRO_TRAIL_FADE_MS = 4200;
 export const INTRO_NEBULA_SEEDS_PER_WAVE = 96;

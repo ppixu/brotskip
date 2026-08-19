@@ -144,7 +144,7 @@ test("opening and flashlight hide orbit lines, go grayscale, and throw overlappi
   assert.doesNotMatch(source, /if \(phase === "flying" \|\| phase === "resolving" \|\| phase === "aiming"\) return;/);
   assert.match(source, /mix\(tinted, gray, style\.pulse\)/);
   assert.match(source, /let lineGain = display.pad;/);
-  assert.match(source, /INTRO_SETTLE_MS/);
+  assert.doesNotMatch(source, /INTRO_SETTLE_MS/);
   assert.match(source, /spawnIntroBackgroundOrbits/);
   assert.match(source, /throwIntroRock\(\);/);
   assert.match(source, /let activeDrawn = 0/);
@@ -180,8 +180,10 @@ test("the game render loop only calls drawing helpers that exist", () => {
 test("opening waits for a Play tap and gameplay rethrow sits on the throw stone", () => {
   const intro = readFileSync(new URL("../../app/BuddhabrotIntro.tsx", import.meta.url), "utf8");
   const css = readFileSync(new URL("../../app/globals.css", import.meta.url), "utf8");
-  assert.match(intro, /ready/);
   assert.match(intro, />Play</);
+  assert.doesNotMatch(intro, /liveProgress/);
+  assert.doesNotMatch(intro, /\{ready &&/);
+  assert.doesNotMatch(intro, /progress,/);
   assert.doesNotMatch(intro, /introMode|Precomputed 3D Gaussian cloud/);
   assert.match(intro, /introSetToggle/);
   assert.match(intro, /True z² \+ c Buddhabrot/);
@@ -208,6 +210,8 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(dropCapRule, /font-size:\s*3\.5em/);
   assert.doesNotMatch(css, /gpuCanvas\.introStashed/);
   const game = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
+  assert.match(game, /setIntro\(true\)/);
+  assert.doesNotMatch(game, /setIntro\(\{ progress/);
   assert.match(css, /--throw-stone-x:\s*50%/);
   assert.match(css, /--throw-stone-y:\s*82%/);
   const playRule = css.match(/\.introPlay \{([^}]+)\}/)?.[1] ?? "";

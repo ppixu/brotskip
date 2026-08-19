@@ -5,7 +5,6 @@ import {
   FLASHLIGHT_EDGE_BLUR_PX,
   INTRO_ATMOSPHERE,
   INTRO_BACKGROUND_SPAWN_MS,
-  INTRO_SETTLE_MS,
   INTRO_SOURCE_DOTS,
   INTRO_THROW_STAGGER_MS,
   INTRO_THROWS_PER_WAVE,
@@ -65,7 +64,7 @@ test("intro MRI slice sweeps hop-iteration like a cutting plane, not max-iter fi
   const beforeTurn = introMriSlice(MRI_CYCLE_SECONDS / 2 - 0.01);
   const afterTurn = introMriSlice(MRI_CYCLE_SECONDS / 2 + 0.01);
   assert.ok(Math.abs(beforeTurn.zCamera - afterTurn.zCamera) < 0.001);
-  assert.ok(MRI_PREITERATE_MS >= 1000 && MRI_PREITERATE_MS < INTRO_SETTLE_MS);
+  assert.ok(MRI_PREITERATE_MS >= 1000);
 });
 
 test("flashlight cone falloff is 1-ish on the aim ray and 0 outside the cone", () => {
@@ -135,12 +134,11 @@ test("opening throws rocks from random points instead of the throw stone", () =>
 });
 
 test("opening pre-iterates a dense Buddhabrot pool before the scan loop", () => {
-  assert.ok(INTRO_SETTLE_MS >= 5000);
   assert.ok(INTRO_BACKGROUND_SPAWN_MS <= 50);
   assert.ok(INTRO_MAX_DEPTH >= 500_000);
   assert.ok(INTRO_TRAIL_FADE_MS >= 3500);
   assert.ok(INTRO_NEBULA_SEEDS_PER_WAVE >= 64);
-  assert.ok(MRI_PREITERATE_MS < INTRO_SETTLE_MS);
+  assert.ok(MRI_PREITERATE_MS >= 1000);
 });
 
 test("intro nebula seeds escape often enough that loading stays live", () => {
