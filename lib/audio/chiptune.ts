@@ -1,6 +1,6 @@
 /**
  * One Nintendo-bright engine: pentatonic chords while orbits grow, punchy
- * skip hits, and a unique patch per sacred glyph. No bass drone, no pads.
+ * skip hits, and a unique patch per sacred glyph. Bass is a slow ambient pad.
  */
 import {
   DEFAULT_BPM,
@@ -74,8 +74,8 @@ export function chordGain(presence: number, growth: number, resolving: boolean):
   return resolving ? level * .72 : level;
 }
 
-/** Walking pentatonic bass; long spirals drop an extra octave. */
-export const BASS_PATTERN: readonly number[] = [0, 0, 2, 3, 0, 4, 3, 2];
+/** Slow pentatonic pad; long spirals drop an extra octave. */
+export const BASS_PATTERN: readonly number[] = [0, 3];
 
 export function bassDegree(step: number, depthBand: number, glyph: number): number {
   const walk = BASS_PATTERN[((Math.floor(step) + Math.floor(glyph)) % BASS_PATTERN.length + BASS_PATTERN.length) % BASS_PATTERN.length];
@@ -83,9 +83,8 @@ export function bassDegree(step: number, depthBand: number, glyph: number): numb
   return walk + octave;
 }
 
-export function bassIntervalSeconds(depthBand: number): number {
-  const eighth = 60 / DEFAULT_BPM / 2;
-  return eighth * (depthBand > 12 ? 1.25 : 1);
+export function bassIntervalSeconds(_depthBand: number): number {
+  return 60 / DEFAULT_BPM * 8;
 }
 
 /** Arp lick plus a climb/twist so a long spiral does not loop one ostinato. */
@@ -102,7 +101,7 @@ export type FanfarePlan = {
   noteCount: number;
   stepSeconds: number;
   duration: number;
-  withBass: boolean;
+  bassStyle: "none" | "pad";
   withFinalChord: boolean;
 };
 
@@ -124,7 +123,7 @@ export function fanfarePlan(complexity: number): FanfarePlan {
     noteCount,
     stepSeconds,
     duration: noteCount * stepSeconds + tail,
-    withBass: tier >= 1,
+    bassStyle: tier >= 1 ? "pad" : "none",
     withFinalChord: tier >= 2,
   };
 }
@@ -214,13 +213,20 @@ export function createChiptuneEngine(shell: EngineShell): ChiptuneEngine {
     return { oscillator, gain, pan, step: 0, nextTime: 0 };
   });
 
-  const bassOscillator = context.createOscillator();
+  const bassRoot = context.createOscillator();
+  const bassFifth = context.createOscillator();
   const bassGain = context.createGain();
-  bassOscillator.type = "triangle";
-  bassOscillator.frequency.value = 110;
+  const bassFifthGain = context.createGain();
+  bassRoot.type = "triangle";
+  bassFifth.type = "sine";
+  bassRoot.frequency.value = 110;
+  bassFifth.frequency.value = 165;
   bassGain.gain.value = .0001;
-  bassOscillator.connect(bassGain).connect(output);
-  bassOscillator.start();
+  bassFifthGain.gain.value = .0001;
+  bassRoot.connect(bassGain).connect(output);
+  bassFifth.connect(bassFifthGain).connect(output);
+  bassRoot.start();
+  bassFifth.start();
   let bassStep = 0;
   let bassNextTime = 0;
 
@@ -262,6 +268,23 @@ export function createChiptuneEngine(shell: EngineShell): ChiptuneEngine {
   }
 
   const MIN_SAFE_HZ = 80;
+
+  function padTone(frequency: number, when: number, duration: number, volume: number, type: OscillatorType = "triangle") {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const attack = Math.min(.22, duration * .18);
+    const release = Math.min(.55, duration * .4);
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(frequency, when);
+    gain.gain.setValueAtTime(.0001, when);
+    gain.gain.exponentialRampToValueAtTime(Math.max(.0002, volume), when + attack);
+    gain.gain.setValueAtTime(Math.max(.0002, volume), when + Math.max(attack, duration - release));
+    gain.gain.exponentialRampToValueAtTime(.0001, when + duration);
+    oscillator.connect(gain).connect(output);
+    oscillator.start(when);
+    oscillator.stop(when + duration + .02);
+    scheduleCleanup(context, when + duration + .04, [oscillator, gain]);
+  }
 
   function noiseClick(when: number, volume: number, panPosition: number) {
     const source = context.createBufferSource();
@@ -381,22 +404,22 @@ export function createChiptuneEngine(shell: EngineShell): ChiptuneEngine {
         }
       });
       if (!groups.length) {
-        bassGain.gain.setTargetAtTime(.0001, now, .06);
+        bassGain.gain.setTargetAtTime(.0001, now, .18);
+        bassFifthGain.gain.setTargetAtTime(.0001, now, .18);
         bassNextTime = 0;
       } else {
         if (bassNextTime === 0) bassNextTime = now;
-        const bassInterval = bassIntervalSeconds(frame.depthBand);
+        const degree = bassDegree(bassStep, frame.depthBand, lastChordGlyph);
+        const rootHz = degreeToFrequency(palette, degree, 250);
+        const fifthHz = degreeToFrequency(palette, degree + 3, 250);
+        bassRoot.frequency.setTargetAtTime(rootHz, now, .45);
+        bassFifth.frequency.setTargetAtTime(fifthHz, now, .5);
+        const peak = (resolving ? .055 : .08) * (0.75 + frame.growth * .25);
+        bassGain.gain.setTargetAtTime(peak, now, .22);
+        bassFifthGain.gain.setTargetAtTime(peak * .55, now, .28);
         if (now + LOOKAHEAD >= bassNextTime) {
-          const when = Math.max(now + .005, bassNextTime);
-          const hz = degreeToFrequency(palette, bassDegree(bassStep, frame.depthBand, lastChordGlyph), 250);
-          bassOscillator.frequency.setValueAtTime(hz, when);
-          const peak = (resolving ? .07 : .11) * (frame.growth > .2 ? 1 : .85);
-          bassGain.gain.cancelScheduledValues(when);
-          bassGain.gain.setValueAtTime(Math.max(.0001, bassGain.gain.value), when);
-          bassGain.gain.exponentialRampToValueAtTime(Math.max(.0002, peak), when + .012);
-          bassGain.gain.exponentialRampToValueAtTime(.0001, when + .16);
           bassStep += 1;
-          bassNextTime = when + bassInterval;
+          bassNextTime = now + bassIntervalSeconds(frame.depthBand);
         }
       }
     },
@@ -407,23 +430,26 @@ export function createChiptuneEngine(shell: EngineShell): ChiptuneEngine {
         voice.gain.gain.setTargetAtTime(.0001, now, .05);
         voice.nextTime = 0;
       }
-      bassGain.gain.setTargetAtTime(.0001, now, .06);
+      bassGain.gain.setTargetAtTime(.0001, now, .18);
+      bassFifthGain.gain.setTargetAtTime(.0001, now, .18);
       bassNextTime = 0;
     },
     finish(scoreRatio) {
       const used = palette ?? paletteFromLanding(-0.58, 0);
       const plan = fanfarePlan(scoreRatio);
       const when = context.currentTime + .02;
+      if (plan.bassStyle === "pad") {
+        const rootHz = degreeToFrequency(used, bassDegree(0, 3, lastChordGlyph), 250);
+        const fifthHz = degreeToFrequency(used, bassDegree(0, 3, lastChordGlyph) + 3, 250);
+        padTone(rootHz, when, plan.duration, .11 + plan.tier * .02);
+        padTone(fifthHz, when, plan.duration, .06 + plan.tier * .015, "sine");
+      }
       for (let index = 0; index < plan.noteCount; index++) {
         const t = when + index * plan.stepSeconds;
         const climb = plan.tier >= 2 ? Math.floor(index / 5) * 2 : 0;
         const hz = degreeToFrequency(used, 2 + index + climb, MAX_TRANSIENT_HZ);
         const pan = (index / Math.max(1, plan.noteCount - 1)) * 1.2 - .6;
         blip(hz, t, .12 + plan.tier * .03, .12 + plan.tier * .025, "square", pan, { startRatio: 1.12 });
-        if (plan.withBass && index % 2 === 0) {
-          const bassHz = degreeToFrequency(used, bassDegree(index / 2, 4, lastChordGlyph), 250);
-          blip(bassHz, t, .2 + plan.tier * .05, .15, "triangle", 0);
-        }
       }
       if (plan.withFinalChord) {
         const chordWhen = when + plan.noteCount * plan.stepSeconds;
@@ -431,9 +457,6 @@ export function createChiptuneEngine(shell: EngineShell): ChiptuneEngine {
         const chord = [0, 2, 4, 7];
         for (const degree of chord) {
           blip(degreeToFrequency(used, degree + (plan.tier >= 3 ? 5 : 0), MAX_TRANSIENT_HZ), chordWhen, hold, .1, "triangle", 0);
-        }
-        if (plan.tier >= 3) {
-          blip(degreeToFrequency(used, bassDegree(0, 3, lastChordGlyph), 250), chordWhen, hold * 1.15, .18, "triangle", 0);
         }
       }
     },

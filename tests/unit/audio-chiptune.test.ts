@@ -78,7 +78,7 @@ test("held pentatonic chords stay present but duck a little while resolving", ()
   assert.ok(flying < 0.2);
 });
 
-test("bassline sits under the melody in the NES triangle-bass register", () => {
+test("bass pad sits under the melody in the NES triangle-bass register", () => {
   const palette = paletteFromLanding(-0.58, 0.2);
   const melody = degreeToFrequency(palette, 0);
   const bass = degreeToFrequency(palette, bassDegree(0, 3, 0));
@@ -87,14 +87,13 @@ test("bassline sits under the melody in the NES triangle-bass register", () => {
   assert.ok(bass < melody * 0.65);
 });
 
-test("the bassline walks and drops an octave on a long spiral", () => {
-  const walked = Array.from({ length: 8 }, (_, step) => bassDegree(step, 4, 0));
-  assert.ok(new Set(walked).size >= 3, "bassline should not be a single held note");
+test("long spirals drop the bass pad an octave", () => {
   assert.ok(bassDegree(0, 14, 0) < bassDegree(0, 3, 0));
 });
 
-test("bass notes are slower than the sparkle arp", () => {
-  assert.ok(bassIntervalSeconds(4) > arpIntervalSeconds(1, 1) * 1.5);
+test("bass pad moves on a slow ambient pulse, not eighth-note beats", () => {
+  assert.ok(bassIntervalSeconds(4) > 1.2);
+  assert.ok(bassIntervalSeconds(4) > arpIntervalSeconds(1, 1) * 8);
 });
 
 test("deeper spirals climb the pentatonic instead of looping the same lick", () => {
@@ -120,8 +119,8 @@ test("four celebration tiers grow in notes and duration", () => {
   assert.equal(huge.tier, 3);
   assert.ok(huge.noteCount >= chip.noteCount * 2);
   assert.ok(huge.duration > chip.duration * 3);
-  assert.equal(chip.withBass, false);
-  assert.equal(huge.withBass, true);
+  assert.equal(chip.bassStyle, "none");
+  assert.equal(huge.bassStyle, "pad");
   assert.equal(huge.withFinalChord, true);
 });
 
