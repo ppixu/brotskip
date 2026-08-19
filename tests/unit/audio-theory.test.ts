@@ -61,6 +61,13 @@ test("negative degrees wrap downward but never below MIN_HZ", () => {
   assert.ok(below >= MIN_HZ);
 });
 
+test("a two-octave drop reaches the triangle-bass floor instead of clamping to G3", () => {
+  const palette = paletteFromLanding(-0.58, 0.2);
+  const bass = degreeToFrequency(palette, -palette.steps.length * 2);
+  assert.ok(bass < 120);
+  assert.ok(bass >= MIN_HZ);
+});
+
 test("sustained frequency is capped", () => {
   const palette = paletteFromLanding(-0.58, 0.2);
   assert.ok(degreeToFrequency(palette, 500) <= MAX_SUSTAINED_HZ);

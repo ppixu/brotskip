@@ -1,6 +1,6 @@
 /**
- * Musical core: every pitched voice is pentatonic and mid/high.
- * Roots live in the Nintendo melody register (E4–B4), never as a bass drone.
+ * Musical core: pitched voices stay pentatonic. Melody roots live in the
+ * Nintendo register (E4–Bb4); bass is allowed down to E2 triangle-bass.
  */
 
 export type AudioScale = { name: string; steps: readonly number[] };
@@ -10,8 +10,8 @@ export const AUDIO_SCALES: readonly AudioScale[] = [
   { name: "minor-pentatonic", steps: [0, 3, 5, 7, 10] },
 ];
 
-/** G3 — anything below this is the bland register the last engines fell into. */
-export const MIN_HZ = 196;
+/** E2 — Nintendo triangle-bass floor. Melody still seeds well above this. */
+export const MIN_HZ = 82;
 /** C7, for held chord/arp tones. */
 export const MAX_SUSTAINED_HZ = 2093;
 /** C8, for skip transients. */

@@ -3,9 +3,15 @@ import test from "node:test";
 import {
   arpIntervalSeconds,
   arpPattern,
+  bassDegree,
+  bassIntervalSeconds,
   chordDegrees,
   chordGain,
+  fanfarePlan,
+  fanfareTier,
+  finishComplexity,
   GLYPH_PATCHES,
+  melodyDegree,
   splashDegree,
   splashPeakHz,
 } from "../../lib/audio/chiptune.ts";
@@ -70,4 +76,59 @@ test("held pentatonic chords stay present but duck a little while resolving", ()
   assert.ok(flying > resolving);
   assert.ok(flying > 0.05);
   assert.ok(flying < 0.2);
+});
+
+test("bassline sits under the melody in the NES triangle-bass register", () => {
+  const palette = paletteFromLanding(-0.58, 0.2);
+  const melody = degreeToFrequency(palette, 0);
+  const bass = degreeToFrequency(palette, bassDegree(0, 3, 0));
+  assert.ok(bass >= 70, `bass ${bass} Hz is below the triangle floor`);
+  assert.ok(bass < 190, `bass ${bass} Hz is still clamped into the midrange`);
+  assert.ok(bass < melody * 0.65);
+});
+
+test("the bassline walks and drops an octave on a long spiral", () => {
+  const walked = Array.from({ length: 8 }, (_, step) => bassDegree(step, 4, 0));
+  assert.ok(new Set(walked).size >= 3, "bassline should not be a single held note");
+  assert.ok(bassDegree(0, 14, 0) < bassDegree(0, 3, 0));
+});
+
+test("bass notes are slower than the sparkle arp", () => {
+  assert.ok(bassIntervalSeconds(4) > arpIntervalSeconds(1, 1) * 1.5);
+});
+
+test("deeper spirals climb the pentatonic instead of looping the same lick", () => {
+  const shallow = melodyDegree(4, 0, 2, 0);
+  const deep = melodyDegree(4, 0, 16, 0);
+  assert.ok(deep > shallow);
+});
+
+test("orbit angle twists the melody so a spiral is not a static ostinato", () => {
+  const a = melodyDegree(4, 3, 8, 0);
+  const b = melodyDegree(4, 3, 8, Math.PI);
+  assert.notEqual(a, b);
+});
+
+test("four celebration tiers grow in notes and duration", () => {
+  assert.equal(fanfareTier(0), 0);
+  assert.equal(fanfareTier(0.25), 1);
+  assert.equal(fanfareTier(0.55), 2);
+  assert.equal(fanfareTier(0.9), 3);
+  const chip = fanfarePlan(0.05);
+  const huge = fanfarePlan(0.95);
+  assert.equal(chip.tier, 0);
+  assert.equal(huge.tier, 3);
+  assert.ok(huge.noteCount >= chip.noteCount * 2);
+  assert.ok(huge.duration > chip.duration * 3);
+  assert.equal(chip.withBass, false);
+  assert.equal(huge.withBass, true);
+  assert.equal(huge.withFinalChord, true);
+});
+
+test("a deep, high-coverage throw ranks a bigger fanfare than a short skip", () => {
+  const small = finishComplexity({ score: 40_000, deepest: 60, coverage: 20, skips: 2 });
+  const huge = finishComplexity({ score: 1_800_000, deepest: 1_500_000, coverage: 4000, skips: 12 });
+  assert.ok(small < 0.25);
+  assert.ok(huge > 0.75);
+  assert.ok(fanfareTier(huge) > fanfareTier(small));
 });

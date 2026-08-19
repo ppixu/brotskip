@@ -1,13 +1,14 @@
 /**
- * Shared audio infrastructure: one master bus with a high-pass (no bass mud),
- * punchy compressor, short bright reverb, and a lookahead scheduler.
- * Pure helpers live at the top so Node tests can import this module.
+ * Shared audio infrastructure: one master bus with a high-pass that still
+ * lets triangle bass through, punchy compressor, short bright reverb, and a
+ * lookahead scheduler. Pure helpers live at the top so Node tests can import
+ * this module.
  */
 
 export const DEFAULT_BPM = 144;
 export const TICK_MS = 25;
 export const REVERB_SECONDS = .45;
-export const HIGHPASS_HZ = 220;
+export const HIGHPASS_HZ = 72;
 export const UPDATE_INTERVAL_SECONDS = .042;
 
 export function softClipCurve(length = 1024, amount = 1.6): Float32Array<ArrayBuffer> {

@@ -73,7 +73,7 @@ import {
   type SharedThrow,
 } from "@/lib/throw-share";
 import { COVERAGE_GRID, COVERAGE_WORDS, orbitShape } from "@/lib/orbit-shape";
-import { createGameAudio, type GameAudio } from "@/lib/audio/index";
+import { createGameAudio, finishComplexity, type GameAudio } from "@/lib/audio/index";
 
 type Phase = "ready" | "aiming" | "flying" | "resolving" | "result";
 
@@ -1879,7 +1879,9 @@ export default function MandelbrotSkipping() {
         history.replaceState(null, "", throwShareUrl(window.location.href, currentShareRef.current));
       }
       setHud({ phase, score: total, skips: rock.skips, deepest, progress: 1, coverage, spread });
-      gameAudio.finish(Math.min(1, total / 2_000_000));
+      gameAudio.finish(finishComplexity({
+        score: total, deepest, coverage, skips: rock.skips,
+      }));
     }
 
     function advanceOrbits(now: number, elapsed: number) {

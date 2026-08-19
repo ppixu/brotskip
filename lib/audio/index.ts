@@ -15,6 +15,7 @@ import { paletteFromLanding, type Palette } from "./theory.ts";
 
 export type GamePhase = "ready" | "aiming" | "flying" | "resolving" | "result";
 export type { OrbitFeatureInput } from "./features.ts";
+export { finishComplexity } from "./chiptune.ts";
 
 export type GameAudio = {
   init(): void;

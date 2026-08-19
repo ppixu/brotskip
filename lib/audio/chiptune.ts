@@ -74,6 +74,74 @@ export function chordGain(presence: number, growth: number, resolving: boolean):
   return resolving ? level * .72 : level;
 }
 
+/** Walking pentatonic bass; long spirals drop an extra octave. */
+export const BASS_PATTERN: readonly number[] = [0, 0, 2, 3, 0, 4, 3, 2];
+
+export function bassDegree(step: number, depthBand: number, glyph: number): number {
+  const walk = BASS_PATTERN[((Math.floor(step) + Math.floor(glyph)) % BASS_PATTERN.length + BASS_PATTERN.length) % BASS_PATTERN.length];
+  const octave = depthBand > 10 ? -10 : -5;
+  return walk + octave;
+}
+
+export function bassIntervalSeconds(depthBand: number): number {
+  const eighth = 60 / DEFAULT_BPM / 2;
+  return eighth * (depthBand > 12 ? 1.25 : 1);
+}
+
+/** Arp lick plus a climb/twist so a long spiral does not loop one ostinato. */
+export function melodyDegree(glyph: number, step: number, depthBand: number, zAngle: number): number {
+  const pattern = arpPattern(glyph);
+  const base = pattern[((Math.floor(step) % pattern.length) + pattern.length) % pattern.length];
+  const climb = Math.floor(Math.max(0, depthBand) * .35);
+  const swirl = Math.round((zAngle / Math.PI + 1) * 1.5) % 5;
+  return base + 5 + climb + swirl;
+}
+
+export type FanfarePlan = {
+  tier: 0 | 1 | 2 | 3;
+  noteCount: number;
+  stepSeconds: number;
+  duration: number;
+  withBass: boolean;
+  withFinalChord: boolean;
+};
+
+export function fanfareTier(complexity: number): 0 | 1 | 2 | 3 {
+  const value = clamp01(complexity);
+  if (value < .18) return 0;
+  if (value < .4) return 1;
+  if (value < .7) return 2;
+  return 3;
+}
+
+export function fanfarePlan(complexity: number): FanfarePlan {
+  const tier = fanfareTier(complexity);
+  const noteCount = [4, 6, 10, 16][tier];
+  const stepSeconds = [.055, .07, .08, .09][tier];
+  const tail = [.08, .2, .45, .9][tier];
+  return {
+    tier,
+    noteCount,
+    stepSeconds,
+    duration: noteCount * stepSeconds + tail,
+    withBass: tier >= 1,
+    withFinalChord: tier >= 2,
+  };
+}
+
+export function finishComplexity(input: {
+  score: number;
+  deepest: number;
+  coverage: number;
+  skips: number;
+}): number {
+  const scorePart = Math.min(1, Math.max(0, input.score) / 2_000_000);
+  const depthPart = Math.min(1, Math.log2(Math.max(0, input.deepest) + 1) / 22);
+  const coverPart = Math.min(1, Math.log2(Math.max(0, input.coverage) + 1) / 14);
+  const skipPart = Math.min(1, Math.max(0, input.skips - 2) / 10);
+  return clamp01(scorePart * .4 + depthPart * .25 + coverPart * .25 + skipPart * .1);
+}
+
 function pulsePartials(duty: number, count = 24): { real: Float32Array; imag: Float32Array } {
   const real = new Float32Array(count);
   const imag = new Float32Array(count);
@@ -146,6 +214,16 @@ export function createChiptuneEngine(shell: EngineShell): ChiptuneEngine {
     return { oscillator, gain, pan, step: 0, nextTime: 0 };
   });
 
+  const bassOscillator = context.createOscillator();
+  const bassGain = context.createGain();
+  bassOscillator.type = "triangle";
+  bassOscillator.frequency.value = 110;
+  bassGain.gain.value = .0001;
+  bassOscillator.connect(bassGain).connect(output);
+  bassOscillator.start();
+  let bassStep = 0;
+  let bassNextTime = 0;
+
   let palette: Palette | null = null;
   let lastChordGlyph = 0;
 
@@ -213,11 +291,10 @@ export function createChiptuneEngine(shell: EngineShell): ChiptuneEngine {
     }
   }
 
-  function scheduleArp(voice: ArpVoice, group: GlyphGroupFeatures, when: number, resolving: boolean, growth: number) {
+  function scheduleArp(voice: ArpVoice, group: GlyphGroupFeatures, when: number, resolving: boolean, growth: number, depthBand: number) {
     if (!palette) return;
     const patch = GLYPH_PATCHES[((group.glyph % 7) + 7) % 7];
-    const pattern = patch.arp;
-    const degree = pattern[voice.step % pattern.length] + 5 + Math.round(group.spread * 2);
+    const degree = melodyDegree(group.glyph, voice.step, depthBand, group.zAngle);
     const hz = degreeToFrequency(palette, degree);
     applyWave(voice.oscillator, patch);
     voice.oscillator.frequency.setValueAtTime(hz, when);
@@ -299,10 +376,29 @@ export function createChiptuneEngine(shell: EngineShell): ChiptuneEngine {
         if (voice.nextTime === 0) voice.nextTime = now;
         if (now + LOOKAHEAD >= voice.nextTime) {
           const when = Math.max(now + .005, voice.nextTime);
-          scheduleArp(voice, group, when, resolving, frame.growth);
+          scheduleArp(voice, group, when, resolving, frame.growth, frame.depthBand);
           voice.nextTime = when + interval;
         }
       });
+      if (!groups.length) {
+        bassGain.gain.setTargetAtTime(.0001, now, .06);
+        bassNextTime = 0;
+      } else {
+        if (bassNextTime === 0) bassNextTime = now;
+        const bassInterval = bassIntervalSeconds(frame.depthBand);
+        if (now + LOOKAHEAD >= bassNextTime) {
+          const when = Math.max(now + .005, bassNextTime);
+          const hz = degreeToFrequency(palette, bassDegree(bassStep, frame.depthBand, lastChordGlyph), 250);
+          bassOscillator.frequency.setValueAtTime(hz, when);
+          const peak = (resolving ? .07 : .11) * (frame.growth > .2 ? 1 : .85);
+          bassGain.gain.cancelScheduledValues(when);
+          bassGain.gain.setValueAtTime(Math.max(.0001, bassGain.gain.value), when);
+          bassGain.gain.exponentialRampToValueAtTime(Math.max(.0002, peak), when + .012);
+          bassGain.gain.exponentialRampToValueAtTime(.0001, when + .16);
+          bassStep += 1;
+          bassNextTime = when + bassInterval;
+        }
+      }
     },
     silence() {
       const now = context.currentTime;
@@ -311,19 +407,41 @@ export function createChiptuneEngine(shell: EngineShell): ChiptuneEngine {
         voice.gain.gain.setTargetAtTime(.0001, now, .05);
         voice.nextTime = 0;
       }
+      bassGain.gain.setTargetAtTime(.0001, now, .06);
+      bassNextTime = 0;
     },
     finish(scoreRatio) {
       const used = palette ?? paletteFromLanding(-0.58, 0);
+      const plan = fanfarePlan(scoreRatio);
       const when = context.currentTime + .02;
-      const steps = 3 + Math.round(clamp01(scoreRatio) * 4);
-      for (let index = 0; index < steps; index++) {
-        const hz = degreeToFrequency(used, 2 + index, MAX_TRANSIENT_HZ);
-        blip(hz, when + index * .055, .14, .14, "square", (index / Math.max(1, steps - 1)) * 1.2 - .6, { startRatio: 1.15 });
+      for (let index = 0; index < plan.noteCount; index++) {
+        const t = when + index * plan.stepSeconds;
+        const climb = plan.tier >= 2 ? Math.floor(index / 5) * 2 : 0;
+        const hz = degreeToFrequency(used, 2 + index + climb, MAX_TRANSIENT_HZ);
+        const pan = (index / Math.max(1, plan.noteCount - 1)) * 1.2 - .6;
+        blip(hz, t, .12 + plan.tier * .03, .12 + plan.tier * .025, "square", pan, { startRatio: 1.12 });
+        if (plan.withBass && index % 2 === 0) {
+          const bassHz = degreeToFrequency(used, bassDegree(index / 2, 4, lastChordGlyph), 250);
+          blip(bassHz, t, .2 + plan.tier * .05, .15, "triangle", 0);
+        }
+      }
+      if (plan.withFinalChord) {
+        const chordWhen = when + plan.noteCount * plan.stepSeconds;
+        const hold = .35 + plan.tier * .22;
+        const chord = [0, 2, 4, 7];
+        for (const degree of chord) {
+          blip(degreeToFrequency(used, degree + (plan.tier >= 3 ? 5 : 0), MAX_TRANSIENT_HZ), chordWhen, hold, .1, "triangle", 0);
+        }
+        if (plan.tier >= 3) {
+          blip(degreeToFrequency(used, bassDegree(0, 3, lastChordGlyph), 250), chordWhen, hold * 1.15, .18, "triangle", 0);
+        }
       }
     },
     reset() {
       palette = null;
       lastChordGlyph = 0;
+      bassStep = 0;
+      bassNextTime = 0;
       for (const voice of arpVoices) {
         voice.step = 0;
         voice.nextTime = 0;

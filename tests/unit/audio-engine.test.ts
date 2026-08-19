@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DEFAULT_BPM, HIGHPASS_HZ, REVERB_SECONDS, buildImpulseResponse, nextGridTime, softClipCurve } from "../../lib/audio/engine.ts";
 
-test("the bus is Nintendo-bright: fast tempo, short reverb, no sub-bass", () => {
+test("the bus is Nintendo-bright: fast tempo, short reverb, and room for triangle bass", () => {
   assert.ok(DEFAULT_BPM >= 130);
   assert.ok(REVERB_SECONDS <= .7);
-  assert.ok(HIGHPASS_HZ >= 180);
+  assert.ok(HIGHPASS_HZ >= 55 && HIGHPASS_HZ <= 100);
 });
 
 test("soft clip curve is bounded, odd-symmetric and monotonic", () => {
