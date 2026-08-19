@@ -4,7 +4,6 @@ export type ProjectedPoint = {
   x: number;
   y: number;
   depth: number;
-  center: boolean;
 };
 
 export type ProjectedEdge = {
@@ -15,60 +14,264 @@ export type ProjectedEdge = {
   depth: number;
 };
 
-/** Cuboctahedron (vector equilibrium) plus its center: 3D Metatron’s Cube. */
-export const SACRED_BALL_VERTEX_COUNT = 13;
-/** 24 cuboctahedron edges plus 12 radii through the center. */
-export const SACRED_BALL_EDGE_COUNT = 36;
-/** Thrown-stone radius in CSS pixels — smaller than the pond glyph stamps. */
-export const SACRED_BALL_RADIUS = 5;
+export const SACRED_BALL_POINTS = 42;
+export const SACRED_BALL_PERIOD_MS = 2000;
+export const SACRED_BALL_BLEND_MS = 700;
+export const SACRED_BALL_RADIUS = 14;
 
-const INV_SQRT2 = 1 / Math.sqrt(2);
+const TAU = Math.PI * 2;
+const PHI = (1 + Math.sqrt(5)) / 2;
+const NEIGHBOR_COUNT = 5;
+const NEIGHBOR_MAX = 1.05;
 
-const SURFACE_VERTICES: readonly Vec3[] = [
-  { x: INV_SQRT2, y: INV_SQRT2, z: 0 },
-  { x: INV_SQRT2, y: -INV_SQRT2, z: 0 },
-  { x: -INV_SQRT2, y: INV_SQRT2, z: 0 },
-  { x: -INV_SQRT2, y: -INV_SQRT2, z: 0 },
-  { x: INV_SQRT2, y: 0, z: INV_SQRT2 },
-  { x: INV_SQRT2, y: 0, z: -INV_SQRT2 },
-  { x: -INV_SQRT2, y: 0, z: INV_SQRT2 },
-  { x: -INV_SQRT2, y: 0, z: -INV_SQRT2 },
-  { x: 0, y: INV_SQRT2, z: INV_SQRT2 },
-  { x: 0, y: INV_SQRT2, z: -INV_SQRT2 },
-  { x: 0, y: -INV_SQRT2, z: INV_SQRT2 },
-  { x: 0, y: -INV_SQRT2, z: -INV_SQRT2 },
-];
-
-function distSq(a: Vec3, b: Vec3) {
-  const dx = a.x - b.x;
-  const dy = a.y - b.y;
-  const dz = a.z - b.z;
-  return dx * dx + dy * dy + dz * dz;
+function normalize(point: Vec3): Vec3 {
+  const length = Math.hypot(point.x, point.y, point.z) || 1;
+  return { x: point.x / length, y: point.y / length, z: point.z / length };
 }
 
-function buildEdges(): Array<[number, number]> {
-  const edges: Array<[number, number]> = [];
-  for (let index = 0; index < SURFACE_VERTICES.length; index++) {
-    edges.push([0, index + 1]);
+function dist(a: Vec3, b: Vec3) {
+  return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+}
+
+function keyOf(point: Vec3) {
+  return `${Math.round(point.x * 1e5)}:${Math.round(point.y * 1e5)}:${Math.round(point.z * 1e5)}`;
+}
+
+function collect(raw: Vec3[]) {
+  const seen = new Set<string>();
+  const points: Vec3[] = [];
+  for (const point of raw) {
+    const unit = normalize(point);
+    const key = keyOf(unit);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    points.push(unit);
   }
-  for (let i = 0; i < SURFACE_VERTICES.length; i++) {
-    for (let j = i + 1; j < SURFACE_VERTICES.length; j++) {
-      if (Math.abs(distSq(SURFACE_VERTICES[i], SURFACE_VERTICES[j]) - 1) < 1e-9) {
-        edges.push([i + 1, j + 1]);
+  return points;
+}
+
+function canon(points: Vec3[]) {
+  return [...points].sort((a, b) => {
+    const azimuth = Math.atan2(a.z, a.x) - Math.atan2(b.z, b.x);
+    if (Math.abs(azimuth) > 1e-9) return azimuth;
+    return a.y - b.y;
+  });
+}
+
+function minEdge(points: Vec3[]) {
+  let best = Infinity;
+  for (let i = 0; i < points.length; i++) {
+    for (let j = i + 1; j < points.length; j++) {
+      const gap = dist(points[i], points[j]);
+      if (gap > 1e-6 && gap < best) best = gap;
+    }
+  }
+  return best;
+}
+
+function withMidpoints(seeds: Vec3[]) {
+  const edge = minEdge(seeds);
+  const raw = [...seeds];
+  for (let i = 0; i < seeds.length; i++) {
+    for (let j = i + 1; j < seeds.length; j++) {
+      if (Math.abs(dist(seeds[i], seeds[j]) - edge) > edge * 0.08) continue;
+      raw.push({
+        x: seeds[i].x + seeds[j].x,
+        y: seeds[i].y + seeds[j].y,
+        z: seeds[i].z + seeds[j].z,
+      });
+    }
+  }
+  return collect(raw);
+}
+
+function icosahedron() {
+  const seeds: Vec3[] = [];
+  for (const s of [-1, 1]) {
+    for (const t of [-1, 1]) {
+      seeds.push({ x: 0, y: s, z: t * PHI });
+      seeds.push({ x: s, y: t * PHI, z: 0 });
+      seeds.push({ x: s * PHI, y: 0, z: t });
+    }
+  }
+  return collect(seeds);
+}
+
+function cuboctahedron() {
+  const seeds: Vec3[] = [];
+  for (const s of [-1, 1]) {
+    for (const t of [-1, 1]) {
+      seeds.push({ x: s, y: t, z: 0 });
+      seeds.push({ x: s, y: 0, z: t });
+      seeds.push({ x: 0, y: s, z: t });
+    }
+  }
+  return collect(seeds);
+}
+
+function octahedron() {
+  return collect([
+    { x: 1, y: 0, z: 0 },
+    { x: -1, y: 0, z: 0 },
+    { x: 0, y: 1, z: 0 },
+    { x: 0, y: -1, z: 0 },
+    { x: 0, y: 0, z: 1 },
+    { x: 0, y: 0, z: -1 },
+  ]);
+}
+
+function geodesicIcosa() {
+  return withMidpoints(icosahedron());
+}
+
+function metatronLattice() {
+  return collect([...cuboctahedron(), ...octahedron(), ...withMidpoints(cuboctahedron())]);
+}
+
+function hexRings() {
+  const seeds: Vec3[] = [];
+  for (let ring = 0; ring < 7; ring++) {
+    const y = 1 - 2 * (ring + 0.5) / 7;
+    const radius = Math.sqrt(Math.max(0, 1 - y * y));
+    const turn = ring * Math.PI / 6;
+    for (let index = 0; index < 6; index++) {
+      const angle = index * TAU / 6 + turn;
+      seeds.push({ x: Math.cos(angle) * radius, y, z: Math.sin(angle) * radius });
+    }
+  }
+  return collect(seeds);
+}
+
+function fibonacciSphere() {
+  const seeds: Vec3[] = [];
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  for (let index = 0; index < SACRED_BALL_POINTS; index++) {
+    const y = 1 - (index + 0.5) / SACRED_BALL_POINTS * 2;
+    const radius = Math.sqrt(Math.max(0, 1 - y * y));
+    const angle = index * golden;
+    seeds.push({ x: Math.cos(angle) * radius, y, z: Math.sin(angle) * radius });
+  }
+  return collect(seeds);
+}
+
+function merkaba() {
+  const cube = collect([
+    { x: 1, y: 1, z: 1 },
+    { x: 1, y: 1, z: -1 },
+    { x: 1, y: -1, z: 1 },
+    { x: 1, y: -1, z: -1 },
+    { x: -1, y: 1, z: 1 },
+    { x: -1, y: 1, z: -1 },
+    { x: -1, y: -1, z: 1 },
+    { x: -1, y: -1, z: -1 },
+  ]);
+  const tetraA = [0, 3, 5, 6].map((index) => cube[index]);
+  const tetraB = [1, 2, 4, 7].map((index) => cube[index]);
+  const raw = [...cube, { x: 0, y: 1, z: 0 }, { x: 0, y: -1, z: 0 }];
+  for (const tetra of [tetraA, tetraB]) {
+    for (let i = 0; i < 4; i++) {
+      for (let j = i + 1; j < 4; j++) {
+        const a = tetra[i];
+        const b = tetra[j];
+        raw.push({ x: a.x * 2 + b.x, y: a.y * 2 + b.y, z: a.z * 2 + b.z });
+        raw.push({ x: a.x + b.x * 2, y: a.y + b.y * 2, z: a.z + b.z * 2 });
       }
+      const k = (i + 1) % 4;
+      const l = (i + 2) % 4;
+      const face = {
+        x: tetra[i].x + tetra[k].x + tetra[l].x,
+        y: tetra[i].y + tetra[k].y + tetra[l].y,
+        z: tetra[i].z + tetra[k].z + tetra[l].z,
+      };
+      raw.push(face);
+    }
+  }
+  return collect(raw);
+}
+
+function padToCount(points: Vec3[], count: number) {
+  if (points.length === count) return canon(points);
+  if (points.length > count) return canon(points).slice(0, count);
+  const extra = fibonacciSphere();
+  const seen = new Set(points.map(keyOf));
+  const mixed = [...points];
+  for (const point of extra) {
+    if (mixed.length >= count) break;
+    const key = keyOf(point);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    mixed.push(point);
+  }
+  return canon(mixed).slice(0, count);
+}
+
+const ARRANGEMENTS = [
+  geodesicIcosa(),
+  metatronLattice(),
+  hexRings(),
+  fibonacciSphere(),
+  merkaba(),
+].map((points) => padToCount(points, SACRED_BALL_POINTS));
+
+export const SACRED_BALL_ARRANGEMENTS = ARRANGEMENTS.length;
+
+export function sacredBallArrangement(index: number) {
+  const wrapped = ((index % ARRANGEMENTS.length) + ARRANGEMENTS.length) % ARRANGEMENTS.length;
+  return ARRANGEMENTS[wrapped].map((point) => ({ ...point }));
+}
+
+function slerp(a: Vec3, b: Vec3, t: number) {
+  const clamped = Math.max(0, Math.min(1, t));
+  const dot = Math.max(-1, Math.min(1, a.x * b.x + a.y * b.y + a.z * b.z));
+  if (dot > 0.9995) return normalize({
+    x: a.x + (b.x - a.x) * clamped,
+    y: a.y + (b.y - a.y) * clamped,
+    z: a.z + (b.z - a.z) * clamped,
+  });
+  const theta = Math.acos(dot);
+  const sinTheta = Math.sin(theta) || 1;
+  const wa = Math.sin((1 - clamped) * theta) / sinTheta;
+  const wb = Math.sin(clamped * theta) / sinTheta;
+  return {
+    x: a.x * wa + b.x * wb,
+    y: a.y * wa + b.y * wb,
+    z: a.z * wa + b.z * wb,
+  };
+}
+
+export function sacredBallPose(now: number) {
+  const elapsed = Math.max(0, now);
+  const slot = Math.floor(elapsed / SACRED_BALL_PERIOD_MS);
+  const local = elapsed - slot * SACRED_BALL_PERIOD_MS;
+  const from = slot % ARRANGEMENTS.length;
+  const to = (from + 1) % ARRANGEMENTS.length;
+  const hold = SACRED_BALL_PERIOD_MS - SACRED_BALL_BLEND_MS;
+  const raw = local <= hold ? 0 : (local - hold) / SACRED_BALL_BLEND_MS;
+  const t = 0.5 - 0.5 * Math.cos(raw * Math.PI);
+  const a = ARRANGEMENTS[from];
+  const b = ARRANGEMENTS[to];
+  return a.map((point, index) => slerp(point, b[index], t));
+}
+
+function nearestEdges(vertices: Vec3[]) {
+  const edges: Array<[number, number]> = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < vertices.length; i++) {
+    const neighbors = vertices
+      .map((point, j) => ({ j, gap: i === j ? Infinity : dist(vertices[i], point) }))
+      .sort((a, b) => a.gap - b.gap)
+      .slice(0, NEIGHBOR_COUNT);
+    for (const neighbor of neighbors) {
+      if (neighbor.gap > NEIGHBOR_MAX) continue;
+      const a = Math.min(i, neighbor.j);
+      const b = Math.max(i, neighbor.j);
+      const key = `${a}:${b}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      edges.push([a, b]);
     }
   }
   return edges;
-}
-
-const EDGES = buildEdges();
-
-export function sacredBallVertices(): Vec3[] {
-  return [{ x: 0, y: 0, z: 0 }, ...SURFACE_VERTICES.map((vertex) => ({ ...vertex }))];
-}
-
-export function sacredBallEdges(): Array<[number, number]> {
-  return EDGES.map(([a, b]) => [a, b]);
 }
 
 function rotateYawPitch(point: Vec3, yaw: number, pitch: number): Vec3 {
@@ -88,15 +291,14 @@ function rotateYawPitch(point: Vec3, yaw: number, pitch: number): Vec3 {
   };
 }
 
-export function projectSacredBall(yaw: number, pitch: number, radius: number) {
-  const vertices = sacredBallVertices().map((vertex) => rotateYawPitch(vertex, yaw, pitch));
-  const points: ProjectedPoint[] = vertices.map((vertex, index) => ({
+export function projectSacredBall(yaw: number, pitch: number, radius: number, vertices = sacredBallPose(0)) {
+  const rotated = vertices.map((vertex) => rotateYawPitch(vertex, yaw, pitch));
+  const points: ProjectedPoint[] = rotated.map((vertex) => ({
     x: vertex.x * radius,
     y: vertex.y * radius,
     depth: vertex.z,
-    center: index === 0,
   }));
-  const edges: ProjectedEdge[] = EDGES.map(([a, b]) => ({
+  const edges: ProjectedEdge[] = nearestEdges(rotated).map(([a, b]) => ({
     ax: points[a].x,
     ay: points[a].y,
     bx: points[b].x,

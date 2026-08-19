@@ -257,9 +257,12 @@ test("the flying rock is a small rotating 3D sacred geometry ball", () => {
   assert.match(source, /function drawFlyingRock/);
   const flyingRock = source.match(/function drawFlyingRock\([\s\S]*?\n {4}\}/)?.[0] ?? "";
   assert.match(flyingRock, /projectSacredBall\(/);
+  assert.match(flyingRock, /sacredBallPose\(now/);
+  assert.match(flyingRock, /now \*/);
   assert.doesNotMatch(flyingRock, /drawSacredGlyph\(/);
   assert.doesNotMatch(flyingRock, /previewDots/);
   assert.match(flyingRock, /depth/);
+  assert.match(source, /drawFlyingRock\(rock, shapeOffset, now\)/);
 });
 
 test("the first throw shows a stretching pull-back arrow from the idle rock", () => {

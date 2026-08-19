@@ -78,7 +78,7 @@ import {
 } from "@/lib/throw-share";
 import { COVERAGE_GRID, COVERAGE_WORDS, orbitShape } from "@/lib/orbit-shape";
 import { createGameAudio, finishComplexity, type GameAudio } from "@/lib/audio/index";
-import { projectSacredBall, SACRED_BALL_RADIUS } from "@/lib/sacred-ball";
+import { projectSacredBall, SACRED_BALL_RADIUS, sacredBallPose } from "@/lib/sacred-ball";
 import {
   TUTORIAL_ARROW_LABEL,
   tutorialArrowGeometry,
@@ -2469,7 +2469,7 @@ export default function MandelbrotSkipping() {
       }
     }
 
-    function drawFlyingRock(body: { x: number; y: number; z: number; spin: number; skips: number; bounceAge: number }, glyphOffset: number) {
+    function drawFlyingRock(body: { x: number; y: number; z: number; spin: number; skips: number; bounceAge: number }, glyphOffset: number, now: number) {
       const lift = body.z * 0.30;
       const nextShape = (glyphOffset + body.skips) % GLYPH_COUNT;
       const heightT = Math.min(1, body.z / Math.max(pondScale() * .45, 1));
@@ -2495,14 +2495,14 @@ export default function MandelbrotSkipping() {
       ctx.save();
       ctx.translate(drawX, drawY);
       ctx.scale(scaleX, scaleY);
-      // Face the cuboctahedron down its 3-fold axis so the rest pose is Metatron’s hexagon, then tumble.
-      const yaw = Math.PI / 4 + body.spin * 0.62 + nextShape * 0.22;
-      const pitch = Math.asin(1 / Math.sqrt(3)) + (reduceMotion ? 0 : body.spin * 0.38);
-      const ball = projectSacredBall(yaw, pitch, SACRED_BALL_RADIUS);
+      const idle = reduceMotion ? 0 : now * 0.00042;
+      const yaw = Math.PI / 4 + idle + body.spin * 0.4 + nextShape * 0.22;
+      const pitch = Math.asin(1 / Math.sqrt(3)) + idle * 0.62 + (reduceMotion ? 0 : body.spin * 0.22);
+      const ball = projectSacredBall(yaw, pitch, SACRED_BALL_RADIUS, sacredBallPose(now));
       for (const edge of [...ball.edges].sort((a, b) => a.depth - b.depth)) {
         const near = (edge.depth + 1) / 2;
-        ctx.strokeStyle = `rgba(255, 255, 255, ${(0.10 + 0.28 * near).toFixed(3)})`;
-        ctx.lineWidth = 0.55;
+        ctx.strokeStyle = `rgba(255, 255, 255, ${(0.12 + 0.32 * near).toFixed(3)})`;
+        ctx.lineWidth = 0.7;
         ctx.beginPath();
         ctx.moveTo(edge.ax, edge.ay);
         ctx.lineTo(edge.bx, edge.by);
@@ -2510,8 +2510,8 @@ export default function MandelbrotSkipping() {
       }
       for (const point of [...ball.points].sort((a, b) => a.depth - b.depth)) {
         const near = (point.depth + 1) / 2;
-        const radius = (point.center ? 0.65 : 0.8) + 0.45 * near;
-        ctx.fillStyle = `rgba(255, 255, 255, ${(0.30 + 0.70 * near).toFixed(3)})`;
+        const radius = 1.05 + 0.55 * near;
+        ctx.fillStyle = `rgba(255, 255, 255, ${(0.34 + 0.66 * near).toFixed(3)})`;
         ctx.beginPath();
         ctx.arc(point.x, point.y, radius, 0, TAU);
         ctx.fill();
@@ -2586,7 +2586,7 @@ export default function MandelbrotSkipping() {
         return;
       }
       if (phase === "resolving" || phase === "result") return;
-      drawFlyingRock(rock, shapeOffset);
+      drawFlyingRock(rock, shapeOffset, now);
     }
 
     function drawEffects(now: number) {
