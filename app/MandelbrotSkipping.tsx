@@ -215,6 +215,7 @@ const DEFAULT_TUNING: Tuning = {
 };
 const TUNING_KEY = "mandelbrot-skipping:tuning:v6";
 const SOURCE_RADIUS_PX = 10;
+const IMPACT_LABEL_FADE_MS = 6400;
 const SLING_DRAW_PULL_RATIO = 0.30;
 const SLING_THROW_PULL_RATIO = 0.16;
 const POINT_BUDGET = 400_000;
@@ -2450,7 +2451,8 @@ export default function MandelbrotSkipping() {
         const x = offset.x * radius;
         const y = offset.y * radius;
         if (pixelDots) {
-          ctx.fillRect(Math.round(x), Math.round(y), 1, 1);
+          const pixel = 1 / dpr;
+          ctx.fillRect(Math.round(x * dpr) / dpr, Math.round(y * dpr) / dpr, pixel, pixel);
         } else {
           ctx.beginPath();
           ctx.arc(x, y, 1.15, 0, TAU);
@@ -2542,7 +2544,7 @@ export default function MandelbrotSkipping() {
         ctx.stroke();
         ctx.restore();
       }
-      ctx.textAlign = "center";
+      ctx.textAlign = "left";
       ctx.textBaseline = "middle";
       const colored = tuningRef.current.skipColors;
       const glyphDots = introActiveRef.current
@@ -2553,15 +2555,18 @@ export default function MandelbrotSkipping() {
         const age = now - impact.born;
         if (age < 0) continue;
         const pop = age < 450 ? 1.0 + Math.sin((age / 450) * Math.PI) * 0.18 : 1.0;
-        const fontSize = Math.round(11 * pop);
+        const fontSize = Math.max(8, Math.round(11 * pop));
         ctx.font = `600 ${fontSize}px ui-monospace, monospace`;
         const [r, g, b] = skipTintRgb(impact.index, colored);
         const mute = 0.28;
         const nr = Math.round(r * mute + 186 * (1 - mute));
         const ng = Math.round(g * mute + 210 * (1 - mute));
         const nb = Math.round(b * mute + 214 * (1 - mute));
+        const originX = Math.round(point.x * dpr) / dpr;
+        const originY = Math.round(point.y * dpr) / dpr;
         ctx.save();
-        ctx.translate(point.x, point.y);
+        ctx.imageSmoothingEnabled = false;
+        ctx.translate(originX, originY);
         drawSacredGlyph(
           impact.glyph,
           glyphDots,
@@ -2571,13 +2576,13 @@ export default function MandelbrotSkipping() {
           { pixelDots: true },
         );
         ctx.restore();
-        ctx.save();
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = `rgba(0, 16, 28, 0.55)`;
-        ctx.strokeText(String(impact.index), point.x, point.y + 0.5);
-        ctx.fillStyle = `rgba(${nr}, ${ng}, ${nb}, 0.7)`;
-        ctx.fillText(String(impact.index), point.x, point.y + 0.5);
-        ctx.restore();
+        const fade = age >= IMPACT_LABEL_FADE_MS ? 0 : (1 - age / IMPACT_LABEL_FADE_MS) ** 2;
+        if (fade > 0.02) {
+          ctx.save();
+          ctx.fillStyle = `rgba(${nr}, ${ng}, ${nb}, ${0.85 * fade})`;
+          ctx.fillText(String(impact.index), originX + SOURCE_RADIUS_PX + 4, originY);
+          ctx.restore();
+        }
       }
       ctx.textAlign = "start";
       ctx.textBaseline = "alphabetic";

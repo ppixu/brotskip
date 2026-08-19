@@ -229,6 +229,10 @@ test("every skip stamps a tinted glyph and later skips keep iterating", () => {
   assert.doesNotMatch(source, /fillStyle = `rgba\(235, 252, 255,/);
   assert.match(source, /pixelDots:\s*true/);
   assert.match(source, /fillRect\(/);
+  assert.match(source, /1 \/ dpr/);
+  assert.match(source, /IMPACT_LABEL_FADE_MS/);
+  assert.match(source, /SOURCE_RADIUS_PX \+ /);
+  assert.doesNotMatch(source, /fillText\(String\(impact\.index\), point\.x, point\.y/);
   assert.match(source, /previewDots[\s\S]*sourceDots \/ 3/);
 });
 
