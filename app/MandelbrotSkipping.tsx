@@ -37,6 +37,7 @@ import {
   INTRO_NEBULA_SEEDS_PER_WAVE,
   MRI_PREITERATE_MS,
   PLAY_ATMOSPHERE,
+  AIMING_ATMOSPHERE,
   displayLayerGains,
   introMriSlice,
   introLaunchOrigin,
@@ -627,8 +628,8 @@ fn coneMask(uv: vec2f, view: DisplayView) -> f32 {
   let throwLines = select(vec3f(0.0), textureSample(throwLineTexture, displaySampler, throwUv).rgb, throwInside) * 1.35 * lineGain;
   let liveGlow = textureSample(liveTexture, displaySampler, in.uv).rgb * 3.6;
   let liveMapped = liveGlow / (vec3f(1.0) + liveGlow);
-  let live = pow(clamp(liveMapped, vec3f(0.0), vec3f(1.0)), vec3f(contrast)) * liveGain;
-  let liveLines = textureSample(liveLineTexture, displaySampler, in.uv).rgb * 1.35 * lineGain;
+  let live = pow(clamp(liveMapped, vec3f(0.0), vec3f(1.0)), vec3f(contrast)) * liveGain * cone;
+  let liveLines = textureSample(liveLineTexture, displaySampler, in.uv).rgb * 1.35 * lineGain * cone;
   // pond * pondGain * cone
   let pond = glow;
   let thrown = (throwGlow + throwLines) * throwGain;
@@ -940,6 +941,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
   let hiddenSteps = PLAY_ATMOSPHERE.hiddenSteps;
   let liveGain = PLAY_ATMOSPHERE.liveGain;
   let contrast = PLAY_ATMOSPHERE.contrast;
+  let pondPersist = 0;
   const introGains = displayLayerGains("intro");
   let pondGain = introGains.pondGain;
   let throwGain = introGains.throwGain;
@@ -1068,6 +1070,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
     const dt = lastDrawTime ? (now - lastDrawTime) / 1000 : 1 / 60;
     lastDrawTime = now;
     const lineRetention = lineFadeRetention(dt, linePersist);
+    const pondRetention = layer === "pond" && pondPersist > 0 ? lineFadeRetention(dt, pondPersist) : 1;
     writeParams(paramsBuffer, 0);
     writeParams(paramsAtlasBuffer, 1);
     const mriTime = mriFrozen ? Math.max(0, now - mriLoopStartedAt) / 1000 : 0;
@@ -1081,7 +1084,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
     device.queue.writeBuffer(sliceBuffer, 0, new Float32Array([slice.zCamera, slice.sliceHalf, slice.zoom, 0]));
     device.queue.writeBuffer(indirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
     device.queue.writeBuffer(lineIndirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
-    device.queue.writeBuffer(fadeBuffer, 0, new Float32Array([1, 0, 0, 0]));
+    device.queue.writeBuffer(fadeBuffer, 0, new Float32Array([pondRetention, 0, 0, 0]));
     device.queue.writeBuffer(lineFadeBuffer, 0, new Float32Array([lineRetention, 0, 0, 0]));
     const displayView = new Float32Array(32);
     displayView[0] = view.centerX;
@@ -1265,6 +1268,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
       hiddenSteps = atmosphere.hiddenSteps;
       liveGain = atmosphere.liveGain;
       contrast = atmosphere.contrast;
+      pondPersist = atmosphere.pondPersist ?? 0;
     },
     setLayer(nextLayer) {
       layer = nextLayer;
@@ -2723,7 +2727,7 @@ export default function MandelbrotSkipping() {
         maxDepth: INTRO_MAX_DEPTH,
         doublePixels: introActiveRef.current ? true : tuningRef.current.doublePixels,
       });
-      engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
+      engineRef.current?.setAtmosphere(introActiveRef.current ? INTRO_ATMOSPHERE : AIMING_ATMOSPHERE);
       const seeds = Array.from({ length: INTRO_NEBULA_SEEDS_PER_WAVE }, () => introNebulaSeed());
       engineRef.current?.spawnAppend(seeds, 1, INTRO_SOURCE_CAP);
       if (Math.random() < 0.04) {
@@ -2818,7 +2822,7 @@ export default function MandelbrotSkipping() {
         previewKey = "";
         flashlightDirty = true;
         engineRef.current?.setLayer("pond");
-        engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
+        engineRef.current?.setAtmosphere(AIMING_ATMOSPHERE);
         engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
         pull = point;
         rock.x = point.x;

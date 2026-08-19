@@ -82,6 +82,7 @@ export type OrbitAtmosphere = {
   liveGain: number;
   contrast: number;
   atlasGain: number;
+  pondPersist?: number;
 };
 
 export const PLAY_ATMOSPHERE: OrbitAtmosphere = {
@@ -102,6 +103,17 @@ export const INTRO_ATMOSPHERE: OrbitAtmosphere = {
   liveGain: 0.12,
   contrast: 1.22,
   atlasGain: 1,
+};
+
+export const AIMING_ATMOSPHERE: OrbitAtmosphere = {
+  drawLines: false,
+  grayscale: true,
+  energy: 0.28,
+  hiddenSteps: 1,
+  liveGain: 0.55,
+  contrast: 1.22,
+  atlasGain: 1,
+  pondPersist: 2.8,
 };
 
 export type DisplayLayerMode = "intro" | "play" | "aiming";

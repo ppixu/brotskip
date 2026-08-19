@@ -65,7 +65,7 @@ test("loading Buddhabrot uses the precomputed rotating Gaussian cloud", () => {
   assert.match(source, /introMriSlice\(/);
   assert.match(source, /sliceEnabled/);
   assert.match(source, /const mriTime = mriFrozen/);
-  assert.match(source, /writeBuffer\(fadeBuffer, 0, new Float32Array\(\[1, 0, 0, 0\]\)\)/);
+  assert.match(source, /writeBuffer\(fadeBuffer, 0, new Float32Array\(\[pondRetention, 0, 0, 0\]\)\)/);
   assert.match(source, /!mriEnabled \|\| !mriFrozen/);
   assert.match(source, /now - mriWarmupStartedAt >= MRI_PREITERATE_MS/);
   assert.match(source, /isMriReady/);
@@ -103,6 +103,12 @@ test("flashlight is a GPU cone on the live pond; cached blit is GPU-fail only", 
   assert.match(source, /FLASHLIGHT_EDGE_BLUR_PX/);
   assert.match(source, /createConicGradient/);
   assert.match(source, /spawnIntroBackgroundOrbits/);
+  assert.match(source, /AIMING_ATMOSPHERE/);
+  assert.match(source, /setAtmosphere\(AIMING_ATMOSPHERE\)/);
+  assert.match(source, /introActiveRef\.current \? INTRO_ATMOSPHERE : AIMING_ATMOSPHERE/);
+  assert.match(source, /liveGain \* cone/);
+  assert.match(source, /pondPersist/);
+  assert.match(source, /layer === "pond" && pondPersist > 0/);
   assert.match(source, /displayLayerGains\("aiming"\)/);
   assert.match(source, /displayLayerGains\("play"\)/);
   assert.match(source, /displayLayerGains\("intro"\)/);

@@ -16,6 +16,7 @@ import {
   MRI_CYCLE_SECONDS,
   MRI_PREITERATE_MS,
   PLAY_ATMOSPHERE,
+  AIMING_ATMOSPHERE,
   AIMING_POND_GAIN,
   displayLayerGains,
   introMriSlice,
@@ -200,6 +201,18 @@ test("intro and play atmospheres drop flashlight-specific iteration, and aiming 
   assert.ok((INTRO_ATMOSPHERE.contrast ?? 0.72) >= 1.1);
   assert.ok((PLAY_ATMOSPHERE.liveGain ?? 1) >= 0.9);
   assert.ok(INTRO_ATMOSPHERE.hiddenSteps <= 1);
+});
+
+test("aiming flashlight shows fading random pond orbits inside the cone", () => {
+  assert.equal(AIMING_ATMOSPHERE.grayscale, true);
+  assert.equal(AIMING_ATMOSPHERE.drawLines, false);
+  assert.ok((AIMING_ATMOSPHERE.pondPersist ?? 0) >= 2);
+  assert.ok((AIMING_ATMOSPHERE.pondPersist ?? 0) <= 4);
+  assert.ok(AIMING_ATMOSPHERE.liveGain > (INTRO_ATMOSPHERE.liveGain ?? 0));
+  assert.ok(AIMING_ATMOSPHERE.liveGain >= 0.4);
+  assert.ok(AIMING_ATMOSPHERE.energy >= INTRO_ATMOSPHERE.energy);
+  assert.equal(displayLayerGains("aiming").coneEnabled, true);
+  assert.equal(displayLayerGains("play").pondGain, 0);
 });
 
 test("source allocation wraps inside the live cap", () => {
