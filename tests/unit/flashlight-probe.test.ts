@@ -43,11 +43,12 @@ test("flashlight is a cone mask, not a cheaper iterator", () => {
 
 test("display layer gains match intro, play, and aiming", () => {
   assert.deepEqual(displayLayerGains("intro"), { pondGain: 0, throwGain: 1, coneEnabled: false });
-  assert.deepEqual(displayLayerGains("play"), { pondGain: AIMING_POND_GAIN, throwGain: 1, coneEnabled: false });
+  assert.deepEqual(displayLayerGains("play"), { pondGain: 0, throwGain: 1, coneEnabled: false });
   assert.deepEqual(displayLayerGains("aiming"), { pondGain: AIMING_POND_GAIN, throwGain: 0, coneEnabled: true });
-  assert.ok(displayLayerGains("play").pondGain > 0);
-  assert.ok(displayLayerGains("aiming").pondGain <= 0.15);
-  assert.ok(displayLayerGains("aiming").pondGain < 1);
+  assert.equal(displayLayerGains("play").pondGain, 0);
+  assert.ok(displayLayerGains("aiming").pondGain > 0.15);
+  assert.ok(displayLayerGains("aiming").pondGain <= 0.28);
+  assert.equal(displayLayerGains("aiming").coneEnabled, true);
 });
 
 test("intro MRI slice sweeps hop-iteration like a cutting plane, not max-iter fill", () => {
