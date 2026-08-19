@@ -7,6 +7,9 @@ import {
   bassIntervalSeconds,
   chordDegrees,
   chordGain,
+  FANFARE_BASS,
+  fanfareChordDegrees,
+  fanfareMelodyDegrees,
   fanfarePlan,
   fanfareTier,
   finishComplexity,
@@ -130,4 +133,25 @@ test("a deep, high-coverage throw ranks a bigger fanfare than a short skip", () 
   assert.ok(small < 0.25);
   assert.ok(huge > 0.75);
   assert.ok(fanfareTier(huge) > fanfareTier(small));
+});
+
+const TONIC_TRIAD = new Set([0, 2, 3]);
+
+test("fanfare melody and final chord stay on the tonic triad, never a clashing 2nd or 6th", () => {
+  for (const tier of [0, 1, 2, 3] as const) {
+    assert.ok(fanfareMelodyDegrees(tier).length >= 4);
+    for (const degree of fanfareMelodyDegrees(tier)) {
+      const tone = ((degree % 5) + 5) % 5;
+      assert.ok(TONIC_TRIAD.has(tone), `melody degree ${degree} lands on clashing tone ${tone}`);
+    }
+    for (const degree of fanfareChordDegrees(tier)) {
+      const tone = ((degree % 5) + 5) % 5;
+      assert.ok(TONIC_TRIAD.has(tone), `chord degree ${degree} lands on clashing tone ${tone}`);
+    }
+  }
+  assert.ok(fanfareMelodyDegrees(3).length > fanfareMelodyDegrees(0).length);
+});
+
+test("fanfare bass is a tonic-and-fifth pad, independent of glyph", () => {
+  assert.deepEqual([...FANFARE_BASS], [-5, -2]);
 });

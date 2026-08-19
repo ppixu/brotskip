@@ -96,6 +96,24 @@ export function melodyDegree(glyph: number, step: number, depthBand: number, zAn
   return base + 5 + climb + swirl;
 }
 
+/** Tonic + fifth, one octave down. Never glyph-dependent — that caused clashes. */
+export const FANFARE_BASS: readonly [number, number] = [-5, -2];
+
+/** Rising celebratory arpeggios on the tonic triad (0, 2, 3) plus octaves. */
+export function fanfareMelodyDegrees(tier: 0 | 1 | 2 | 3): readonly number[] {
+  const phrases: readonly (readonly number[])[] = [
+    [0, 2, 3, 5],
+    [0, 2, 3, 5, 7, 10],
+    [0, 2, 3, 5, 3, 5, 7, 8, 10, 12],
+    [0, 2, 3, 5, 3, 5, 5, 7, 8, 10, 8, 10, 12, 15, 17, 20],
+  ];
+  return phrases[tier];
+}
+
+export function fanfareChordDegrees(tier: 0 | 1 | 2 | 3): readonly number[] {
+  return tier >= 3 ? [0, 2, 3, 5, 7, 10] : [0, 2, 3, 5];
+}
+
 export type FanfarePlan = {
   tier: 0 | 1 | 2 | 3;
   noteCount: number;
@@ -115,14 +133,16 @@ export function fanfareTier(complexity: number): 0 | 1 | 2 | 3 {
 
 export function fanfarePlan(complexity: number): FanfarePlan {
   const tier = fanfareTier(complexity);
-  const noteCount = [4, 6, 10, 16][tier];
-  const stepSeconds = [.055, .07, .08, .09][tier];
-  const tail = [.08, .2, .45, .9][tier];
+  const melody = fanfareMelodyDegrees(tier);
+  const noteCount = melody.length;
+  const stepSeconds = [.07, .075, .08, .072][tier];
+  const tail = [.12, .28, .55, 1.05][tier];
+  const phraseGap = tier >= 2 ? .1 : 0;
   return {
     tier,
     noteCount,
     stepSeconds,
-    duration: noteCount * stepSeconds + tail,
+    duration: noteCount * stepSeconds + phraseGap + tail,
     bassStyle: tier >= 1 ? "pad" : "none",
     withFinalChord: tier >= 2,
   };
@@ -227,8 +247,6 @@ export function createChiptuneEngine(shell: EngineShell): ChiptuneEngine {
   bassFifth.connect(bassFifthGain).connect(output);
   bassRoot.start();
   bassFifth.start();
-  let bassStep = 0;
-  let bassNextTime = 0;
 
   let palette: Palette | null = null;
   let lastChordGlyph = 0;
@@ -406,21 +424,15 @@ export function createChiptuneEngine(shell: EngineShell): ChiptuneEngine {
       if (!groups.length) {
         bassGain.gain.setTargetAtTime(.0001, now, .18);
         bassFifthGain.gain.setTargetAtTime(.0001, now, .18);
-        bassNextTime = 0;
       } else {
-        if (bassNextTime === 0) bassNextTime = now;
-        const degree = bassDegree(bassStep, frame.depthBand, lastChordGlyph);
-        const rootHz = degreeToFrequency(palette, degree, 250);
-        const fifthHz = degreeToFrequency(palette, degree + 3, 250);
+        const tonic = frame.depthBand > 10 ? -10 : -5;
+        const rootHz = degreeToFrequency(palette, tonic, 250);
+        const fifthHz = degreeToFrequency(palette, tonic + 3, 250);
         bassRoot.frequency.setTargetAtTime(rootHz, now, .45);
         bassFifth.frequency.setTargetAtTime(fifthHz, now, .5);
         const peak = (resolving ? .055 : .08) * (0.75 + frame.growth * .25);
         bassGain.gain.setTargetAtTime(peak, now, .22);
         bassFifthGain.gain.setTargetAtTime(peak * .55, now, .28);
-        if (now + LOOKAHEAD >= bassNextTime) {
-          bassStep += 1;
-          bassNextTime = now + bassIntervalSeconds(frame.depthBand);
-        }
       }
     },
     silence() {
@@ -432,39 +444,40 @@ export function createChiptuneEngine(shell: EngineShell): ChiptuneEngine {
       }
       bassGain.gain.setTargetAtTime(.0001, now, .18);
       bassFifthGain.gain.setTargetAtTime(.0001, now, .18);
-      bassNextTime = 0;
     },
     finish(scoreRatio) {
       const used = palette ?? paletteFromLanding(-0.58, 0);
       const plan = fanfarePlan(scoreRatio);
+      const melody = fanfareMelodyDegrees(plan.tier);
       const when = context.currentTime + .02;
       if (plan.bassStyle === "pad") {
-        const rootHz = degreeToFrequency(used, bassDegree(0, 3, lastChordGlyph), 250);
-        const fifthHz = degreeToFrequency(used, bassDegree(0, 3, lastChordGlyph) + 3, 250);
-        padTone(rootHz, when, plan.duration, .11 + plan.tier * .02);
-        padTone(fifthHz, when, plan.duration, .06 + plan.tier * .015, "sine");
+        padTone(degreeToFrequency(used, FANFARE_BASS[0], 250), when, plan.duration, .1 + plan.tier * .015);
+        padTone(degreeToFrequency(used, FANFARE_BASS[1], 250), when, plan.duration, .055 + plan.tier * .01, "sine");
       }
-      for (let index = 0; index < plan.noteCount; index++) {
-        const t = when + index * plan.stepSeconds;
-        const climb = plan.tier >= 2 ? Math.floor(index / 5) * 2 : 0;
-        const hz = degreeToFrequency(used, 2 + index + climb, MAX_TRANSIENT_HZ);
-        const pan = (index / Math.max(1, plan.noteCount - 1)) * 1.2 - .6;
-        blip(hz, t, .12 + plan.tier * .03, .12 + plan.tier * .025, "square", pan, { startRatio: 1.12 });
+      const phraseBreak = plan.tier >= 2 ? 6 : 0;
+      for (let index = 0; index < melody.length; index++) {
+        const gap = phraseBreak && index >= phraseBreak ? .1 : 0;
+        const t = when + index * plan.stepSeconds + gap;
+        const hz = degreeToFrequency(used, melody[index] + 5, MAX_TRANSIENT_HZ);
+        const pan = (index / Math.max(1, melody.length - 1)) * 1.15 - .575;
+        const length = .14 + plan.tier * .025 + (index === melody.length - 1 ? .08 : 0);
+        blip(hz, t, length, .14 + plan.tier * .02, "square", pan);
+        if (plan.tier >= 2) {
+          blip(degreeToFrequency(used, melody[index] + 5, MAX_TRANSIENT_HZ), t, length, .05, "triangle", pan);
+        }
       }
       if (plan.withFinalChord) {
-        const chordWhen = when + plan.noteCount * plan.stepSeconds;
-        const hold = .35 + plan.tier * .22;
-        const chord = [0, 2, 4, 7];
-        for (const degree of chord) {
-          blip(degreeToFrequency(used, degree + (plan.tier >= 3 ? 5 : 0), MAX_TRANSIENT_HZ), chordWhen, hold, .1, "triangle", 0);
+        const chordWhen = when + melody.length * plan.stepSeconds + (phraseBreak ? .1 : 0) + .04;
+        const hold = .5 + plan.tier * .28;
+        for (const degree of fanfareChordDegrees(plan.tier)) {
+          blip(degreeToFrequency(used, degree + 5, MAX_TRANSIENT_HZ), chordWhen, hold, .11, "triangle", 0);
+          blip(degreeToFrequency(used, degree + 5, MAX_TRANSIENT_HZ), chordWhen, hold * .85, .06, "square", 0);
         }
       }
     },
     reset() {
       palette = null;
       lastChordGlyph = 0;
-      bassStep = 0;
-      bassNextTime = 0;
       for (const voice of arpVoices) {
         voice.step = 0;
         voice.nextTime = 0;
