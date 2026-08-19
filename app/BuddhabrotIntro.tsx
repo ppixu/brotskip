@@ -17,7 +17,7 @@ export default function BuddhabrotIntro({
   onPlay?: () => void;
 }) {
   const { wikipedia } = BUDDHABROT_EXPLAIN;
-  const [showTrueBuddhabrot, setShowTrueBuddhabrot] = useState(false);
+  const [showTrueBuddhabrot, setShowTrueBuddhabrot] = useState(true);
   return (
     <div className={`introOverlay ${fading ? "fading" : ""}`} role="status" aria-label="Charting the pond">
       <BuddhabrotCloudCanvas

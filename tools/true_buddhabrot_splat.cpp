@@ -1,5 +1,6 @@
 // Standard z <- z^2 + c Buddhabrot escape paths -> standard 3DGS PLY.
-// XY is the rotated complex plane. Z is normalized orbit time.
+// XY is the rotated z-plane. Z is Im(c): a 3-axis slice of the 4D (z, c) density,
+// not a stack of 2D Buddhabrots along orbit time.
 
 #include <algorithm>
 #include <atomic>
@@ -20,7 +21,6 @@ constexpr double C_IMAG_MIN = -1.42;
 constexpr double C_IMAG_MAX = 1.42;
 constexpr double FIELD_MIN = -2.35;
 constexpr double FIELD_MAX = 2.35;
-constexpr double DEPTH_HALF = 1.28;
 constexpr float SH_C0 = 0.28209479177387814f;
 
 struct Complex {
@@ -108,12 +108,11 @@ uint32_t escape_time(const Complex& c, uint32_t max_iterations) {
   return 0;
 }
 
-Point3 project_orbit(const Complex& z, uint32_t step, uint32_t escape) {
-  const double t = static_cast<double>(step) / std::max(1u, escape - 1);
+Point3 project_orbit(const Complex& z, const Complex& c) {
   return {
       z.imag,
       -(z.real + 0.5),
-      (t * 2.0 - 1.0) * DEPTH_HALF,
+      c.imag,
   };
 }
 
@@ -125,7 +124,7 @@ void add_orbit(std::vector<uint32_t>& hits, const Options& options,
   for (uint32_t step = 0; step + 1 < escape; ++step) {
     z = iterate(z, c);
     if (step < 2) continue;
-    const Point3 point = project_orbit(z, step, escape);
+    const Point3 point = project_orbit(z, c);
     if (point.x < FIELD_MIN || point.x >= FIELD_MAX ||
         point.y < FIELD_MIN || point.y >= FIELD_MAX ||
         point.z < FIELD_MIN || point.z >= FIELD_MAX) continue;
@@ -165,7 +164,7 @@ void write_ply(const Options& options, const std::vector<Candidate>& splats) {
   std::ofstream output(options.output, std::ios::binary);
   if (!output) throw std::runtime_error("could not open output PLY");
   output << "ply\nformat binary_little_endian 1.0\n"
-         << "comment standard z squared plus c Buddhabrot XYT volume\n"
+         << "comment 4D (z, c) Buddhabrot projected to Im(z), -Re(z), Im(c)\n"
          << "element vertex " << splats.size() << "\n";
   const char* fields[] = {
       "x", "y", "z", "nx", "ny", "nz", "f_dc_0", "f_dc_1", "f_dc_2",
