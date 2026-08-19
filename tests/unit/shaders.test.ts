@@ -198,6 +198,18 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(titleRule, /font-size:\s*32px/);
   assert.match(dropCapRule, /font-size:\s*3\.5em/);
   assert.doesNotMatch(css, /gpuCanvas\.introStashed/);
+  const game = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
+  assert.match(css, /--throw-stone-x:\s*50%/);
+  assert.match(css, /--throw-stone-y:\s*82%/);
+  const playRule = css.match(/\.introPlay \{([^}]+)\}/)?.[1] ?? "";
+  const rethrowRule = css.match(/\.playfieldThrowControl \{([^}]+)\}/)?.[1] ?? "";
+  assert.match(playRule, /left:\s*var\(--throw-stone-x\)/);
+  assert.match(playRule, /top:\s*var\(--throw-stone-y\)/);
+  assert.match(rethrowRule, /left:\s*var\(--throw-stone-x\)/);
+  assert.match(rethrowRule, /top:\s*var\(--throw-stone-y\)/);
+  assert.doesNotMatch(css, /\.introPlay \{ top:/);
+  assert.match(game, /function anchor\(\) \{ return \{ x: width \* 0\.5, y: height \* 0\.82 \}/);
+  assert.match(game, /hud\.phase === "flying" \|\| hud\.phase === "resolving" \|\| hud\.phase === "result"/);
 });
 
 test("every skip stamps a tinted glyph and later skips keep iterating", () => {

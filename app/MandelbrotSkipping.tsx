@@ -3465,7 +3465,7 @@ export default function MandelbrotSkipping() {
             onPlay={finishOpening}
           />
         )}
-        {(hud.phase === "flying" || hud.phase === "resolving") && !intro && (
+        {(hud.phase === "flying" || hud.phase === "resolving" || hud.phase === "result") && !intro && (
           <button
             type="button"
             className="playfieldThrowControl"
