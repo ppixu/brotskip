@@ -7,7 +7,6 @@ import {
   bassIntervalSeconds,
   chordDegrees,
   chordGain,
-  FANFARE_BASS,
   fanfareChordDegrees,
   fanfareMelodyDegrees,
   fanfarePlan,
@@ -123,7 +122,7 @@ test("four celebration tiers grow in notes and duration", () => {
   assert.ok(huge.noteCount >= chip.noteCount * 2);
   assert.ok(huge.duration > chip.duration * 3);
   assert.equal(chip.bassStyle, "none");
-  assert.equal(huge.bassStyle, "pad");
+  assert.equal(huge.bassStyle, "none");
   assert.equal(huge.withFinalChord, true);
 });
 
@@ -150,8 +149,4 @@ test("fanfare melody and final chord stay on the tonic triad, never a clashing 2
     }
   }
   assert.ok(fanfareMelodyDegrees(3).length > fanfareMelodyDegrees(0).length);
-});
-
-test("fanfare bass is a tonic-and-fifth pad, independent of glyph", () => {
-  assert.deepEqual([...FANFARE_BASS], [-5, -2]);
 });

@@ -96,9 +96,6 @@ export function melodyDegree(glyph: number, step: number, depthBand: number, zAn
   return base + 5 + climb + swirl;
 }
 
-/** Tonic + fifth, one octave down. Never glyph-dependent — that caused clashes. */
-export const FANFARE_BASS: readonly [number, number] = [-5, -2];
-
 /** Rising celebratory arpeggios on the tonic triad (0, 2, 3) plus octaves. */
 export function fanfareMelodyDegrees(tier: 0 | 1 | 2 | 3): readonly number[] {
   const phrases: readonly (readonly number[])[] = [
@@ -143,7 +140,7 @@ export function fanfarePlan(complexity: number): FanfarePlan {
     noteCount,
     stepSeconds,
     duration: noteCount * stepSeconds + phraseGap + tail,
-    bassStyle: tier >= 1 ? "pad" : "none",
+    bassStyle: "none",
     withFinalChord: tier >= 2,
   };
 }
@@ -286,23 +283,6 @@ export function createChiptuneEngine(shell: EngineShell): ChiptuneEngine {
   }
 
   const MIN_SAFE_HZ = 80;
-
-  function padTone(frequency: number, when: number, duration: number, volume: number, type: OscillatorType = "triangle") {
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    const attack = Math.min(.22, duration * .18);
-    const release = Math.min(.55, duration * .4);
-    oscillator.type = type;
-    oscillator.frequency.setValueAtTime(frequency, when);
-    gain.gain.setValueAtTime(.0001, when);
-    gain.gain.exponentialRampToValueAtTime(Math.max(.0002, volume), when + attack);
-    gain.gain.setValueAtTime(Math.max(.0002, volume), when + Math.max(attack, duration - release));
-    gain.gain.exponentialRampToValueAtTime(.0001, when + duration);
-    oscillator.connect(gain).connect(output);
-    oscillator.start(when);
-    oscillator.stop(when + duration + .02);
-    scheduleCleanup(context, when + duration + .04, [oscillator, gain]);
-  }
 
   function noiseClick(when: number, volume: number, panPosition: number) {
     const source = context.createBufferSource();
@@ -450,10 +430,6 @@ export function createChiptuneEngine(shell: EngineShell): ChiptuneEngine {
       const plan = fanfarePlan(scoreRatio);
       const melody = fanfareMelodyDegrees(plan.tier);
       const when = context.currentTime + .02;
-      if (plan.bassStyle === "pad") {
-        padTone(degreeToFrequency(used, FANFARE_BASS[0], 250), when, plan.duration, .1 + plan.tier * .015);
-        padTone(degreeToFrequency(used, FANFARE_BASS[1], 250), when, plan.duration, .055 + plan.tier * .01, "sine");
-      }
       const phraseBreak = plan.tier >= 2 ? 6 : 0;
       for (let index = 0; index < melody.length; index++) {
         const gap = phraseBreak && index >= phraseBreak ? .1 : 0;
