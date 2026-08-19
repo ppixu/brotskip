@@ -79,6 +79,12 @@ import {
 import { COVERAGE_GRID, COVERAGE_WORDS, orbitShape } from "@/lib/orbit-shape";
 import { createGameAudio, finishComplexity, type GameAudio } from "@/lib/audio/index";
 import { projectSacredBall, SACRED_BALL_RADIUS } from "@/lib/sacred-ball";
+import {
+  TUTORIAL_ARROW_LABEL,
+  tutorialArrowGeometry,
+  tutorialArrowStretch,
+  tutorialArrowVisible,
+} from "@/lib/tutorial-arrow";
 
 type Phase = "ready" | "aiming" | "flying" | "resolving" | "result";
 
@@ -1601,6 +1607,7 @@ export default function MandelbrotSkipping() {
     let lastIntroLaunch = 0;
     let lastIntroBackground = 0;
     let previewKey = "";
+    let hasThrown = false;
 
     invalidateFlashlightRef.current = () => { flashlightDirty = true; };
     invalidateGridRef.current = () => { gridDirty = true; };
@@ -1772,6 +1779,7 @@ export default function MandelbrotSkipping() {
       rock.skips = 0;
       rock.bounceAge = 10;
       phase = "flying";
+      hasThrown = true;
       gameAudio.init();
       gameAudio.throwStart();
       flashlightDirty = true;
@@ -2525,6 +2533,41 @@ export default function MandelbrotSkipping() {
       ctx.restore();
     }
 
+    function drawTutorialArrow(now: number) {
+      if (!tutorialArrowVisible({
+        introActive: introActiveRef.current,
+        spectator: spectatorRef.current,
+        phase,
+        hasThrown,
+      })) return;
+      const stretch = tutorialArrowStretch(now, reduceMotion);
+      const arrow = tutorialArrowGeometry({ x: rock.x, y: rock.y }, stretch, minDimension(), height);
+      ctx.save();
+      ctx.globalAlpha = arrow.alpha;
+      ctx.strokeStyle = "rgba(237, 250, 255, 0.92)";
+      ctx.fillStyle = "rgba(237, 250, 255, 0.92)";
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.lineWidth = 2.4 - stretch * 0.8;
+      ctx.shadowColor = "rgba(0, 0, 0, 0.55)";
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.moveTo(arrow.from.x, arrow.from.y);
+      ctx.lineTo(arrow.to.x, arrow.to.y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(arrow.head[0].x, arrow.head[0].y);
+      ctx.lineTo(arrow.head[1].x, arrow.head[1].y);
+      ctx.lineTo(arrow.head[2].x, arrow.head[2].y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.font = "600 12px Inter, ui-sans-serif, system-ui, sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillText(TUTORIAL_ARROW_LABEL, arrow.label.x, arrow.label.y);
+      ctx.restore();
+    }
+
     function drawRock(now: number) {
       if (introActiveRef.current) {
         let activeDrawn = 0;
@@ -2718,6 +2761,7 @@ export default function MandelbrotSkipping() {
       drawAimOrbitPreview(a);
       drawEffects(now);
       drawRock(now);
+      drawTutorialArrow(now);
     }
 
     function spawnIntroPondRipple(now: number) {

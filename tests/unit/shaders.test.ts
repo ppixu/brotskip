@@ -262,6 +262,26 @@ test("the flying rock is a small rotating 3D sacred geometry ball", () => {
   assert.match(flyingRock, /depth/);
 });
 
+test("the first throw shows a stretching pull-back arrow from the idle rock", () => {
+  const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
+  assert.match(source, /from "@\/lib\/tutorial-arrow"/);
+  assert.match(source, /TUTORIAL_ARROW_LABEL/);
+  assert.match(source, /function drawTutorialArrow/);
+  assert.match(source, /tutorialArrowVisible\(/);
+  assert.match(source, /tutorialArrowGeometry\(/);
+  assert.match(source, /let hasThrown = false/);
+  assert.match(source, /hasThrown = true/);
+  const reset = source.match(/function resetRound\([\s\S]*?\n {4}\}/)?.[0] ?? "";
+  assert.doesNotMatch(reset, /hasThrown/);
+  const renderMatch = source.match(/function render\(now: number\) \{([\s\S]*?)\n {4}\}\n/);
+  assert.ok(renderMatch, "render() missing");
+  assert.match(renderMatch[1], /drawTutorialArrow\(now\)/);
+  const draw = source.match(/function drawTutorialArrow\([\s\S]*?\n {4}\}/)?.[0] ?? "";
+  assert.match(draw, /fillText\(TUTORIAL_ARROW_LABEL/);
+  const launch = source.match(/function launchRock\([\s\S]*?\n {4}\}/)?.[0] ?? "";
+  assert.match(launch, /hasThrown = true/);
+});
+
 test("throw orbits stay alive across the pond even when they leave the camera", () => {
   const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
   assert.match(source, /let inPond = /);
