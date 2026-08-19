@@ -18,6 +18,7 @@ export const SACRED_BALL_POINTS = 42;
 export const SACRED_BALL_PERIOD_MS = 2000;
 export const SACRED_BALL_BLEND_MS = 700;
 export const SACRED_BALL_RADIUS = 14;
+export const SACRED_BALL_MIN_LIFE = 0.32;
 
 const TAU = Math.PI * 2;
 const PHI = (1 + Math.sqrt(5)) / 2;
@@ -97,18 +98,6 @@ function icosahedron() {
   return collect(seeds);
 }
 
-function cuboctahedron() {
-  const seeds: Vec3[] = [];
-  for (const s of [-1, 1]) {
-    for (const t of [-1, 1]) {
-      seeds.push({ x: s, y: t, z: 0 });
-      seeds.push({ x: s, y: 0, z: t });
-      seeds.push({ x: 0, y: s, z: t });
-    }
-  }
-  return collect(seeds);
-}
-
 function octahedron() {
   return collect([
     { x: 1, y: 0, z: 0 },
@@ -120,12 +109,76 @@ function octahedron() {
   ]);
 }
 
-function geodesicIcosa() {
-  return withMidpoints(icosahedron());
+function tetrahedron() {
+  return collect([
+    { x: 1, y: 1, z: 1 },
+    { x: 1, y: -1, z: -1 },
+    { x: -1, y: 1, z: -1 },
+    { x: -1, y: -1, z: 1 },
+  ]);
 }
 
-function metatronLattice() {
-  return collect([...cuboctahedron(), ...octahedron(), ...withMidpoints(cuboctahedron())]);
+function slerp(a: Vec3, b: Vec3, t: number) {
+  const clamped = Math.max(0, Math.min(1, t));
+  const dot = Math.max(-1, Math.min(1, a.x * b.x + a.y * b.y + a.z * b.z));
+  if (dot > 0.9995) return normalize({
+    x: a.x + (b.x - a.x) * clamped,
+    y: a.y + (b.y - a.y) * clamped,
+    z: a.z + (b.z - a.z) * clamped,
+  });
+  const theta = Math.acos(dot);
+  const sinTheta = Math.sin(theta) || 1;
+  const wa = Math.sin((1 - clamped) * theta) / sinTheta;
+  const wb = Math.sin(clamped * theta) / sinTheta;
+  return {
+    x: a.x * wa + b.x * wb,
+    y: a.y * wa + b.y * wb,
+    z: a.z * wa + b.z * wb,
+  };
+}
+
+function concentricHalo() {
+  const seeds: Vec3[] = [];
+  for (const y of [0, 0.55]) {
+    const radius = Math.sqrt(Math.max(0, 1 - y * y));
+    for (let index = 0; index < 21; index++) {
+      const angle = index * TAU / 21 - Math.PI / 2;
+      seeds.push({ x: Math.cos(angle) * radius, y, z: Math.sin(angle) * radius });
+    }
+  }
+  return collect(seeds);
+}
+
+function vesicaRings() {
+  const seeds: Vec3[] = [];
+  const n = 21;
+  const cos60 = 0.5;
+  const sin60 = Math.sqrt(3) / 2;
+  for (let index = 0; index < n; index++) {
+    const t = index * TAU / n;
+    seeds.push({ x: Math.cos(t), y: Math.sin(t), z: 0 });
+    seeds.push({ x: Math.cos(t), y: Math.sin(t) * cos60, z: Math.sin(t) * sin60 });
+  }
+  return collect(seeds);
+}
+
+function crystallize(targets: Vec3[], amount: number) {
+  return canon(fibonacciSphere().map((point) => {
+    let nearest = targets[0];
+    let best = dist(point, targets[0]);
+    for (const target of targets) {
+      const gap = dist(point, target);
+      if (gap < best) {
+        nearest = target;
+        best = gap;
+      }
+    }
+    return slerp(point, nearest, amount);
+  }));
+}
+
+function geodesicIcosa() {
+  return withMidpoints(icosahedron());
 }
 
 function hexRings() {
@@ -206,11 +259,13 @@ function padToCount(points: Vec3[], count: number) {
 }
 
 const ARRANGEMENTS = [
+  concentricHalo(),
+  crystallize(tetrahedron(), 0.78),
+  vesicaRings(),
+  crystallize(octahedron(), 0.72),
   geodesicIcosa(),
-  metatronLattice(),
-  hexRings(),
-  fibonacciSphere(),
   merkaba(),
+  hexRings(),
 ].map((points) => padToCount(points, SACRED_BALL_POINTS));
 
 export const SACRED_BALL_ARRANGEMENTS = ARRANGEMENTS.length;
@@ -220,23 +275,29 @@ export function sacredBallArrangement(index: number) {
   return ARRANGEMENTS[wrapped].map((point) => ({ ...point }));
 }
 
-function slerp(a: Vec3, b: Vec3, t: number) {
-  const clamped = Math.max(0, Math.min(1, t));
-  const dot = Math.max(-1, Math.min(1, a.x * b.x + a.y * b.y + a.z * b.z));
-  if (dot > 0.9995) return normalize({
-    x: a.x + (b.x - a.x) * clamped,
-    y: a.y + (b.y - a.y) * clamped,
-    z: a.z + (b.z - a.z) * clamped,
-  });
-  const theta = Math.acos(dot);
-  const sinTheta = Math.sin(theta) || 1;
-  const wa = Math.sin((1 - clamped) * theta) / sinTheta;
-  const wb = Math.sin(clamped * theta) / sinTheta;
-  return {
-    x: a.x * wa + b.x * wb,
-    y: a.y * wa + b.y * wb,
-    z: a.z * wa + b.z * wb,
-  };
+export function sacredBallGlyphPose(fromGlyph: number, toGlyph: number, t: number) {
+  const from = ((fromGlyph % ARRANGEMENTS.length) + ARRANGEMENTS.length) % ARRANGEMENTS.length;
+  const to = ((toGlyph % ARRANGEMENTS.length) + ARRANGEMENTS.length) % ARRANGEMENTS.length;
+  const a = ARRANGEMENTS[from];
+  const b = ARRANGEMENTS[to];
+  const eased = 0.5 - 0.5 * Math.cos(Math.max(0, Math.min(1, t)) * Math.PI);
+  return a.map((point, index) => slerp(point, b[index], eased));
+}
+
+export function sacredBallHopT(heightT: number, rising: boolean) {
+  const height = Math.max(0, Math.min(1, heightT));
+  return rising ? 0.5 * height : 0.5 + 0.5 * (1 - height);
+}
+
+export function sacredBallHopScale(heightT: number, flying: boolean) {
+  if (!flying) return 1;
+  return 0.58 + 0.42 * Math.max(0, Math.min(1, heightT));
+}
+
+export function sacredBallLifeScale(skips: number, plannedSkips: number) {
+  if (plannedSkips <= 0) return 1;
+  const remaining = Math.max(0, 1 - Math.max(0, skips) / plannedSkips);
+  return SACRED_BALL_MIN_LIFE + (1 - SACRED_BALL_MIN_LIFE) * remaining;
 }
 
 export function sacredBallPose(now: number) {

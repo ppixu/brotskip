@@ -78,7 +78,15 @@ import {
 } from "@/lib/throw-share";
 import { COVERAGE_GRID, COVERAGE_WORDS, orbitShape } from "@/lib/orbit-shape";
 import { createGameAudio, finishComplexity, type GameAudio } from "@/lib/audio/index";
-import { projectSacredBall, SACRED_BALL_RADIUS, sacredBallPose } from "@/lib/sacred-ball";
+import {
+  projectSacredBall,
+  SACRED_BALL_RADIUS,
+  sacredBallGlyphPose,
+  sacredBallHopScale,
+  sacredBallHopT,
+  sacredBallLifeScale,
+  sacredBallPose,
+} from "@/lib/sacred-ball";
 import {
   TUTORIAL_ARROW_LABEL,
   tutorialArrowGeometry,
@@ -2469,10 +2477,16 @@ export default function MandelbrotSkipping() {
       }
     }
 
-    function drawFlyingRock(body: { x: number; y: number; z: number; spin: number; skips: number; bounceAge: number }, glyphOffset: number, now: number) {
+    function drawFlyingRock(body: { x: number; y: number; z: number; vz?: number; spin: number; skips: number; bounceAge: number; plannedSkips?: number }, glyphOffset: number, now: number) {
       const lift = body.z * 0.30;
       const nextShape = (glyphOffset + body.skips) % GLYPH_COUNT;
+      const lastShape = body.skips === 0 ? nextShape : (glyphOffset + body.skips - 1) % GLYPH_COUNT;
       const heightT = Math.min(1, body.z / Math.max(pondScale() * .45, 1));
+      const flying = body.z > 0.25;
+      const hopT = sacredBallHopT(heightT, (body.vz ?? 0) >= 0);
+      const life = sacredBallLifeScale(body.skips, body.plannedSkips ?? 0);
+      const hop = sacredBallHopScale(heightT, flying);
+      const radius = SACRED_BALL_RADIUS * life * hop;
       const drawX = Math.round(body.x * dpr) / dpr;
       const drawY = Math.round((body.y - lift) * dpr) / dpr;
       const bounce = reduceMotion ? 0 : Math.exp(-body.bounceAge * 8.5) * Math.cos(body.bounceAge * 29);
@@ -2484,8 +2498,8 @@ export default function MandelbrotSkipping() {
       ctx.ellipse(
         drawX,
         body.y,
-        SACRED_BALL_RADIUS * 1.08 * (1 + Math.max(0, bounce) * .08),
-        SACRED_BALL_RADIUS * 0.36,
+        radius * 1.08 * (1 + Math.max(0, bounce) * .08),
+        radius * 0.36,
         0,
         0,
         TAU,
@@ -2498,11 +2512,15 @@ export default function MandelbrotSkipping() {
       const idle = reduceMotion ? 0 : now * 0.00042;
       const yaw = Math.PI / 4 + idle + body.spin * 0.4 + nextShape * 0.22;
       const pitch = Math.asin(1 / Math.sqrt(3)) + idle * 0.62 + (reduceMotion ? 0 : body.spin * 0.22);
-      const ball = projectSacredBall(yaw, pitch, SACRED_BALL_RADIUS, sacredBallPose(now));
+      const pose = flying
+        ? sacredBallGlyphPose(lastShape, nextShape, reduceMotion ? 1 : hopT)
+        : sacredBallPose(now);
+      const ball = projectSacredBall(yaw, pitch, radius, pose);
+      const size = radius / SACRED_BALL_RADIUS;
       for (const edge of [...ball.edges].sort((a, b) => a.depth - b.depth)) {
         const near = (edge.depth + 1) / 2;
         ctx.strokeStyle = `rgba(255, 255, 255, ${(0.12 + 0.32 * near).toFixed(3)})`;
-        ctx.lineWidth = 0.7;
+        ctx.lineWidth = Math.max(0.4, 0.7 * size);
         ctx.beginPath();
         ctx.moveTo(edge.ax, edge.ay);
         ctx.lineTo(edge.bx, edge.by);
@@ -2510,10 +2528,10 @@ export default function MandelbrotSkipping() {
       }
       for (const point of [...ball.points].sort((a, b) => a.depth - b.depth)) {
         const near = (point.depth + 1) / 2;
-        const radius = 1.05 + 0.55 * near;
+        const dot = Math.max(0.45, (1.05 + 0.55 * near) * size);
         ctx.fillStyle = `rgba(255, 255, 255, ${(0.34 + 0.66 * near).toFixed(3)})`;
         ctx.beginPath();
-        ctx.arc(point.x, point.y, radius, 0, TAU);
+        ctx.arc(point.x, point.y, dot, 0, TAU);
         ctx.fill();
       }
       ctx.restore();
@@ -2586,7 +2604,7 @@ export default function MandelbrotSkipping() {
         return;
       }
       if (phase === "resolving" || phase === "result") return;
-      drawFlyingRock(rock, shapeOffset, now);
+      drawFlyingRock({ ...rock, plannedSkips }, shapeOffset, now);
     }
 
     function drawEffects(now: number) {
