@@ -38,6 +38,9 @@ import {
   PLAY_ATMOSPHERE,
   AIMING_ATMOSPHERE,
   AIMING_POND_ZOOM,
+  AIMING_BACKGROUND_SPAWN_MS,
+  AIMING_NEBULA_SEEDS_PER_WAVE,
+  AIMING_SOURCE_CAP,
   displayLayerGains,
   introMriSlice,
   introLaunchOrigin,
@@ -2720,7 +2723,8 @@ export default function MandelbrotSkipping() {
       const aiming = phase === "aiming" && !introActiveRef.current;
       if ((!introActiveRef.current && !aiming) || introFadingRef.current) return;
       if (introActiveRef.current && engineRef.current?.isMriReady()) return;
-      if (lastIntroBackground !== 0 && now - lastIntroBackground < INTRO_BACKGROUND_SPAWN_MS) return;
+      const spawnMs = aiming ? AIMING_BACKGROUND_SPAWN_MS : INTRO_BACKGROUND_SPAWN_MS;
+      if (lastIntroBackground !== 0 && now - lastIntroBackground < spawnMs) return;
       lastIntroBackground = now;
       engineRef.current?.setLayer("pond");
       engineRef.current?.setTuning({
@@ -2729,9 +2733,14 @@ export default function MandelbrotSkipping() {
         doublePixels: introActiveRef.current ? true : tuningRef.current.doublePixels,
       });
       engineRef.current?.setAtmosphere(introActiveRef.current ? INTRO_ATMOSPHERE : AIMING_ATMOSPHERE);
-      const seeds = Array.from({ length: INTRO_NEBULA_SEEDS_PER_WAVE }, () => introNebulaSeed());
-      engineRef.current?.spawnAppend(seeds, 1, INTRO_SOURCE_CAP);
-      if (Math.random() < 0.04) {
+      const seedCount = aiming ? AIMING_NEBULA_SEEDS_PER_WAVE : INTRO_NEBULA_SEEDS_PER_WAVE;
+      const seeds = Array.from({ length: seedCount }, () => introNebulaSeed());
+      if (aiming) {
+        engineRef.current?.spawn(seeds, 1, AIMING_SOURCE_CAP);
+      } else {
+        engineRef.current?.spawnAppend(seeds, 1, INTRO_SOURCE_CAP);
+      }
+      if (!aiming && Math.random() < 0.04) {
         spawnIntroPondRipple(now);
       }
     }
@@ -2814,6 +2823,7 @@ export default function MandelbrotSkipping() {
         engineRef.current?.setLayer("pond");
         engineRef.current?.setAtmosphere(AIMING_ATMOSPHERE);
         engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH });
+        lastIntroBackground = 0;
         pull = point;
         rock.x = point.x;
         rock.y = point.y;

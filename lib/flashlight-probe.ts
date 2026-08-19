@@ -9,6 +9,9 @@ export const INTRO_MAX_DEPTH = 2_000_000;
 export const INTRO_BACKGROUND_SPAWN_MS = 40;
 export const INTRO_TRAIL_FADE_MS = 4200;
 export const INTRO_NEBULA_SEEDS_PER_WAVE = 96;
+export const AIMING_BACKGROUND_SPAWN_MS = 280;
+export const AIMING_NEBULA_SEEDS_PER_WAVE = 16;
+export const AIMING_SOURCE_CAP = 128;
 export const MRI_PREITERATE_MS = 1800;
 
 export function introLaunchOrigin(
@@ -107,12 +110,12 @@ export const INTRO_ATMOSPHERE: OrbitAtmosphere = {
 export const AIMING_ATMOSPHERE: OrbitAtmosphere = {
   drawLines: false,
   grayscale: true,
-  energy: 0.28,
-  hiddenSteps: 1,
+  energy: 0.62,
+  hiddenSteps: 0,
   liveGain: 0.95,
   contrast: 1.22,
   atlasGain: 1,
-  pondPersist: 2.8,
+  pondPersist: 1.8,
 };
 
 export type DisplayLayerMode = "intro" | "play" | "aiming";

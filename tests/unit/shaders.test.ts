@@ -112,6 +112,13 @@ test("flashlight is a GPU cone on the live pond; cached blit is GPU-fail only", 
   assert.match(source, /AIMING_POND_ZOOM/);
   assert.match(source, /cone \? AIMING_POND_ZOOM : 1/);
   assert.match(source, /pondUv - vec2f\(0\.5\)\) \* max\(display\.mriZoom/);
+  assert.match(source, /AIMING_BACKGROUND_SPAWN_MS/);
+  assert.match(source, /AIMING_NEBULA_SEEDS_PER_WAVE/);
+  assert.match(source, /AIMING_SOURCE_CAP/);
+  assert.match(source, /aiming \? AIMING_BACKGROUND_SPAWN_MS : INTRO_BACKGROUND_SPAWN_MS/);
+  assert.match(source, /aiming \? AIMING_NEBULA_SEEDS_PER_WAVE : INTRO_NEBULA_SEEDS_PER_WAVE/);
+  assert.match(source, /spawn\(seeds, 1, AIMING_SOURCE_CAP\)/);
+  assert.match(source, /spawnAppend\(seeds, 1, INTRO_SOURCE_CAP\)/);
   assert.match(source, /displayLayerGains\("aiming"\)/);
   assert.match(source, /displayLayerGains\("play"\)/);
   assert.match(source, /displayLayerGains\("intro"\)/);
