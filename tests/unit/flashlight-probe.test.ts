@@ -208,8 +208,8 @@ test("intro and play atmospheres drop flashlight-specific iteration, and aiming 
 test("aiming flashlight shows fading random pond orbits inside the cone", () => {
   assert.equal(AIMING_ATMOSPHERE.grayscale, true);
   assert.equal(AIMING_ATMOSPHERE.drawLines, false);
-  assert.ok((AIMING_ATMOSPHERE.pondPersist ?? 0) >= 1.2);
-  assert.ok((AIMING_ATMOSPHERE.pondPersist ?? 0) <= 2.5);
+  assert.ok((AIMING_ATMOSPHERE.pondPersist ?? 0) >= 3.5);
+  assert.ok((AIMING_ATMOSPHERE.pondPersist ?? 0) <= 6.5);
   assert.ok(AIMING_ATMOSPHERE.liveGain > (INTRO_ATMOSPHERE.liveGain ?? 0));
   assert.ok(AIMING_ATMOSPHERE.liveGain >= 0.8);
   assert.ok(AIMING_ATMOSPHERE.energy > INTRO_ATMOSPHERE.energy);
@@ -220,10 +220,10 @@ test("aiming flashlight shows fading random pond orbits inside the cone", () => 
   assert.ok(AIMING_POND_ZOOM <= 1.7);
   assert.ok(AIMING_BACKGROUND_SPAWN_MS >= 200);
   assert.ok(AIMING_BACKGROUND_SPAWN_MS > INTRO_BACKGROUND_SPAWN_MS * 4);
-  assert.ok(AIMING_NEBULA_SEEDS_PER_WAVE >= 8);
+  assert.ok(AIMING_NEBULA_SEEDS_PER_WAVE >= 24);
   assert.ok(AIMING_NEBULA_SEEDS_PER_WAVE < INTRO_NEBULA_SEEDS_PER_WAVE / 2);
-  assert.ok(AIMING_SOURCE_CAP >= 64);
-  assert.ok(AIMING_SOURCE_CAP <= 256);
+  assert.ok(AIMING_SOURCE_CAP >= 256);
+  assert.ok(AIMING_SOURCE_CAP <= 512);
 });
 
 test("source allocation wraps inside the live cap", () => {
