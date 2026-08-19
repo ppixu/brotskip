@@ -18,6 +18,7 @@ import {
   PLAY_ATMOSPHERE,
   AIMING_ATMOSPHERE,
   AIMING_POND_GAIN,
+  AIMING_POND_ZOOM,
   displayLayerGains,
   introMriSlice,
   flashlightConeFalloff,
@@ -47,8 +48,8 @@ test("display layer gains match intro, play, and aiming", () => {
   assert.deepEqual(displayLayerGains("play"), { pondGain: 0, throwGain: 1, coneEnabled: false });
   assert.deepEqual(displayLayerGains("aiming"), { pondGain: AIMING_POND_GAIN, throwGain: 0, coneEnabled: true });
   assert.equal(displayLayerGains("play").pondGain, 0);
-  assert.ok(displayLayerGains("aiming").pondGain > 0.15);
-  assert.ok(displayLayerGains("aiming").pondGain <= 0.28);
+  assert.ok(displayLayerGains("aiming").pondGain > 0.28);
+  assert.ok(displayLayerGains("aiming").pondGain <= 0.42);
   assert.equal(displayLayerGains("aiming").coneEnabled, true);
 });
 
@@ -213,6 +214,8 @@ test("aiming flashlight shows fading random pond orbits inside the cone", () => 
   assert.ok(AIMING_ATMOSPHERE.energy >= INTRO_ATMOSPHERE.energy);
   assert.equal(displayLayerGains("aiming").coneEnabled, true);
   assert.equal(displayLayerGains("play").pondGain, 0);
+  assert.ok(AIMING_POND_ZOOM > 1.2);
+  assert.ok(AIMING_POND_ZOOM <= 1.7);
 });
 
 test("source allocation wraps inside the live cap", () => {

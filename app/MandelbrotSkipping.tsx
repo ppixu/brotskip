@@ -38,6 +38,7 @@ import {
   MRI_PREITERATE_MS,
   PLAY_ATMOSPHERE,
   AIMING_ATMOSPHERE,
+  AIMING_POND_ZOOM,
   displayLayerGains,
   introMriSlice,
   introLaunchOrigin,
@@ -605,6 +606,8 @@ fn coneMask(uv: vec2f, view: DisplayView) -> f32 {
   var pondUv = layerUv(z, display.pondBounds);
   if (display.mriEnabled > 0.5) {
     pondUv = (pondUv - vec2f(0.5)) / max(display.mriZoom, 1.0) + vec2f(0.5);
+  } else {
+    pondUv = (pondUv - vec2f(0.5)) * max(display.mriZoom, 1.0) + vec2f(0.5);
   }
   let throwUv = layerUv(z, display.throwBounds);
   let pondInside = all(pondUv >= vec2f(0.0)) && all(pondUv <= vec2f(1.0));
@@ -1119,7 +1122,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
     displayView[28] = mriEnabled && mriFrozen ? 1 : 0;
     displayView[29] = slice.zCamera;
     displayView[30] = slice.sliceHalf;
-    displayView[31] = slice.zoom;
+    displayView[31] = mriEnabled ? slice.zoom : cone ? AIMING_POND_ZOOM : 1;
     device.queue.writeBuffer(displayViewBuffer, 0, displayView);
     const encoder = device.createCommandEncoder({ label: "orbit-draw" });
     if (sourceCount > 0 && !paused && (!mriEnabled || !mriFrozen)) {

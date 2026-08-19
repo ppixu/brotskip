@@ -75,7 +75,7 @@ test("loading Buddhabrot uses the precomputed rotating Gaussian cloud", () => {
   assert.match(source, /label: "mri-capture-reset"/);
   assert.match(source, /let mriRaw = select/);
   assert.match(source, /displayView\[28\] = mriEnabled && mriFrozen \? 1 : 0/);
-  assert.match(source, /displayView\[31\] = slice\.zoom/);
+  assert.match(source, /displayView\[31\] = mriEnabled \? slice\.zoom : cone \? AIMING_POND_ZOOM : 1/);
   assert.doesNotMatch(source, /styleSliceBuffer|pointAtlasSliceBind|const mriPass/);
   assert.match(source, /doublePixels: true/);
   assert.match(source, /createOrbitEngine\(canvas, acquired, introActiveRef\.current\)/);
@@ -109,6 +109,9 @@ test("flashlight is a GPU cone on the live pond; cached blit is GPU-fail only", 
   assert.match(source, /liveGain \* cone/);
   assert.match(source, /pondPersist/);
   assert.match(source, /layer === "pond" && pondPersist > 0/);
+  assert.match(source, /AIMING_POND_ZOOM/);
+  assert.match(source, /cone \? AIMING_POND_ZOOM : 1/);
+  assert.match(source, /pondUv - vec2f\(0\.5\)\) \* max\(display\.mriZoom/);
   assert.match(source, /displayLayerGains\("aiming"\)/);
   assert.match(source, /displayLayerGains\("play"\)/);
   assert.match(source, /displayLayerGains\("intro"\)/);
