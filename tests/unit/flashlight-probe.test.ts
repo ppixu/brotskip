@@ -16,6 +16,7 @@ import {
   MRI_CYCLE_SECONDS,
   MRI_PREITERATE_MS,
   PLAY_ATMOSPHERE,
+  AIMING_POND_GAIN,
   displayLayerGains,
   introMriSlice,
   flashlightConeFalloff,
@@ -42,8 +43,9 @@ test("flashlight is a cone mask, not a cheaper iterator", () => {
 
 test("display layer gains match intro, play, and aiming", () => {
   assert.deepEqual(displayLayerGains("intro"), { pondGain: 0, throwGain: 1, coneEnabled: false });
-  assert.deepEqual(displayLayerGains("play"), { pondGain: 0, throwGain: 1, coneEnabled: false });
-  assert.deepEqual(displayLayerGains("aiming"), { pondGain: 0.12, throwGain: 0, coneEnabled: true });
+  assert.deepEqual(displayLayerGains("play"), { pondGain: AIMING_POND_GAIN, throwGain: 1, coneEnabled: false });
+  assert.deepEqual(displayLayerGains("aiming"), { pondGain: AIMING_POND_GAIN, throwGain: 0, coneEnabled: true });
+  assert.ok(displayLayerGains("play").pondGain > 0);
   assert.ok(displayLayerGains("aiming").pondGain <= 0.15);
   assert.ok(displayLayerGains("aiming").pondGain < 1);
 });

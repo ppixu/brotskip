@@ -113,7 +113,7 @@ export const MRI_SLICE_HALF = 0.075;
 export function displayLayerGains(mode: DisplayLayerMode) {
   if (mode === "intro") return { pondGain: 0, throwGain: 1, coneEnabled: false };
   if (mode === "aiming") return { pondGain: AIMING_POND_GAIN, throwGain: 0, coneEnabled: true };
-  return { pondGain: 0, throwGain: 1, coneEnabled: false };
+  return { pondGain: AIMING_POND_GAIN, throwGain: 1, coneEnabled: false };
 }
 
 export function introMriSlice(timeSeconds: number, cycle = MRI_CYCLE_SECONDS) {
