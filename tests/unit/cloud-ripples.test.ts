@@ -19,4 +19,6 @@ test("the intro cloud is doubled and emits fading 3D rings from real splats", ()
   assert.match(source, /fadingRef/);
   assert.match(source, /alpha:\s*true/);
   assert.match(source, /setClearColor\(0x000000,\s*0\)/);
+  assert.match(source, /camera\.fov = pose\.fov/);
+  assert.match(source, /updateProjectionMatrix\(\)/);
 });

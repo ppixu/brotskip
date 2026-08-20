@@ -67,13 +67,19 @@ export default function BuddhabrotCloudCanvas({
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x030408);
-    const camera = new THREE.PerspectiveCamera(INTRO_PLAY_FOV, 1, 0.01, 20);
+    const camera = new THREE.PerspectiveCamera(INTRO_PLAY_FOV, 1, 0.05, 80);
     const target = new THREE.Vector3(0, 0, 0);
     const classic = variant === "classic";
     let yaw = classic ? 0.16 : 0.72;
     let pitch = classic ? 0.12 : 0.32;
     let distance = classic ? 5.0 : 3.15;
-    let alignFrom: { yaw: number; pitch: number; distance: number; target: { x: number; y: number; z: number } } | null = null;
+    let alignFrom: {
+      yaw: number;
+      pitch: number;
+      distance: number;
+      fov: number;
+      target: { x: number; y: number; z: number };
+    } | null = null;
     let alignStarted = 0;
     let dragging = false;
     let lastPointerX = 0;
@@ -231,7 +237,7 @@ export default function BuddhabrotCloudCanvas({
       previousTime = now;
       if (fadingRef.current) {
         if (!alignFrom) {
-          alignFrom = { yaw, pitch, distance, target: { x: target.x, y: target.y, z: target.z } };
+          alignFrom = { yaw, pitch, distance, fov: camera.fov, target: { x: target.x, y: target.y, z: target.z } };
           alignStarted = now;
         }
         const elapsed = now - alignStarted;
@@ -240,16 +246,19 @@ export default function BuddhabrotCloudCanvas({
         pitch = pose.pitch;
         distance = pose.distance;
         target.set(pose.target.x, pose.target.y, pose.target.z);
+        camera.fov = pose.fov;
         splat.scale.z = introPlayFlatten(elapsed, reduceMotion);
         scene.background = null;
         renderer.setClearColor(0x000000, 0);
       } else {
         alignFrom = null;
         splat.scale.z = 1;
+        camera.fov = INTRO_PLAY_FOV;
         scene.background = new THREE.Color(0x030408);
         renderer.setClearColor(0x030408, 1);
         if (!reduceMotion && !dragging) yaw += delta * 0.000055;
       }
+      camera.updateProjectionMatrix();
       const cosPitch = Math.cos(pitch);
       camera.position.set(
         target.x + Math.sin(yaw) * cosPitch * distance,

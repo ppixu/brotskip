@@ -2,15 +2,19 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   INTRO_PLAY_ALIGN_MS,
+  INTRO_PLAY_END_FOV,
   INTRO_PLAY_EXIT_MS,
   INTRO_PLAY_FACE_MS,
   INTRO_PLAY_FADE_DELAY_MS,
   INTRO_PLAY_FADE_MS,
   INTRO_PLAY_FOV,
+  PLAY_ALIGN_YAW,
   PLAY_POND_VIEW,
   PLAY_SPLAT_DISTANCE_SCALE,
+  PLAY_SPLAT_TARGET_Y_LIFT,
   complexToSplat,
   introPlayAlignT,
+  introPlayApparentHalfY,
   introPlayCamera,
   introPlayFaceT,
   introPlayFlatten,
@@ -20,34 +24,41 @@ import {
   splatDistanceForHalfY,
 } from "../../lib/intro-play.ts";
 
-test("play camera looks at the splat point for the pond center, scaled to the play view", () => {
+test("play camera looks at a larger, lower Buddha and ends near-orthographic", () => {
   assert.equal(PLAY_POND_VIEW.centerX, -0.58);
   assert.equal(PLAY_POND_VIEW.centerY, 0);
   assert.equal(PLAY_POND_VIEW.halfY, 0.8);
-  const target = complexToSplat(PLAY_POND_VIEW.centerX, PLAY_POND_VIEW.centerY);
-  assert.equal(target.x, 0);
-  assert.ok(Math.abs(target.y - 0.08) < 1e-9);
-  assert.equal(target.z, 0);
+  const pond = complexToSplat(PLAY_POND_VIEW.centerX, PLAY_POND_VIEW.centerY);
+  assert.equal(pond.x, 0);
+  assert.ok(Math.abs(pond.y - 0.08) < 1e-9);
+  assert.equal(pond.z, 0);
   const camera = introPlayCamera(PLAY_POND_VIEW);
   assert.equal(camera.pitch, 0);
-  const framed = splatDistanceForHalfY(PLAY_POND_VIEW.halfY, INTRO_PLAY_FOV);
-  assert.ok(PLAY_SPLAT_DISTANCE_SCALE < 0.9);
-  assert.ok(PLAY_SPLAT_DISTANCE_SCALE > 0.7);
-  assert.ok(Math.abs(camera.distance - framed * PLAY_SPLAT_DISTANCE_SCALE) < 1e-9);
-  assert.ok(camera.distance < framed);
-  assert.ok(Math.abs(camera.target.y - target.y) < 1e-9);
+  assert.equal(camera.fov, INTRO_PLAY_END_FOV);
+  assert.ok(INTRO_PLAY_END_FOV <= 5.5);
+  assert.ok(INTRO_PLAY_END_FOV >= 4.5);
+  assert.ok(PLAY_SPLAT_DISTANCE_SCALE <= 0.62);
+  assert.ok(PLAY_SPLAT_DISTANCE_SCALE >= 0.45);
+  assert.ok(PLAY_SPLAT_TARGET_Y_LIFT >= 0.1);
+  const halfY = PLAY_POND_VIEW.halfY * PLAY_SPLAT_DISTANCE_SCALE;
+  assert.ok(Math.abs(camera.distance - splatDistanceForHalfY(halfY, INTRO_PLAY_END_FOV)) < 1e-9);
+  assert.ok(camera.target.y > pond.y + 0.08);
+  assert.ok(Math.abs(camera.target.y - (pond.y + PLAY_SPLAT_TARGET_Y_LIFT)) < 1e-9);
 });
 
-test("Play takes the shortest turn to face-on, without an extra full spin", () => {
+test("Play turns 45 degrees past plane-on, without an extra full spin", () => {
   const tau = Math.PI * 2;
+  assert.ok(Math.abs(PLAY_ALIGN_YAW + Math.PI / 4) < 1e-9);
   const classic = playAlignYaw(0.16);
   const henon = playAlignYaw(0.72);
   const spun = playAlignYaw(5.8);
-  assert.ok(Math.abs(classic) < 1e-9);
-  assert.ok(Math.abs(henon) < 1e-9);
+  assert.ok(Math.abs(classic - PLAY_ALIGN_YAW) < 1e-9);
+  assert.ok(Math.abs(henon - PLAY_ALIGN_YAW) < 1e-9);
   assert.ok(Math.abs(classic - 0.16) < Math.PI);
   assert.ok(Math.abs(henon - 0.72) < Math.PI);
-  assert.ok(Math.abs(((spun % tau) + tau) % tau) < 1e-9);
+  const wrapped = ((spun % tau) + tau) % tau;
+  const targetWrapped = ((PLAY_ALIGN_YAW % tau) + tau) % tau;
+  assert.ok(Math.abs(wrapped - targetWrapped) < 1e-9);
   assert.ok(Math.abs(spun - 5.8) < Math.PI);
 });
 
@@ -58,7 +69,7 @@ test("flatten waits until the Buddha faces the camera, then settles flat", () =>
   assert.ok(introPlayFlatten(INTRO_PLAY_ALIGN_MS) < 0.08);
 });
 
-test("play alignment faces the camera first, then zooms with an ease-out that never reverses", () => {
+test("play alignment faces first, then dollies back to FOV 5 at constant Buddha size", () => {
   assert.ok(INTRO_PLAY_ALIGN_MS >= 1600);
   assert.ok(INTRO_PLAY_FACE_MS <= INTRO_PLAY_ALIGN_MS * 0.45);
   assert.ok(INTRO_PLAY_FADE_DELAY_MS >= INTRO_PLAY_ALIGN_MS);
@@ -78,28 +89,33 @@ test("play alignment faces the camera first, then zooms with an ease-out that ne
     yaw: 0.72,
     pitch: 0.32,
     distance: 5,
+    fov: INTRO_PLAY_FOV,
     target: { x: 0, y: 0, z: 0 },
   };
   const to = introPlayCamera(PLAY_POND_VIEW, playAlignYaw(from.yaw));
   const faced = introPlayPose(from, INTRO_PLAY_FACE_MS);
   assert.ok(Math.abs(faced.yaw - to.yaw) < 1e-6);
   assert.ok(Math.abs(faced.pitch - to.pitch) < 1e-6);
-  assert.ok(faced.distance > to.distance + 0.2);
+  assert.ok(Math.abs(faced.fov - INTRO_PLAY_FOV) < 1e-6);
 
   const end = introPlayPose(from, INTRO_PLAY_ALIGN_MS);
   assert.ok(Math.abs(end.yaw - to.yaw) < 1e-9);
+  assert.ok(Math.abs(end.fov - INTRO_PLAY_END_FOV) < 1e-9);
   assert.ok(Math.abs(end.distance - to.distance) < 1e-9);
+  assert.ok(end.distance > faced.distance, "dolly zooms the camera back");
+  assert.ok(
+    Math.abs(introPlayApparentHalfY(faced) - introPlayApparentHalfY(end)) < 0.02,
+    "Buddha size stays constant during the dolly",
+  );
 
-  let previousDistance = from.distance;
   let previousYaw = from.yaw;
+  let previousSize = introPlayApparentHalfY(from);
   for (let elapsed = 0; elapsed <= INTRO_PLAY_ALIGN_MS; elapsed += 40) {
     const pose = introPlayPose(from, elapsed);
-    assert.ok(pose.distance <= previousDistance + 1e-9, "zoom must not pull back");
+    const size = introPlayApparentHalfY(pose);
+    assert.ok(size <= previousSize + 1e-9, "Buddha must not shrink back");
     assert.ok((pose.yaw - previousYaw) * (to.yaw - from.yaw) >= -1e-9, "yaw must not reverse");
-    previousDistance = pose.distance;
+    previousSize = size;
     previousYaw = pose.yaw;
   }
-
-  const late = introPlayPose(from, INTRO_PLAY_ALIGN_MS * 0.8);
-  assert.ok((late.distance - to.distance) < (from.distance - to.distance) * 0.12);
 });
