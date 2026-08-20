@@ -267,11 +267,15 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(css, /--throw-stone-x:\s*50%/);
   assert.match(css, /--throw-stone-y:\s*82%/);
   const playRule = css.match(/(?:^|\n)\.introPlay \{([^}]+)\}/)?.[1] ?? "";
-  const rethrowRule = css.match(/\.playfieldThrowControl \{([^}]+)\}/)?.[1] ?? "";
+  const rethrowActionsRule = css.match(/\.playfieldThrowActions \{([^}]+)\}/)?.[1] ?? "";
   assert.match(playRule, /left:\s*var\(--throw-stone-x\)/);
   assert.match(playRule, /top:\s*var\(--throw-stone-y\)/);
-  assert.match(rethrowRule, /left:\s*var\(--throw-stone-x\)/);
-  assert.match(rethrowRule, /top:\s*var\(--throw-stone-y\)/);
+  assert.match(rethrowActionsRule, /left:\s*var\(--throw-stone-x\)/);
+  assert.match(rethrowActionsRule, /top:\s*var\(--throw-stone-y\)/);
+  assert.match(game, /className="playfieldThrowActions"/);
+  assert.match(game, /className="playfieldShareControl"/);
+  assert.match(game, /disabled=\{hud\.phase !== "result"\}/);
+  assert.match(css, /\.playfieldThrowActions button:disabled \{[\s\S]*?opacity:\s*\.38/);
   assert.doesNotMatch(css, /\.introPlay \{ top:/);
   assert.match(game, /function anchor\(\) \{ return \{ x: width \* 0\.5, y: height \* 0\.82 \}/);
   assert.match(game, /hud\.phase === "flying" \|\| hud\.phase === "resolving" \|\| hud\.phase === "result"/);

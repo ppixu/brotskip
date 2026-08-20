@@ -3261,14 +3261,26 @@ export default function MandelbrotSkipping() {
           />
         )}
         {(hud.phase === "flying" || hud.phase === "resolving" || hud.phase === "result") && !intro && (
-          <button
-            type="button"
-            className="playfieldThrowControl"
-            onClick={resetAndFocusCanvas}
-            aria-label="Cancel this throw and rethrow"
-          >
-            Rethrow
-          </button>
+          <div className="playfieldThrowActions">
+            <button
+              type="button"
+              className="playfieldThrowControl"
+              onClick={resetAndFocusCanvas}
+              disabled={hud.phase !== "result"}
+              aria-label={hud.phase === "result" ? "Rethrow" : "Rethrow available when iteration completes"}
+            >
+              Rethrow
+            </button>
+            <button
+              type="button"
+              className="playfieldShareControl"
+              onClick={shareThrow}
+              disabled={!hasShare}
+              aria-label="Copy a link to this throw"
+            >
+              {shareStatus || "Share"}
+            </button>
+          </div>
         )}
         <div className="playfieldDock">
           <HowItWorks />

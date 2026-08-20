@@ -684,15 +684,19 @@ button, input { font: inherit; }
   background: rgba(8, 14, 16, .72);
   outline: none;
 }
-.playfieldThrowControl {
+.playfieldThrowActions {
   position: absolute;
   left: var(--throw-stone-x);
   top: var(--throw-stone-y);
   z-index: 3;
   transform: translate(-50%, -50%);
-  min-width: 108px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.playfieldThrowActions button {
   min-height: 44px;
-  padding: 0 18px;
+  padding: 0 14px;
   border: 1px solid rgba(190, 238, 248, .28);
   border-radius: 999px;
   background: rgba(0, 0, 0, .55);
@@ -703,18 +707,33 @@ button, input { font: inherit; }
   text-transform: uppercase;
   cursor: pointer;
 }
-.playfieldThrowControl:hover,
-.playfieldThrowControl:focus-visible {
+.playfieldThrowControl {
+  min-width: 108px;
+}
+.playfieldShareControl {
+  min-width: 84px;
+}
+.playfieldThrowActions button:hover,
+.playfieldThrowActions button:focus-visible {
   border-color: rgba(210, 247, 255, .62);
   color: white;
   outline: none;
+}
+.playfieldThrowActions button:disabled {
+  opacity: .38;
+  cursor: not-allowed;
+}
+.playfieldThrowActions button:disabled:hover,
+.playfieldThrowActions button:disabled:focus-visible {
+  border-color: rgba(190, 238, 248, .28);
+  color: #b9d7df;
 }
 .gameShell.replayMode .playfieldThrowControl {
   border-color: rgba(196, 160, 255, .28);
   color: #d2c0ee;
 }
-.gameShell.replayMode .playfieldThrowControl:hover,
-.gameShell.replayMode .playfieldThrowControl:focus-visible {
+.gameShell.replayMode .playfieldThrowActions button:hover,
+.gameShell.replayMode .playfieldThrowActions button:focus-visible {
   border-color: rgba(232, 214, 255, .62);
   color: #f6edff;
 }
