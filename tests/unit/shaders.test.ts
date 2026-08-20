@@ -226,7 +226,7 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(css, /\.introOverlay\.fading \.introPaper/);
   assert.match(css, /\.introOverlay\.fading \.introPlay/);
   assert.match(css, /\.introCloudHost\.fading \{[^}]*opacity:\s*0/);
-  assert.match(css, /transition:\s*opacity\s+2400ms\s+ease-out\s+1100ms/);
+  assert.match(css, /transition:\s*opacity\s+2400ms\s+linear\s+1100ms/);
   const paperRule = css.match(/\.introPaper \{([^}]+)\}/)?.[1] ?? "";
   const titleRule = css.match(/\.introPaperTitle \{([^}]+)\}/)?.[1] ?? "";
   const dropCapRule = css.match(/\.introPaperLede::first-letter \{([^}]+)\}/)?.[1] ?? "";

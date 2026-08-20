@@ -26,7 +26,7 @@ import {
   splatDistanceForHalfY,
 } from "../../lib/intro-play.ts";
 
-test("play camera matches the pond Buddha instead of leaving it 33% larger", () => {
+test("play camera uses the tuned pond framing as defaults", () => {
   assert.equal(PLAY_POND_VIEW.centerX, -0.58);
   assert.equal(PLAY_POND_VIEW.centerY, 0);
   assert.equal(PLAY_POND_VIEW.halfY, 0.8);
@@ -36,17 +36,14 @@ test("play camera matches the pond Buddha instead of leaving it 33% larger", () 
   assert.equal(pond.z, 0);
   const camera = introPlayCamera(PLAY_POND_VIEW);
   assert.equal(camera.pitch, 0);
+  assert.equal(INTRO_PLAY_END_FOV, 5.3);
   assert.equal(camera.fov, INTRO_PLAY_END_FOV);
-  assert.ok(INTRO_PLAY_END_FOV <= 5.5);
-  assert.ok(INTRO_PLAY_END_FOV >= 4.5);
-  assert.ok(PLAY_SPLAT_DISTANCE_SCALE >= 0.88);
-  assert.ok(PLAY_SPLAT_DISTANCE_SCALE <= 0.96);
-  assert.equal(PLAY_SPLAT_TARGET_Y_LIFT, 0);
+  assert.equal(PLAY_SPLAT_DISTANCE_SCALE, 0.71);
+  assert.equal(PLAY_SPLAT_TARGET_Y_LIFT, 0.03);
   const halfY = PLAY_POND_VIEW.halfY * PLAY_SPLAT_DISTANCE_SCALE;
   assert.ok(Math.abs(camera.distance - splatDistanceForHalfY(halfY, INTRO_PLAY_END_FOV)) < 1e-9);
-  assert.ok(Math.abs(camera.target.y - pond.y) < 1e-9);
+  assert.ok(Math.abs(camera.target.y - (pond.y + PLAY_SPLAT_TARGET_Y_LIFT)) < 1e-9);
   assert.ok(Math.abs(introPlayApparentHalfY(camera) / PLAY_POND_VIEW.halfY - PLAY_SPLAT_DISTANCE_SCALE) < 1e-9);
-  assert.ok(introPlayApparentHalfY(camera) < PLAY_POND_VIEW.halfY);
 });
 
 test("Play looks along Z at the Buddhabrot plane, without an extra spin", () => {
@@ -65,30 +62,30 @@ test("Play looks along Z at the Buddhabrot plane, without an extra spin", () => 
   assert.ok(Math.abs(spun - 5.8) < Math.PI);
 });
 
-test("flatten waits until the Buddha faces the camera, then settles flat", () => {
+test("flatten is linear over the whole alignment", () => {
   assert.ok(INTRO_PLAY_FACE_MS < INTRO_PLAY_ALIGN_MS);
   assert.equal(introPlayFlatten(0), 1);
-  assert.equal(introPlayFlatten(INTRO_PLAY_FACE_MS * 0.5), 1);
-  assert.ok(introPlayFlatten(INTRO_PLAY_ALIGN_MS) < 0.08);
+  assert.ok(Math.abs(introPlayFlatten(INTRO_PLAY_ALIGN_MS / 2) - 0.52) < 1e-9);
+  assert.ok(Math.abs(introPlayFlatten(INTRO_PLAY_ALIGN_MS) - 0.04) < 1e-9);
 });
 
-test("play alignment zooms size and FOV on the same linear curve", () => {
+test("play alignment uses one linear clock for face, zoom, FOV, and camera distance", () => {
   assert.ok(INTRO_PLAY_ALIGN_MS >= 1600);
-  assert.ok(INTRO_PLAY_FACE_MS <= INTRO_PLAY_ALIGN_MS * 0.45);
   assert.ok(INTRO_PLAY_FADE_DELAY_MS < INTRO_PLAY_ALIGN_MS, "pond Buddha should start showing through during the zoom");
   assert.ok(INTRO_PLAY_FADE_DELAY_MS >= 800);
   assert.ok(INTRO_PLAY_FADE_MS >= 2200);
   assert.ok(INTRO_PLAY_EXIT_MS >= INTRO_PLAY_FADE_DELAY_MS + INTRO_PLAY_FADE_MS);
 
+  const half = INTRO_PLAY_ALIGN_MS / 2;
   assert.equal(introPlayFaceT(0), 0);
-  assert.equal(introPlayFaceT(INTRO_PLAY_FACE_MS), 1);
-  assert.ok(introPlayFaceT(INTRO_PLAY_FACE_MS / 2) > 0.65);
+  assert.equal(introPlayFaceT(INTRO_PLAY_ALIGN_MS), 1);
+  assert.ok(Math.abs(introPlayFaceT(half) - 0.5) < 1e-9, "face turn is linear");
   assert.equal(introPlayZoomT(0), 0);
   assert.equal(introPlayZoomT(INTRO_PLAY_ALIGN_MS), 1);
-  assert.ok(introPlayZoomT(INTRO_PLAY_FACE_MS) < 0.85, "size zoom must still be running after the face turn");
-  assert.ok(Math.abs(introPlayZoomT(INTRO_PLAY_ALIGN_MS / 2) - 0.5) < 1e-9, "size zoom is linear");
-  assert.equal(introPlayDollyT(INTRO_PLAY_ALIGN_MS / 2), introPlayZoomT(INTRO_PLAY_ALIGN_MS / 2));
-  assert.ok(introPlayAlignT(INTRO_PLAY_ALIGN_MS / 2) > 0.65);
+  assert.ok(Math.abs(introPlayZoomT(half) - 0.5) < 1e-9, "size zoom is linear");
+  assert.equal(introPlayDollyT(half), introPlayZoomT(half));
+  assert.equal(introPlayFaceT(half), introPlayZoomT(half));
+  assert.ok(Math.abs(introPlayAlignT(half) - 0.5) < 1e-9);
   assert.equal(introPlayAlignT(10, true), 1);
 
   const from = {
@@ -99,30 +96,28 @@ test("play alignment zooms size and FOV on the same linear curve", () => {
     target: { x: 0, y: 0, z: 0 },
   };
   const to = introPlayCamera(PLAY_POND_VIEW, playAlignYaw(from.yaw));
-  const faced = introPlayPose(from, INTRO_PLAY_FACE_MS);
-  assert.ok(Math.abs(faced.yaw - to.yaw) < 1e-6);
-  assert.ok(Math.abs(faced.pitch - to.pitch) < 1e-6);
-  const expectedFacedFov = INTRO_PLAY_FOV + (INTRO_PLAY_END_FOV - INTRO_PLAY_FOV) * introPlayDollyT(INTRO_PLAY_FACE_MS);
-  assert.ok(Math.abs(faced.fov - expectedFacedFov) < 1e-9);
+  const mid = introPlayPose(from, half);
+  assert.ok(Math.abs(mid.yaw - (from.yaw + to.yaw) / 2) < 1e-9);
+  assert.ok(Math.abs(mid.pitch - (from.pitch + to.pitch) / 2) < 1e-9);
+  assert.ok(Math.abs(mid.fov - (from.fov + to.fov) / 2) < 1e-9);
+  assert.ok(Math.abs(mid.distance - (from.distance + to.distance) / 2) < 1e-9);
 
   const end = introPlayPose(from, INTRO_PLAY_ALIGN_MS);
   assert.ok(Math.abs(end.yaw - to.yaw) < 1e-9);
   assert.ok(Math.abs(end.fov - INTRO_PLAY_END_FOV) < 1e-9);
   assert.ok(Math.abs(end.distance - to.distance) < 1e-9);
-  assert.ok(introPlayApparentHalfY(end) < introPlayApparentHalfY(from), "Buddha keeps zooming in");
 
   let previousYaw = from.yaw;
-  let previousSize = introPlayApparentHalfY(from);
   let previousFov = from.fov;
+  let previousDistance = from.distance;
   for (let elapsed = 0; elapsed <= INTRO_PLAY_ALIGN_MS; elapsed += 40) {
     const pose = introPlayPose(from, elapsed);
-    const size = introPlayApparentHalfY(pose);
-    assert.ok(size <= previousSize + 1e-9, "Buddha size must ease in, never reverse");
     assert.ok(pose.fov <= previousFov + 1e-9, "FOV must ease toward ortho, never reverse");
     assert.ok((pose.yaw - previousYaw) * (to.yaw - from.yaw) >= -1e-9, "yaw must not reverse");
-    previousSize = size;
+    assert.ok((pose.distance - previousDistance) * (to.distance - from.distance) >= -1e-9, "distance must not reverse");
     previousFov = pose.fov;
     previousYaw = pose.yaw;
+    previousDistance = pose.distance;
   }
 });
 

@@ -637,7 +637,7 @@ button, input { font: inherit; }
 .introCloudHost.fading {
   opacity: 0;
   background: transparent;
-  transition: opacity 2400ms ease-out 1100ms;
+  transition: opacity 2400ms linear 1100ms;
 }
 .introPaper {
   position: absolute;
@@ -852,6 +852,6 @@ button, input { font: inherit; }
   .liveProgress i, .liveNumber { transition: none; }
   .introOverlay { transition: none; }
   .introChrome, .introPaper, .introPlay { transition: none; }
-  .introCloudHost.fading { transition: opacity 200ms ease; }
+  .introCloudHost.fading { transition: opacity 200ms linear; }
   .howItWorksPanel { transition: none; }
 }
