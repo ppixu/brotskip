@@ -225,14 +225,14 @@ const DEFAULT_TUNING: Tuning = {
   maxDepth: 2_000_000,
   acceleration: DEFAULT_ACCELERATION,
   linePersist: 0.6,
-  previewOrbits: false,
+  previewOrbits: true,
   previewIterations: 20,
   skipColors: true,
   coordinateAxes: false,
   rotateRight: true,
   doublePixels: false,
 };
-const TUNING_KEY = "mandelbrot-skipping:tuning:v6";
+const TUNING_KEY = "mandelbrot-skipping:tuning:v7";
 const SOURCE_RADIUS_PX = 10;
 const IMPACT_LABEL_FADE_MS = 6400;
 const SLING_DRAW_PULL_RATIO = 0.30;
@@ -714,7 +714,7 @@ function sanitizeTuning(value: Partial<Tuning> | null | undefined): Tuning {
     MIN_LINE_PERSIST,
     Math.min(MAX_LINE_PERSIST, Math.round((Number(value?.linePersist) || DEFAULT_TUNING.linePersist) * 20) / 20),
   );
-  const previewOrbits = value?.previewOrbits === true;
+  const previewOrbits = value?.previewOrbits !== false;
   const skipColors = value?.skipColors !== false;
   const coordinateAxes = value?.coordinateAxes === true;
   const rotateRight = value?.rotateRight !== false;
@@ -2777,6 +2777,7 @@ export default function MandelbrotSkipping() {
       if (gridCanvas) ctx.drawImage(gridCanvas, 0, 0, width, height);
       const a = anchor();
       drawFlashlight();
+      drawPrediction(a);
       drawAimOrbitPreview(a);
       drawEffects(now);
       drawRock(now);
