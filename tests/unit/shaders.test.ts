@@ -240,6 +240,7 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.doesNotMatch(css, /\.introOverlay\.fading \{ opacity: 0/);
   assert.match(css, /\.introOverlay\.fading \.introChrome/);
   assert.match(css, /\.introOverlay\.fading \.introPaper/);
+  assert.match(css, /\.introOverlay\.fading \.introNameEntry/);
   assert.match(css, /\.introOverlay\.fading \.introPlay/);
   assert.match(css, /\.introCloudHost\.fading \{[^}]*opacity:\s*0/);
   assert.match(css, /transition:\s*opacity\s+2400ms\s+cubic-bezier\(0\.65,\s*0,\s*0\.35,\s*1\)\s+400ms/);
@@ -271,6 +272,13 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   const rethrowActionsRule = css.match(/\.playfieldThrowActions \{([^}]+)\}/)?.[1] ?? "";
   assert.match(playRule, /left:\s*var\(--throw-stone-x\)/);
   assert.match(playRule, /top:\s*var\(--throw-stone-y\)/);
+  assert.match(intro, /className="introNameEntry"/);
+  assert.match(intro, /className="introNameInput"/);
+  assert.match(intro, /playerName/);
+  assert.match(intro, /onPlayerNameChange/);
+  const nameEntryRule = css.match(/(?:^|\n)\.introNameEntry \{([^}]+)\}/)?.[1] ?? "";
+  assert.match(nameEntryRule, /top:\s*calc\(var\(--throw-stone-y\)\s*-\s*12px\)/);
+  assert.match(nameEntryRule, /transform:\s*translate\(-50%,\s*-100%\)/);
   assert.match(rethrowActionsRule, /left:\s*var\(--throw-stone-x\)/);
   assert.match(rethrowActionsRule, /top:\s*var\(--throw-stone-y\)/);
   assert.match(game, /className="playfieldThrowActions"/);

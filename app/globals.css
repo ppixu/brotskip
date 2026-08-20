@@ -277,7 +277,7 @@ button, input { font: inherit; }
 }
 .replayBanner {
   position: absolute;
-  top: 62px;
+  top: 112px;
   left: 14px;
   z-index: 1;
   margin: 0;
@@ -664,6 +664,7 @@ button, input { font: inherit; }
 .introOverlay.fading { pointer-events: none; }
 .introOverlay.fading .introChrome,
 .introOverlay.fading .introPaper,
+.introOverlay.fading .introNameEntry,
 .introOverlay.fading .introPlay {
   opacity: 0;
   pointer-events: none;
@@ -789,6 +790,44 @@ button, input { font: inherit; }
   text-transform: uppercase;
   cursor: pointer;
   transition: opacity 280ms ease, border-color 180ms ease, background 180ms ease;
+}
+.introNameEntry {
+  position: absolute;
+  left: var(--throw-stone-x);
+  top: calc(var(--throw-stone-y) - 12px);
+  z-index: 3;
+  display: flex;
+  width: min(180px, calc(100vw - 36px));
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  transform: translate(-50%, -100%);
+  transition: opacity 280ms ease;
+}
+.introNameLabel {
+  color: rgba(237, 250, 255, .65);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+}
+.introNameInput {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(220, 245, 250, .42);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .55);
+  color: #edfaff;
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: .08em;
+  text-align: center;
+  text-transform: uppercase;
+  outline: none;
+}
+.introNameInput:focus {
+  border-color: rgba(236, 252, 255, .78);
 }
 .introPlay:hover,
 .introPlay:focus-visible {
@@ -917,7 +956,7 @@ button, input { font: inherit; }
   .playfieldDock { left: 10px; bottom: 10px; }
   .gameBrand { top: 10px; left: 10px; }
   .gameBrandTitle { font-size: 52px; }
-  .replayBanner { top: 64px; left: 10px; }
+  .replayBanner { top: 92px; left: 10px; }
   .replayBannerName { font-size: 18px; }
   .introPaper {
     width: min(17rem, calc(50% - 8px));
@@ -943,7 +982,7 @@ button, input { font: inherit; }
   .compactHighscoreEntry.current, .compactScoreAnnouncement { animation: none; }
   .themeToggleThumb { transition: none; }
   .introOverlay { transition: none; }
-  .introChrome, .introPaper, .introPlay { transition: none; }
+  .introChrome, .introPaper, .introNameEntry, .introPlay { transition: none; }
   .introCloudHost.fading { transition: opacity 200ms linear; }
   .howItWorksPanel { transition: none; }
 }
@@ -1083,6 +1122,13 @@ button, input { font: inherit; }
   background: rgba(248, 251, 250, .76);
   color: #17333a;
 }
+.gameShell.lightMode .introNameLabel { color: rgba(23, 51, 58, .62); }
+.gameShell.lightMode .introNameInput {
+  border-color: rgba(20, 76, 84, .35);
+  background: rgba(248, 251, 250, .76);
+  color: #17333a;
+}
+.gameShell.lightMode .introNameInput:focus { border-color: rgba(8, 125, 153, .62); }
 .gameShell.lightMode .introPlay:hover,
 .gameShell.lightMode .introPlay:focus-visible {
   border-color: rgba(8, 125, 153, .62);

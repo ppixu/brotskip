@@ -11,10 +11,12 @@ function paperWords(text: string) {
 }
 
 export default function BuddhabrotIntro({
-  fading, onPlay,
+  fading, onPlay, playerName, onPlayerNameChange,
 }: {
   fading: boolean;
   onPlay?: () => void;
+  playerName: string;
+  onPlayerNameChange: (name: string) => void;
 }) {
   const { wikipedia } = BUDDHABROT_EXPLAIN;
   const [loadProgress, setLoadProgress] = useState(0);
@@ -63,6 +65,18 @@ export default function BuddhabrotIntro({
           </a>
         </p>
       </article>
+      <div className="introNameEntry">
+        <label className="introNameLabel" htmlFor="intro-name">Score name</label>
+        <input
+          id="intro-name"
+          className="introNameInput"
+          aria-label="High score name"
+          autoComplete="nickname"
+          maxLength={12}
+          value={playerName}
+          onChange={(event) => onPlayerNameChange(event.target.value)}
+        />
+      </div>
       {splatReady && (
         <button type="button" className="introPlay" onClick={onPlay} aria-label="Play">Play</button>
       )}

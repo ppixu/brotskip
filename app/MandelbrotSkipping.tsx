@@ -3313,6 +3313,8 @@ export default function MandelbrotSkipping() {
         {intro && (
           <BuddhabrotIntro
             fading={introFading}
+            playerName={playerName}
+            onPlayerNameChange={renameCurrent}
             onPlay={finishOpening}
           />
         )}
