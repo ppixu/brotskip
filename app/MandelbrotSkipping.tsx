@@ -95,7 +95,7 @@ import {
   tutorialArrowVisible,
 } from "@/lib/tutorial-arrow";
 import { INTRO_PLAY_EXIT_MS, PLAY_POND_VIEW, introPlayAlignT, lerpView } from "@/lib/intro-play";
-import { buddhabrotImageTransform, extractBuddhabrotOutline } from "@/lib/buddhabrot-outline";
+import { buddhabrotImageTransform } from "@/lib/buddhabrot-outline";
 
 type Phase = "ready" | "aiming" | "flying" | "resolving" | "result";
 
@@ -1596,7 +1596,6 @@ export default function MandelbrotSkipping() {
     const previewContext = previewCanvas.getContext("2d");
     let flashlightDirty = true;
     let buddhabrotSource: CanvasImageSource | null = null;
-    let buddhabrotOutline: HTMLCanvasElement | null = null;
     let introRocks: FlyingRock[] = [];
     let introTrails: Array<{ path: Array<{ x: number; y: number }>; born: number }> = [];
     let lastIntroLaunch = 0;
@@ -1608,28 +1607,6 @@ export default function MandelbrotSkipping() {
     invalidateFlashlightRef.current = () => { flashlightDirty = true; };
     invalidateGridRef.current = () => { gridDirty = true; };
 
-    function captureBuddhabrotOutline(source: CanvasImageSource) {
-      const imageWidth = "width" in source ? Number(source.width) : 0;
-      const imageHeight = "height" in source ? Number(source.height) : 0;
-      if (!imageWidth || !imageHeight) {
-        buddhabrotOutline = null;
-        return;
-      }
-      const canvas = document.createElement("canvas");
-      canvas.width = imageWidth;
-      canvas.height = imageHeight;
-      const outlineContext = canvas.getContext("2d");
-      if (!outlineContext) {
-        buddhabrotOutline = null;
-        return;
-      }
-      outlineContext.drawImage(source, 0, 0);
-      const pixels = outlineContext.getImageData(0, 0, imageWidth, imageHeight);
-      const outline = extractBuddhabrotOutline(pixels.data, imageWidth, imageHeight, 40, 14);
-      outlineContext.putImageData(new ImageData(outline, imageWidth, imageHeight), 0, 0);
-      buddhabrotOutline = canvas;
-    }
-
     let flashlightLoadCancelled = false;
     void (async () => {
       try {
@@ -1639,7 +1616,6 @@ export default function MandelbrotSkipping() {
         if (cached) {
           if (flashlightLoadCancelled) return;
           buddhabrotSource = await createImageBitmap(cached);
-          captureBuddhabrotOutline(buddhabrotSource);
           flashlightDirty = true;
           return;
         }
@@ -1673,7 +1649,6 @@ export default function MandelbrotSkipping() {
           return;
         }
         buddhabrotSource = bitmap;
-        captureBuddhabrotOutline(bitmap);
         flashlightDirty = true;
         const blob = await blobPromise;
         if (blob && !flashlightLoadCancelled) await writeCachedTexture(size, blob, store);
@@ -2738,6 +2713,7 @@ export default function MandelbrotSkipping() {
         tuningRef.current.rotateRight,
       );
       target.save();
+      target.imageSmoothingEnabled = false;
       target.setTransform(
         transform.a * dpr,
         transform.b * dpr,
@@ -2751,10 +2727,10 @@ export default function MandelbrotSkipping() {
     }
 
     function drawBuddhabrotOutline() {
-      if (!buddhabrotOutline) return;
+      if (!buddhabrotSource) return;
       ctx.save();
-      ctx.globalAlpha = 0.58;
-      drawMappedBuddhabrot(ctx, buddhabrotOutline);
+      ctx.globalAlpha = 0.28;
+      drawMappedBuddhabrot(ctx, buddhabrotSource);
       ctx.restore();
     }
 

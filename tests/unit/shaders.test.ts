@@ -101,7 +101,11 @@ test("flashlight is a GPU cone on the live pond; cached blit is GPU-fail only", 
   assert.match(source, /drawMappedBuddhabrot/);
   assert.match(source, /drawBuddhabrotOutline/);
   assert.match(source, /buddhabrotImageTransform/);
-  assert.match(source, /extractBuddhabrotOutline/);
+  assert.match(source, /function drawMappedBuddhabrot[\s\S]*?imageSmoothingEnabled = false/);
+  assert.match(source, /drawMappedBuddhabrot\(ctx, buddhabrotSource\)/);
+  assert.match(source, /ctx\.globalAlpha = 0\.28/);
+  assert.doesNotMatch(source, /extractBuddhabrotOutline/);
+  assert.doesNotMatch(source, /let buddhabrotOutline/);
   assert.match(source, /readCachedTexture/);
   assert.match(source, /FLASHLIGHT_EDGE_BLUR_PX/);
   assert.match(source, /createConicGradient/);
