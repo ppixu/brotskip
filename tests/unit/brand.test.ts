@@ -1,11 +1,28 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { GAME_TAGLINE, GAME_TITLE } from "../../lib/brand.ts";
+import { GAME_TAGLINE, GAME_TITLE, GAME_VERSION } from "../../lib/brand.ts";
 
 test("the game is named Mandelpond with a z-squared-plus-sea tagline", () => {
   assert.equal(GAME_TITLE, "Mandelpond");
   assert.equal(GAME_TAGLINE, "z² + sea");
+});
+
+test("the header shows a large Mandelpond title with a small matching package version", () => {
+  const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as { version: string };
+  const game = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../../app/globals.css", import.meta.url), "utf8");
+  assert.match(GAME_VERSION, /^\d+\.\d+\.\d+$/);
+  assert.equal(GAME_VERSION, pkg.version);
+  assert.match(game, /GAME_VERSION/);
+  assert.match(game, /className="gameBrandVersion"/);
+  assert.match(game, /className="gameBrandHeading"/);
+  const titleRule = css.match(/\.gameBrandTitle \{([^}]+)\}/)?.[1] ?? "";
+  const versionRule = css.match(/\.gameBrandVersion \{([^}]+)\}/)?.[1] ?? "";
+  const titleSize = Number(titleRule.match(/font-size:\s*(\d+)px/)?.[1] ?? 0);
+  const versionSize = Number(versionRule.match(/font-size:\s*(\d+)px/)?.[1] ?? 0);
+  assert.ok(titleSize >= 32, `Mandelpond title should be bigger than 22px, got ${titleSize}`);
+  assert.ok(versionSize > 0 && versionSize <= 13, `version should be small next to the title, got ${versionSize}`);
 });
 
 test("title and tagline sit in the left corner and reload to loading", () => {

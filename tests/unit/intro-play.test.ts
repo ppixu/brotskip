@@ -22,10 +22,11 @@ import {
   introPlayPose,
   introPlayZoomT,
   playAlignYaw,
+  resolveIntroPlayTune,
   splatDistanceForHalfY,
 } from "../../lib/intro-play.ts";
 
-test("play camera frames the pond Buddha without a low, oversized crop", () => {
+test("play camera matches the pond Buddha instead of leaving it 33% larger", () => {
   assert.equal(PLAY_POND_VIEW.centerX, -0.58);
   assert.equal(PLAY_POND_VIEW.centerY, 0);
   assert.equal(PLAY_POND_VIEW.halfY, 0.8);
@@ -38,13 +39,14 @@ test("play camera frames the pond Buddha without a low, oversized crop", () => {
   assert.equal(camera.fov, INTRO_PLAY_END_FOV);
   assert.ok(INTRO_PLAY_END_FOV <= 5.5);
   assert.ok(INTRO_PLAY_END_FOV >= 4.5);
-  assert.ok(PLAY_SPLAT_DISTANCE_SCALE >= 1.16);
-  assert.ok(PLAY_SPLAT_DISTANCE_SCALE <= 1.32);
+  assert.ok(PLAY_SPLAT_DISTANCE_SCALE >= 0.88);
+  assert.ok(PLAY_SPLAT_DISTANCE_SCALE <= 0.96);
   assert.equal(PLAY_SPLAT_TARGET_Y_LIFT, 0);
   const halfY = PLAY_POND_VIEW.halfY * PLAY_SPLAT_DISTANCE_SCALE;
   assert.ok(Math.abs(camera.distance - splatDistanceForHalfY(halfY, INTRO_PLAY_END_FOV)) < 1e-9);
   assert.ok(Math.abs(camera.target.y - pond.y) < 1e-9);
-  assert.ok(introPlayApparentHalfY(camera) > PLAY_POND_VIEW.halfY);
+  assert.ok(Math.abs(introPlayApparentHalfY(camera) / PLAY_POND_VIEW.halfY - PLAY_SPLAT_DISTANCE_SCALE) < 1e-9);
+  assert.ok(introPlayApparentHalfY(camera) < PLAY_POND_VIEW.halfY);
 });
 
 test("Play looks along Z at the Buddhabrot plane, without an extra spin", () => {
@@ -70,7 +72,7 @@ test("flatten waits until the Buddha faces the camera, then settles flat", () =>
   assert.ok(introPlayFlatten(INTRO_PLAY_ALIGN_MS) < 0.08);
 });
 
-test("play alignment settles FOV first so size can zoom to the pond without a late dolly", () => {
+test("play alignment zooms size and FOV on the same linear curve", () => {
   assert.ok(INTRO_PLAY_ALIGN_MS >= 1600);
   assert.ok(INTRO_PLAY_FACE_MS <= INTRO_PLAY_ALIGN_MS * 0.45);
   assert.ok(INTRO_PLAY_FADE_DELAY_MS < INTRO_PLAY_ALIGN_MS, "pond Buddha should start showing through during the zoom");
@@ -85,8 +87,7 @@ test("play alignment settles FOV first so size can zoom to the pond without a la
   assert.equal(introPlayZoomT(INTRO_PLAY_ALIGN_MS), 1);
   assert.ok(introPlayZoomT(INTRO_PLAY_FACE_MS) < 0.85, "size zoom must still be running after the face turn");
   assert.ok(Math.abs(introPlayZoomT(INTRO_PLAY_ALIGN_MS / 2) - 0.5) < 1e-9, "size zoom is linear");
-  assert.ok(introPlayDollyT(INTRO_PLAY_ALIGN_MS / 2) > 0.8, "FOV eases out ahead of the size zoom");
-  assert.ok(introPlayDollyT(INTRO_PLAY_ALIGN_MS / 2) > introPlayZoomT(INTRO_PLAY_ALIGN_MS / 2));
+  assert.equal(introPlayDollyT(INTRO_PLAY_ALIGN_MS / 2), introPlayZoomT(INTRO_PLAY_ALIGN_MS / 2));
   assert.ok(introPlayAlignT(INTRO_PLAY_ALIGN_MS / 2) > 0.65);
   assert.equal(introPlayAlignT(10, true), 1);
 
@@ -101,19 +102,14 @@ test("play alignment settles FOV first so size can zoom to the pond without a la
   const faced = introPlayPose(from, INTRO_PLAY_FACE_MS);
   assert.ok(Math.abs(faced.yaw - to.yaw) < 1e-6);
   assert.ok(Math.abs(faced.pitch - to.pitch) < 1e-6);
-  assert.ok(faced.fov < INTRO_PLAY_FOV - 8, "FOV has already dropped while still facing");
-  assert.ok(faced.fov > INTRO_PLAY_END_FOV + 1);
+  const expectedFacedFov = INTRO_PLAY_FOV + (INTRO_PLAY_END_FOV - INTRO_PLAY_FOV) * introPlayDollyT(INTRO_PLAY_FACE_MS);
+  assert.ok(Math.abs(faced.fov - expectedFacedFov) < 1e-9);
 
-  const late = introPlayPose(from, INTRO_PLAY_ALIGN_MS * 0.8);
   const end = introPlayPose(from, INTRO_PLAY_ALIGN_MS);
   assert.ok(Math.abs(end.yaw - to.yaw) < 1e-9);
   assert.ok(Math.abs(end.fov - INTRO_PLAY_END_FOV) < 1e-9);
   assert.ok(Math.abs(end.distance - to.distance) < 1e-9);
   assert.ok(introPlayApparentHalfY(end) < introPlayApparentHalfY(from), "Buddha keeps zooming in");
-  assert.ok(
-    Math.abs(end.distance - late.distance) / end.distance < 0.18,
-    "most of the FOV dolly is done before the last 20%",
-  );
 
   let previousYaw = from.yaw;
   let previousSize = introPlayApparentHalfY(from);
@@ -128,4 +124,33 @@ test("play alignment settles FOV first so size can zoom to the pond without a la
     previousFov = pose.fov;
     previousYaw = pose.yaw;
   }
+});
+
+test("intro play tune overrides end position, scale, and FOV", () => {
+  const defaults = resolveIntroPlayTune();
+  assert.equal(defaults.scale, PLAY_SPLAT_DISTANCE_SCALE);
+  assert.equal(defaults.endFov, INTRO_PLAY_END_FOV);
+  assert.equal(defaults.targetX, 0);
+  assert.equal(defaults.targetY, PLAY_SPLAT_TARGET_Y_LIFT);
+
+  const tune = resolveIntroPlayTune({ targetX: 0.2, targetY: -0.15, scale: 0.7, endFov: 8 });
+  const camera = introPlayCamera(PLAY_POND_VIEW, PLAY_ALIGN_YAW, tune);
+  const pond = complexToSplat(PLAY_POND_VIEW.centerX, PLAY_POND_VIEW.centerY);
+  assert.equal(camera.fov, 8);
+  assert.ok(Math.abs(camera.target.x - (pond.x + 0.2)) < 1e-9);
+  assert.ok(Math.abs(camera.target.y - (pond.y - 0.15)) < 1e-9);
+  assert.ok(Math.abs(introPlayApparentHalfY(camera) - PLAY_POND_VIEW.halfY * 0.7) < 1e-9);
+
+  const from = {
+    yaw: 0,
+    pitch: 0,
+    distance: 5,
+    fov: INTRO_PLAY_FOV,
+    target: { x: 0, y: 0, z: 0 },
+  };
+  const end = introPlayPose(from, INTRO_PLAY_ALIGN_MS, false, tune);
+  assert.equal(end.fov, 8);
+  assert.ok(Math.abs(end.target.x - camera.target.x) < 1e-9);
+  assert.ok(Math.abs(end.target.y - camera.target.y) < 1e-9);
+  assert.ok(Math.abs(end.distance - camera.distance) < 1e-9);
 });

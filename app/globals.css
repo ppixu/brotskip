@@ -87,10 +87,23 @@ button, input { font: inherit; }
 .gameBrandTitle {
   display: block;
   color: #f4fdff;
-  font-size: 22px;
+  font-size: 34px;
   font-weight: 760;
   letter-spacing: -.03em;
   line-height: 1.05;
+}
+.gameBrandHeading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.gameBrandVersion {
+  color: #9ec5cf;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .04em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  opacity: .85;
 }
 .gameBrandTag {
   display: block;
@@ -100,6 +113,63 @@ button, input { font: inherit; }
   font-weight: 650;
   letter-spacing: .04em;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.introPlayDebug {
+  position: absolute;
+  top: 88px;
+  left: 14px;
+  z-index: 6;
+  width: min(220px, calc(100% - 28px));
+  padding: 10px 12px 11px;
+  border: 1px solid rgba(148, 218, 232, .18);
+  border-radius: 10px;
+  background: rgba(4, 10, 14, .72);
+  backdrop-filter: blur(10px);
+  color: #9ec5cf;
+  pointer-events: auto;
+}
+.introPlayDebugHeading {
+  margin-bottom: 6px;
+  color: #dffbff;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.introPlayDebugControl {
+  display: block;
+  margin-top: 8px;
+  font-size: 10px;
+}
+.introPlayDebugControl span {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.introPlayDebugControl output {
+  color: #dffbff;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+.introPlayDebugControl input[type="range"] {
+  width: 100%;
+  margin-top: 4px;
+}
+.introPlayDebugReplay {
+  width: 100%;
+  margin-top: 10px;
+  padding: 6px 8px;
+  border: 1px solid rgba(148, 218, 232, .28);
+  border-radius: 7px;
+  background: rgba(98, 232, 255, .08);
+  color: #dffbff;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.introPlayDebugReplay:hover,
+.introPlayDebugReplay:focus-visible {
+  background: rgba(98, 232, 255, .16);
 }
 .compactScore {
   position: absolute;
@@ -756,8 +826,8 @@ button, input { font: inherit; }
   .railHint, .railFooter, .gpuNote { display: none; }
   .playfieldDock { left: 10px; bottom: 10px; }
   .gameBrand { top: 10px; left: 10px; }
-  .gameBrandTitle { font-size: 18px; }
-  .replayBanner { top: 52px; left: 10px; }
+  .gameBrandTitle { font-size: 26px; }
+  .replayBanner { top: 64px; left: 10px; }
   .replayBannerName { font-size: 18px; }
   .introPaper {
     width: min(17rem, calc(50% - 8px));

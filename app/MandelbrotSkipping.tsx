@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { acquireGpu, type GpuContext } from "@/lib/gpu";
 import BuddhabrotIntro from "./BuddhabrotIntro";
 import HowItWorks from "./HowItWorks";
-import { GAME_TAGLINE, GAME_TITLE } from "@/lib/brand";
+import { GAME_TAGLINE, GAME_TITLE, GAME_VERSION } from "@/lib/brand";
 import {
   ESCAPE_RADIUS_SQ,
   OFFSCREEN_STREAK,
@@ -94,7 +94,7 @@ import {
   tutorialArrowStretch,
   tutorialArrowVisible,
 } from "@/lib/tutorial-arrow";
-import { INTRO_PLAY_ALIGN_MS, INTRO_PLAY_EXIT_MS, PLAY_POND_VIEW } from "@/lib/intro-play";
+import { defaultIntroPlayTune, INTRO_PLAY_ALIGN_MS, INTRO_PLAY_EXIT_MS, PLAY_POND_VIEW, type IntroPlayTune } from "@/lib/intro-play";
 import { BUDDHABROT_OUTLINE_ALPHA, buddhabrotImageTransform } from "@/lib/buddhabrot-outline";
 
 type Phase = "ready" | "aiming" | "flying" | "resolving" | "result";
@@ -1403,8 +1403,11 @@ export default function MandelbrotSkipping() {
   const spectatorRef = useRef(false);
   const savedTuningRef = useRef<Tuning | null>(null);
   const throwAgainRef = useRef<() => void>(() => {});
+  const introExitTimerRef = useRef(0);
   const [intro, setIntro] = useState(false);
   const [introFading, setIntroFading] = useState(false);
+  const [introReplayKey, setIntroReplayKey] = useState(0);
+  const [introPlayTune, setIntroPlayTune] = useState(defaultIntroPlayTune);
   const [pondReady, setPondReady] = useState(false);
   const [hasShare, setHasShare] = useState(false);
   const [watchingShare, setWatchingShare] = useState(false);
@@ -1488,12 +1491,31 @@ export default function MandelbrotSkipping() {
     setIntro(true);
   }, []);
 
+  const replayIntro = useCallback(() => {
+    if (introExitTimerRef.current) {
+      window.clearTimeout(introExitTimerRef.current);
+      introExitTimerRef.current = 0;
+    }
+    introActiveRef.current = true;
+    spectatorRef.current = true;
+    introThrowsRef.current = 0;
+    introFadingRef.current = false;
+    setIntroFading(false);
+    setIntroReplayKey((key) => key + 1);
+    setIntro(true);
+    engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
+    engineRef.current?.setLayer("pond");
+    engineRef.current?.setDisplay({ ...displayLayerGains("intro"), cone: null, cssWidth: 1, cssHeight: 1 });
+    applyViewRef.current(PLAY_POND_VIEW);
+  }, []);
+
   const finishOpening = useCallback(() => {
     if (introFadingRef.current) return;
     introFadingRef.current = true;
     setIntroFading(true);
     gameAudioRef.current?.playStart();
-    window.setTimeout(() => {
+    introExitTimerRef.current = window.setTimeout(() => {
+      introExitTimerRef.current = 0;
       introActiveRef.current = false;
       spectatorRef.current = false;
       introThrowsRef.current = 0;
@@ -2743,7 +2765,7 @@ export default function MandelbrotSkipping() {
     function drawBuddhabrotOutline() {
       const source = liveBuddhabrot?.ready ? liveBuddhabrot.canvas : buddhabrotSource;
       if (!source) return;
-      if (introActiveRef.current && !introFadingRef.current) return;
+      if (!introFadingRef.current) return;
       ctx.save();
       ctx.globalAlpha = BUDDHABROT_OUTLINE_ALPHA;
       drawMappedBuddhabrot(ctx, source);
@@ -3203,13 +3225,20 @@ export default function MandelbrotSkipping() {
 
   const throwBusy = hud.phase === "flying" || hud.phase === "resolving" || Boolean(intro);
 
+  const updateIntroPlayTune = (patch: Partial<IntroPlayTune>) => {
+    setIntroPlayTune((current) => ({ ...current, ...patch }));
+  };
+
   return (
     <main className={`gameShell ${replayMode ? "replayMode" : ""} ${railOpen ? "railOpen" : ""}`}>
       <section className="playfield" aria-label="Mandelpond rock skipping game">
         <canvas ref={gpuCanvasRef} className="gpuCanvas" aria-hidden="true" />
         <canvas ref={gameCanvasRef} className="gameCanvas" tabIndex={0} aria-label="Throw ready. Drag the white orb backward and release it across the water" />
         <button type="button" className="gameBrand" onClick={reloadToLoading} aria-label={`${GAME_TITLE}. Reload to loading`}>
-          <span className="gameBrandTitle">{GAME_TITLE}</span>
+          <span className="gameBrandHeading">
+            <span className="gameBrandTitle">{GAME_TITLE}</span>
+            <span className="gameBrandVersion">{GAME_VERSION}</span>
+          </span>
           <span className="gameBrandTag">{GAME_TAGLINE}</span>
         </button>
         {replayMode && (
@@ -3220,8 +3249,10 @@ export default function MandelbrotSkipping() {
         )}
         {intro && (
           <BuddhabrotIntro
+            key={introReplayKey}
             fading={introFading}
             onPlay={finishOpening}
+            tune={introPlayTune}
           />
         )}
         {(hud.phase === "flying" || hud.phase === "resolving" || hud.phase === "result") && !intro && (
@@ -3236,6 +3267,60 @@ export default function MandelbrotSkipping() {
         )}
         <div className="playfieldDock">
           <HowItWorks />
+        </div>
+        <div className="introPlayDebug" aria-label="Intro camera debug">
+          <div className="introPlayDebugHeading">Intro camera</div>
+          <label className="introPlayDebugControl">
+            <span>Position X<output>{introPlayTune.targetX.toFixed(2)}</output></span>
+            <input
+              type="range"
+              min="-0.8"
+              max="0.8"
+              step="0.01"
+              value={introPlayTune.targetX}
+              aria-label="Intro splat position X"
+              onChange={(event) => updateIntroPlayTune({ targetX: Number(event.target.value) })}
+            />
+          </label>
+          <label className="introPlayDebugControl">
+            <span>Position Y<output>{introPlayTune.targetY.toFixed(2)}</output></span>
+            <input
+              type="range"
+              min="-0.8"
+              max="0.8"
+              step="0.01"
+              value={introPlayTune.targetY}
+              aria-label="Intro splat position Y"
+              onChange={(event) => updateIntroPlayTune({ targetY: Number(event.target.value) })}
+            />
+          </label>
+          <label className="introPlayDebugControl">
+            <span>Scale<output>{introPlayTune.scale.toFixed(2)}</output></span>
+            <input
+              type="range"
+              min="0.4"
+              max="1.8"
+              step="0.01"
+              value={introPlayTune.scale}
+              aria-label="Intro splat scale"
+              onChange={(event) => updateIntroPlayTune({ scale: Number(event.target.value) })}
+            />
+          </label>
+          <label className="introPlayDebugControl">
+            <span>Camera FOV<output>{introPlayTune.endFov.toFixed(1)}</output></span>
+            <input
+              type="range"
+              min="3"
+              max="42"
+              step="0.1"
+              value={introPlayTune.endFov}
+              aria-label="Intro camera FOV"
+              onChange={(event) => updateIntroPlayTune({ endFov: Number(event.target.value) })}
+            />
+          </label>
+          <button type="button" className="introPlayDebugReplay" onClick={replayIntro}>
+            Replay intro
+          </button>
         </div>
         {!intro && !railOpen && (
           <div className="compactScore" aria-live="polite">

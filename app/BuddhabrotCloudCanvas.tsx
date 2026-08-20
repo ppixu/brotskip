@@ -7,6 +7,8 @@ import {
   INTRO_PLAY_FOV,
   introPlayFlatten,
   introPlayPose,
+  resolveIntroPlayTune,
+  type IntroPlayTune,
 } from "@/lib/intro-play";
 
 const RIPPLE_LIFETIME_MS = 2_800;
@@ -39,13 +41,17 @@ type CloudVariant = "henon" | "classic";
 export default function BuddhabrotCloudCanvas({
   fading,
   variant = "henon",
+  tune,
 }: {
   fading: boolean;
   variant?: CloudVariant;
+  tune?: Partial<IntroPlayTune>;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const fadingRef = useRef(fading);
   fadingRef.current = fading;
+  const tuneRef = useRef(resolveIntroPlayTune(tune));
+  tuneRef.current = resolveIntroPlayTune(tune);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -241,7 +247,7 @@ export default function BuddhabrotCloudCanvas({
           alignStarted = now;
         }
         const elapsed = now - alignStarted;
-        const pose = introPlayPose(alignFrom, elapsed, reduceMotion);
+        const pose = introPlayPose(alignFrom, elapsed, reduceMotion, tuneRef.current);
         yaw = pose.yaw;
         pitch = pose.pitch;
         distance = pose.distance;

@@ -105,7 +105,9 @@ test("flashlight is a GPU cone on the live pond; cached blit is GPU-fail only", 
   assert.match(source, /drawMappedBuddhabrot\(ctx, source\)/);
   assert.match(source, /BUDDHABROT_OUTLINE_ALPHA/);
   assert.match(source, /ctx\.globalAlpha = BUDDHABROT_OUTLINE_ALPHA/);
-  assert.match(source, /introActiveRef\.current && !introFadingRef\.current/);
+  assert.match(source, /if \(!introFadingRef\.current\) return;/);
+  assert.doesNotMatch(source, /introActiveRef\.current && !introFadingRef\.current/);
+  assert.match(source, /phase !== "aiming" \|\| introActiveRef\.current/);
   assert.match(source, /createBuddhabrotGenerator/);
   assert.match(source, /liveBuddhabrot/);
   assert.match(source, /generator\.step\(/);
@@ -258,6 +260,25 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.doesNotMatch(css, /\.introPlay \{ top:/);
   assert.match(game, /function anchor\(\) \{ return \{ x: width \* 0\.5, y: height \* 0\.82 \}/);
   assert.match(game, /hud\.phase === "flying" \|\| hud\.phase === "resolving" \|\| hud\.phase === "result"/);
+});
+
+test("intro debug sliders retune position, scale, and FOV and replay the zoom", () => {
+  const game = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
+  const intro = readFileSync(new URL("../../app/BuddhabrotIntro.tsx", import.meta.url), "utf8");
+  const cloud = readFileSync(new URL("../../app/BuddhabrotCloudCanvas.tsx", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../../app/globals.css", import.meta.url), "utf8");
+  assert.match(game, /className="introPlayDebug"/);
+  assert.match(game, /aria-label="Intro camera debug"/);
+  assert.match(game, /Replay intro/);
+  assert.match(game, /replayIntro/);
+  assert.match(game, /introPlayTune/);
+  assert.match(game, /targetX/);
+  assert.match(game, /targetY/);
+  assert.match(game, /endFov/);
+  assert.match(intro, /tune=\{tune\}/);
+  assert.match(cloud, /tune\?:/);
+  assert.match(cloud, /introPlayPose\(alignFrom, elapsed, reduceMotion, tuneRef\.current\)/);
+  assert.match(css, /\.introPlayDebug \{/);
 });
 
 test("every skip stamps a tinted glyph and later skips keep iterating", () => {

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { BUDDHABROT_EXPLAIN } from "@/lib/buddhabrot/explain";
+import type { IntroPlayTune } from "@/lib/intro-play";
 import BuddhabrotCloudCanvas from "./BuddhabrotCloudCanvas";
 
 function paperWords(text: string) {
@@ -11,10 +12,11 @@ function paperWords(text: string) {
 }
 
 export default function BuddhabrotIntro({
-  fading, onPlay,
+  fading, onPlay, tune,
 }: {
   fading: boolean;
   onPlay?: () => void;
+  tune?: Partial<IntroPlayTune>;
 }) {
   const { wikipedia } = BUDDHABROT_EXPLAIN;
   const [showTrueBuddhabrot, setShowTrueBuddhabrot] = useState(true);
@@ -24,6 +26,7 @@ export default function BuddhabrotIntro({
         key={showTrueBuddhabrot ? "classic" : "henon"}
         fading={fading}
         variant={showTrueBuddhabrot ? "classic" : "henon"}
+        tune={tune}
       />
       <div className="introChrome">
         <label className="introSetToggle">
