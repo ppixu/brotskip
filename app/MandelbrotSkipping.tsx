@@ -268,7 +268,7 @@ struct Params {
   viewHalf: vec2f,
   viewport: vec2f,
   rotateRight: f32,
-  accelerationCurve: f32,
+  accelerationMultiplier: f32,
   atlasMode: f32,
   hiddenSteps: f32,
   bounds: vec4f,
@@ -327,10 +327,10 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
   var state = states[source];
   if (state.alive == 0u || state.step >= params.maxDepth) { return; }
   let depthProgress = clamp(f32(state.step) / max(f32(params.maxDepth), 1.0), 0.0, 1.0);
-  let acceleration = pow(depthProgress, max(params.accelerationCurve, 0.25));
+  let acceleration = pow(max(params.accelerationMultiplier, 1.0), depthProgress);
   let acceleratedBatch = min(
     params.batch,
-    max(${BASE_STEPS_PER_SOURCE}u, u32(f32(${BASE_STEPS_PER_SOURCE}u) + acceleration * max(f32(params.batch - ${BASE_STEPS_PER_SOURCE}u), 0.0)))
+    max(${BASE_STEPS_PER_SOURCE}u, u32(f32(${BASE_STEPS_PER_SOURCE}u) * acceleration))
   );
   let lineCount = min(acceleratedBatch, params.lineQuota);
   let firstLineStep = acceleratedBatch - lineCount;
@@ -406,7 +406,7 @@ struct Params {
   viewHalf: vec2f,
   viewport: vec2f,
   rotateRight: f32,
-  accelerationCurve: f32,
+  accelerationMultiplier: f32,
   atlasMode: f32,
   hiddenSteps: f32,
   bounds: vec4f,
@@ -473,7 +473,7 @@ struct Params {
   viewHalf: vec2f,
   viewport: vec2f,
   rotateRight: f32,
-  accelerationCurve: f32,
+  accelerationMultiplier: f32,
   atlasMode: f32,
   hiddenSteps: f32,
   bounds: vec4f,
@@ -956,7 +956,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
   let cssHeight = 1;
   let view: ViewTransform = { centerX: INTRO_POND_CENTER.x, centerY: INTRO_POND_CENTER.y, halfY: INTRO_VIEW_HALF_Y };
   let maxDepth = DEFAULT_TUNING.maxDepth;
-  let accelerationCurve = DEFAULT_TUNING.acceleration;
+  let accelerationMultiplier = DEFAULT_TUNING.acceleration;
   let linePersist = DEFAULT_TUNING.linePersist;
   let skipColors = DEFAULT_TUNING.skipColors;
   let rotateRight = DEFAULT_TUNING.rotateRight;
@@ -1037,7 +1037,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
     floats[8] = width;
     floats[9] = height;
     floats[10] = rotateRight ? 1 : 0;
-    floats[11] = accelerationCurve;
+    floats[11] = accelerationMultiplier;
     floats[12] = atlasMode;
     floats[13] = hiddenSteps;
     floats[16] = bounds.xMin;
@@ -1277,7 +1277,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
     },
     setTuning(tuning) {
       maxDepth = tuning.maxDepth;
-      accelerationCurve = tuning.acceleration;
+      accelerationMultiplier = tuning.acceleration;
       linePersist = tuning.linePersist;
       skipColors = tuning.skipColors === true;
       rotateRight = tuning.rotateRight === true;
@@ -3336,10 +3336,10 @@ export default function MandelbrotSkipping() {
               onChange={(event) => updateTuning({ maxDepth: DEPTH_OPTIONS[Number(event.target.value)] })} />
           </div>
           <div className="tuningControl">
-            <span><span>Acceleration curve</span><output>{tuning.acceleration.toFixed(1)}×</output></span>
+            <span><span>Acceleration multiplier</span><output>{tuning.acceleration.toFixed(1)}×</output></span>
             <input type="range" min={MIN_ACCELERATION} max={MAX_ACCELERATION} step="0.1" value={tuning.acceleration}
-              aria-label="Iteration speed acceleration curve"
-              aria-valuetext={`${tuning.acceleration.toFixed(1)} curve`}
+              aria-label="Iteration speed acceleration multiplier"
+              aria-valuetext={`${tuning.acceleration.toFixed(1)} multiplier`}
               onChange={(event) => updateTuning({ acceleration: Number(event.target.value) })} />
           </div>
           <div className="tuningControl">

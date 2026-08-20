@@ -29,6 +29,14 @@ test("WGSL shaders do not reuse a binding name as an entry point", () => {
   }
 });
 
+test("GPU iterations use a depth-ramped acceleration multiplier", () => {
+  const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
+  assert.match(source, /accelerationMultiplier: f32/);
+  assert.match(source, /pow\(max\(params\.accelerationMultiplier, 1\.0\), depthProgress\)/);
+  assert.match(source, /f32\(\$\{BASE_STEPS_PER_SOURCE\}u\) \* acceleration/);
+  assert.doesNotMatch(source, /pow\(depthProgress, max\(params\.accelerationCurve/);
+});
+
 test("orbit trails accumulate in native-pixel pond and throw layers", () => {
   const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
   assert.match(source, /gpuBufferSize\(/);

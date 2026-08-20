@@ -14,8 +14,9 @@ export function clampAcceleration(value: number): number {
   return Math.max(MIN_ACCELERATION, Math.min(MAX_ACCELERATION, rounded));
 }
 
-export function acceleratedSteps(depth: number, maxDepth: number, budget: number, curve: number): number {
+export function acceleratedSteps(depth: number, maxDepth: number, budget: number, multiplier: number): number {
   const progress = Math.max(0, Math.min(1, depth / Math.max(maxDepth, 1)));
-  const extra = Math.pow(progress, curve) * Math.max(0, budget - BASE_STEPS_PER_SOURCE);
-  return Math.min(budget, Math.max(BASE_STEPS_PER_SOURCE, Math.floor(BASE_STEPS_PER_SOURCE + extra)));
+  const safeMultiplier = Math.max(1, Number.isFinite(multiplier) ? multiplier : 1);
+  const steps = BASE_STEPS_PER_SOURCE * Math.pow(safeMultiplier, progress);
+  return Math.min(budget, Math.max(BASE_STEPS_PER_SOURCE, Math.floor(steps)));
 }
