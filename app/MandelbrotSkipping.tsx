@@ -96,7 +96,8 @@ import {
   tutorialArrowVisible,
 } from "@/lib/tutorial-arrow";
 import { defaultIntroPlayTune, INTRO_PLAY_ALIGN_MS, INTRO_PLAY_EXIT_MS, PLAY_POND_VIEW, type IntroPlayTune } from "@/lib/intro-play";
-import { BUDDHABROT_OUTLINE_ALPHA, buddhabrotImageTransform } from "@/lib/buddhabrot-outline";
+import { buddhabrotImageTransform } from "@/lib/buddhabrot-outline";
+import { buddhabrotBackgroundAlpha } from "@/lib/buddhabrot-fade";
 
 type Phase = "ready" | "aiming" | "flying" | "resolving" | "result";
 
@@ -1631,6 +1632,7 @@ export default function MandelbrotSkipping() {
     let introTrails: Array<{ path: Array<{ x: number; y: number }>; born: number }> = [];
     let lastIntroLaunch = 0;
     let lastIntroBackground = 0;
+    let buddhabrotFadeStarted = 0;
     let previewKey = "";
     let hasThrown = false;
     let liveBuddhabrot: {
@@ -2763,12 +2765,18 @@ export default function MandelbrotSkipping() {
       target.restore();
     }
 
-    function drawBuddhabrotOutline() {
+    function drawBuddhabrotOutline(now: number) {
       const source = liveBuddhabrot?.ready ? liveBuddhabrot.canvas : buddhabrotSource;
       if (!source) return;
-      if (!introFadingRef.current) return;
+      if (!introFadingRef.current) {
+        buddhabrotFadeStarted = 0;
+        return;
+      }
+      if (buddhabrotFadeStarted === 0) buddhabrotFadeStarted = now;
+      const alpha = buddhabrotBackgroundAlpha(now - buddhabrotFadeStarted);
+      if (alpha <= 0) return;
       ctx.save();
-      ctx.globalAlpha = BUDDHABROT_OUTLINE_ALPHA;
+      ctx.globalAlpha = alpha;
       drawMappedBuddhabrot(ctx, source);
       ctx.restore();
     }
@@ -2872,7 +2880,7 @@ export default function MandelbrotSkipping() {
       ctx.clearRect(0, 0, width, height);
       if (gridDirty) rebuildScientificGrid();
       if (gridCanvas) ctx.drawImage(gridCanvas, 0, 0, width, height);
-      drawBuddhabrotOutline();
+      drawBuddhabrotOutline(now);
       const a = anchor();
       drawFlashlight();
       drawPrediction(a);

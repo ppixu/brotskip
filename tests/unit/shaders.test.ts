@@ -103,8 +103,8 @@ test("flashlight is a GPU cone on the live pond; cached Buddha slice fills the c
   assert.match(source, /buddhabrotImageTransform/);
   assert.match(source, /function drawMappedBuddhabrot[\s\S]*?imageSmoothingEnabled = false/);
   assert.match(source, /drawMappedBuddhabrot\(ctx, source\)/);
-  assert.match(source, /BUDDHABROT_OUTLINE_ALPHA/);
-  assert.match(source, /ctx\.globalAlpha = BUDDHABROT_OUTLINE_ALPHA/);
+  assert.match(source, /buddhabrotBackgroundAlpha/);
+  assert.match(source, /ctx\.globalAlpha = alpha/);
   assert.match(source, /if \(!introFadingRef\.current\) return;/);
   assert.doesNotMatch(source, /introActiveRef\.current && !introFadingRef\.current/);
   assert.match(source, /phase !== "aiming" \|\| introActiveRef\.current/);
