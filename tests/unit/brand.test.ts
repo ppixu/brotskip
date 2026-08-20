@@ -55,6 +55,9 @@ test("the right menu is collapsed by default with a compact score and expand arr
   assert.doesNotMatch(game, /Replay opening/);
   assert.doesNotMatch(game, /replayOpening/);
   assert.match(css, /\.compactScore \{/);
+  assert.match(css, /\.compactScore \{[\s\S]*?align-items: flex-end/);
+  assert.match(css, /\.compactScoreLabel \{[\s\S]*?opacity:\s*\.25/);
+  assert.match(css, /\.compactHighscoresTitle \{[\s\S]*?opacity:\s*\.25/);
   assert.match(css, /\.railToggle \{/);
   assert.match(css, /\.gameShell\.railOpen/);
 });
