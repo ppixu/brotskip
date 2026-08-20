@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
+import { SparkRenderer, SplatMesh, dyno } from "@sparkjsdev/spark";
 import {
   INTRO_PLAY_FOV,
   INTRO_START_DISTANCE,
@@ -52,10 +52,16 @@ export default function BuddhabrotCloudCanvas({
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const fadingRef = useRef(fading);
-  fadingRef.current = fading;
   const tuneRef = useRef(resolveIntroPlayTune(tune));
-  tuneRef.current = resolveIntroPlayTune(tune);
   const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    fadingRef.current = fading;
+  }, [fading]);
+
+  useEffect(() => {
+    tuneRef.current = resolveIntroPlayTune(tune);
+  }, [tune]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -106,9 +112,25 @@ export default function BuddhabrotCloudCanvas({
 
     const assetName = classic ? "true-buddhabrot-4096.spz" : "henon-buddhabrot-4096.spz";
     const assetUrl = new URL(assetName, window.location.href).href;
+    const splatSize = dyno.dynoFloat(tuneRef.current.splatSize);
+    const splatSizeModifier = dyno.dynoBlock(
+      { gsplat: dyno.Gsplat },
+      { gsplat: dyno.Gsplat },
+      ({ gsplat }) => {
+        if (!gsplat) throw new Error("No gsplat input");
+        const { scales } = dyno.splitGsplat(gsplat).outputs;
+        return {
+          gsplat: dyno.combineGsplat({
+            gsplat,
+            scales: dyno.mul(scales, splatSize),
+          }),
+        };
+      },
+    );
     const splat = new SplatMesh({
       url: assetUrl,
       lod: false,
+      objectModifier: splatSizeModifier,
       onProgress: (event) => {
         if (event.lengthComputable && event.total > 0) {
           onLoadProgress?.(THREE.MathUtils.clamp(event.loaded / event.total, 0, 1));
@@ -251,6 +273,7 @@ export default function BuddhabrotCloudCanvas({
     function render(now: number) {
       frame = 0;
       if (disposed || !pageVisible) return;
+      splatSize.value = tuneRef.current.splatSize;
       const delta = Math.min(50, now - previousTime);
       previousTime = now;
       if (fadingRef.current) {

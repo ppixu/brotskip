@@ -3277,54 +3277,18 @@ export default function MandelbrotSkipping() {
         <div className="playfieldDock">
           <HowItWorks />
         </div>
-        <div className="introPlayDebug" aria-label="Intro camera debug">
-          <div className="introPlayDebugHeading">Intro camera</div>
+        <div className="introPlayDebug" aria-label="Intro splat debug">
+          <div className="introPlayDebugHeading">Intro splats</div>
           <label className="introPlayDebugControl">
-            <span>Position X<output>{introPlayTune.targetX.toFixed(2)}</output></span>
+            <span>Size<output>{introPlayTune.splatSize.toFixed(2)}×</output></span>
             <input
               type="range"
-              min="-0.8"
-              max="0.8"
-              step="0.01"
-              value={introPlayTune.targetX}
-              aria-label="Intro splat position X"
-              onChange={(event) => updateIntroPlayTune({ targetX: Number(event.target.value) })}
-            />
-          </label>
-          <label className="introPlayDebugControl">
-            <span>Position Y<output>{introPlayTune.targetY.toFixed(2)}</output></span>
-            <input
-              type="range"
-              min="-0.8"
-              max="0.8"
-              step="0.01"
-              value={introPlayTune.targetY}
-              aria-label="Intro splat position Y"
-              onChange={(event) => updateIntroPlayTune({ targetY: Number(event.target.value) })}
-            />
-          </label>
-          <label className="introPlayDebugControl">
-            <span>Scale<output>{introPlayTune.scale.toFixed(2)}</output></span>
-            <input
-              type="range"
-              min="0.4"
-              max="1.8"
-              step="0.01"
-              value={introPlayTune.scale}
-              aria-label="Intro splat scale"
-              onChange={(event) => updateIntroPlayTune({ scale: Number(event.target.value) })}
-            />
-          </label>
-          <label className="introPlayDebugControl">
-            <span>Camera FOV<output>{introPlayTune.endFov.toFixed(1)}</output></span>
-            <input
-              type="range"
-              min="3"
-              max="42"
-              step="0.1"
-              value={introPlayTune.endFov}
-              aria-label="Intro camera FOV"
-              onChange={(event) => updateIntroPlayTune({ endFov: Number(event.target.value) })}
+              min="0.5"
+              max="3"
+              step="0.05"
+              value={introPlayTune.splatSize}
+              aria-label="Intro splat size"
+              onChange={(event) => updateIntroPlayTune({ splatSize: Number(event.target.value) })}
             />
           </label>
           <button type="button" className="introPlayDebugReplay" onClick={replayIntro}>

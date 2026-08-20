@@ -16,6 +16,7 @@ export const INTRO_START_DISTANCE = {
   henon: 15.75,
 } as const;
 export const PLAY_SPLAT_DISTANCE_SCALE = 0.71;
+export const INTRO_SPLAT_SIZE = 1.35;
 /** Look at the pond center so the splat head lines up with the 2D Buddha. */
 export const PLAY_SPLAT_TARGET_Y_LIFT = 0.03;
 /** Face the z-plane so the front view is the 2D Buddhabrot. */
@@ -37,6 +38,7 @@ export type IntroPlayTune = {
   targetY: number;
   scale: number;
   endFov: number;
+  splatSize: number;
 };
 
 export function defaultIntroPlayTune(): IntroPlayTune {
@@ -45,6 +47,7 @@ export function defaultIntroPlayTune(): IntroPlayTune {
     targetY: PLAY_SPLAT_TARGET_Y_LIFT,
     scale: PLAY_SPLAT_DISTANCE_SCALE,
     endFov: INTRO_PLAY_END_FOV,
+    splatSize: INTRO_SPLAT_SIZE,
   };
 }
 

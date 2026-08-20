@@ -10,6 +10,7 @@ import {
   INTRO_PLAY_FOV,
   INTRO_START_DISTANCE,
   INTRO_START_SCALE,
+  INTRO_SPLAT_SIZE,
   PLAY_ALIGN_YAW,
   PLAY_POND_VIEW,
   PLAY_SPLAT_DISTANCE_SCALE,
@@ -137,6 +138,7 @@ test("intro play tune overrides end position, scale, and FOV", () => {
   assert.equal(defaults.endFov, INTRO_PLAY_END_FOV);
   assert.equal(defaults.targetX, 0);
   assert.equal(defaults.targetY, PLAY_SPLAT_TARGET_Y_LIFT);
+  assert.equal(defaults.splatSize, INTRO_SPLAT_SIZE);
 
   const tune = resolveIntroPlayTune({ targetX: 0.2, targetY: -0.15, scale: 0.7, endFov: 8 });
   const camera = introPlayCamera(PLAY_POND_VIEW, PLAY_ALIGN_YAW, tune);

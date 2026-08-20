@@ -266,21 +266,23 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(game, /hud\.phase === "flying" \|\| hud\.phase === "resolving" \|\| hud\.phase === "result"/);
 });
 
-test("intro debug sliders retune position, scale, and FOV and replay the zoom", () => {
+test("intro debug exposes only live splat size and replay", () => {
   const game = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
   const intro = readFileSync(new URL("../../app/BuddhabrotIntro.tsx", import.meta.url), "utf8");
   const cloud = readFileSync(new URL("../../app/BuddhabrotCloudCanvas.tsx", import.meta.url), "utf8");
   const css = readFileSync(new URL("../../app/globals.css", import.meta.url), "utf8");
   assert.match(game, /className="introPlayDebug"/);
-  assert.match(game, /aria-label="Intro camera debug"/);
+  assert.match(game, /aria-label="Intro splat debug"/);
   assert.match(game, /Replay intro/);
   assert.match(game, /replayIntro/);
   assert.match(game, /introPlayTune/);
-  assert.match(game, /targetX/);
-  assert.match(game, /targetY/);
-  assert.match(game, /endFov/);
+  assert.match(game, /aria-label="Intro splat size"/);
+  assert.doesNotMatch(game, /aria-label="Intro splat position [XY]"/);
+  assert.doesNotMatch(game, /aria-label="Intro camera FOV"/);
   assert.match(intro, /tune=\{tune\}/);
   assert.match(cloud, /tune\?:/);
+  assert.match(cloud, /scales: dyno\.mul\(scales, splatSize\)/);
+  assert.match(cloud, /splatSize\.value = tuneRef\.current\.splatSize/);
   assert.match(cloud, /introPlayPose\(alignFrom, elapsed, reduceMotion, tuneRef\.current\)/);
   assert.match(css, /\.introPlayDebug \{/);
 });
