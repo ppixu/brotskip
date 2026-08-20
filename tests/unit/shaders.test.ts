@@ -274,11 +274,19 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(rethrowActionsRule, /top:\s*var\(--throw-stone-y\)/);
   assert.match(game, /className="playfieldThrowActions"/);
   assert.match(game, /className="playfieldShareControl"/);
-  assert.match(game, /disabled=\{hud\.phase !== "result"\}/);
+  assert.match(game, /Fast forward/);
+  assert.match(game, /Fast-forward iteration/);
+  assert.match(game, /onClick=\{hud\.phase === "result" \? resetAndFocusCanvas : \(\) => fastForwardRef\.current\(\)\}/);
   assert.match(css, /\.playfieldThrowActions button:disabled \{[\s\S]*?opacity:\s*\.38/);
   assert.doesNotMatch(css, /\.introPlay \{ top:/);
   assert.match(game, /function anchor\(\) \{ return \{ x: width \* 0\.5, y: height \* 0\.82 \}/);
   assert.match(game, /hud\.phase === "flying" \|\| hud\.phase === "resolving" \|\| hud\.phase === "result"/);
+  assert.match(game, /className="compactHighscores"/);
+  assert.match(game, /New highscore!/);
+  assert.doesNotMatch(game, /Live score/);
+  assert.match(css, /\.compactScoreNumber \{[\s\S]*?font-size:\s*64px/);
+  assert.match(css, /\.liveNumber \{[\s\S]*?font-size:\s*84px/);
+  assert.match(css, /\.compactHighscoreEntry\.current \{[\s\S]*?animation:\s*highscoreListEnter/);
 });
 
 test("intro hides debug controls and keeps the fixed classic cloud", () => {

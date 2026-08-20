@@ -1406,6 +1406,7 @@ export default function MandelbrotSkipping() {
   const spectatorRef = useRef(false);
   const savedTuningRef = useRef<Tuning | null>(null);
   const throwAgainRef = useRef<() => void>(() => {});
+  const fastForwardRef = useRef<() => void>(() => {});
   const introExitTimerRef = useRef(0);
   const [intro, setIntro] = useState(false);
   const [introFading, setIntroFading] = useState(false);
@@ -1617,6 +1618,7 @@ export default function MandelbrotSkipping() {
     let buddhabrotBackgroundRevealed = false;
     let previewKey = "";
     let hasThrown = false;
+    let fastForward = false;
     let liveBuddhabrot: {
       generator: ReturnType<typeof createBuddhabrotGenerator>;
       canvas: OffscreenCanvas;
@@ -1754,6 +1756,7 @@ export default function MandelbrotSkipping() {
     function resetRound() {
       shotId += 1;
       phase = "ready";
+      fastForward = false;
       pointerId = -1;
       pointerMode = "none";
       impacts = [];
@@ -1770,10 +1773,18 @@ export default function MandelbrotSkipping() {
       rock = { x: a.x, y: a.y, vx: 0, vy: 0, z: 0, vz: 0, spin: 0, skips: 0, bounceAge: 10 };
       setCurrentResultId(null);
       engineRef.current?.clear();
+      engineRef.current?.setTuning(tuningRef.current);
       flashlightDirty = true;
       updateHud(true);
     }
     restartRef.current = resetRound;
+
+    fastForwardRef.current = () => {
+      if (phase !== "flying" && phase !== "resolving") return;
+      fastForward = true;
+      engineRef.current?.setTuning({ ...tuningRef.current, acceleration: MAX_ACCELERATION });
+      updateHud(true);
+    };
 
     function launchRock(angle: number, rawPower: number) {
       if (!introActiveRef.current) {
@@ -1940,7 +1951,9 @@ export default function MandelbrotSkipping() {
       const maxHopPx = Math.hypot(width, height) * MAX_HOP_SCREEN_MULTIPLIER;
       for (const orbit of orbitScores) {
         if (orbit.resolved) continue;
-        const perOrbit = acceleratedSteps(orbit.depth, tuningRef.current.maxDepth, maxPerOrbit, tuningRef.current.acceleration);
+        const perOrbit = fastForward
+          ? maxPerOrbit
+          : acceleratedSteps(orbit.depth, tuningRef.current.maxDepth, maxPerOrbit, tuningRef.current.acceleration);
         for (let step = 0; step < perOrbit && orbit.depth < tuningRef.current.maxDepth; step++) {
           const previousR = orbit.zr;
           const previousI = orbit.zi;
@@ -3234,7 +3247,10 @@ export default function MandelbrotSkipping() {
     window.location.assign(window.location.pathname);
   };
 
-  const throwBusy = hud.phase === "flying" || hud.phase === "resolving" || Boolean(intro);
+  const iterationBusy = hud.phase === "flying" || hud.phase === "resolving";
+  const throwBusy = iterationBusy || Boolean(intro);
+  const showCompactHighscores = iterationBusy || hud.phase === "result";
+  const currentIsHighscore = hud.phase === "result" && !watchingShare && Boolean(currentResultId) && scores[0]?.id === currentResultId;
 
   return (
     <main className={`gameShell ${replayMode ? "replayMode" : ""} ${railOpen ? "railOpen" : ""}`}>
@@ -3265,11 +3281,10 @@ export default function MandelbrotSkipping() {
             <button
               type="button"
               className="playfieldThrowControl"
-              onClick={resetAndFocusCanvas}
-              disabled={hud.phase !== "result"}
-              aria-label={hud.phase === "result" ? "Rethrow" : "Rethrow available when iteration completes"}
+              onClick={hud.phase === "result" ? resetAndFocusCanvas : () => fastForwardRef.current()}
+              aria-label={hud.phase === "result" ? "Rethrow" : "Fast-forward iteration"}
             >
-              Rethrow
+              {hud.phase === "result" ? "Rethrow" : "Fast forward"}
             </button>
             <button
               type="button"
@@ -3287,8 +3302,27 @@ export default function MandelbrotSkipping() {
         </div>
         {!intro && !railOpen && (
           <div className="compactScore" aria-live="polite">
-            <span className="compactScoreLabel">{hud.phase === "result" ? "Final score" : "Live score"}</span>
+            {showCompactHighscores && (
+              <div className="compactHighscores" role="list" aria-label="High scores">
+                <span className="compactHighscoresTitle">High scores</span>
+                {scores.length === 0 ? (
+                  <span className="compactHighscoreEmpty">No scores yet.</span>
+                ) : scores.slice(0, 3).map((entry, index) => (
+                  <div
+                    className={`compactHighscoreEntry ${entry.id === currentResultId ? "current" : ""}`}
+                    key={entry.id}
+                    role="listitem"
+                  >
+                    <span className="compactHighscoreRank">{index + 1}</span>
+                    <span className="compactHighscoreName">{entry.name}</span>
+                    <span className="compactHighscoreValue">{formatNumber(entry.score)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <span className="compactScoreLabel">{hud.phase === "result" ? "Final score" : "Score"}</span>
             <strong className="compactScoreNumber">{formatNumber(hud.score)}</strong>
+            {currentIsHighscore && <span className="compactScoreAnnouncement" role="status" aria-live="assertive">New highscore!</span>}
           </div>
         )}
         {!intro && (
@@ -3306,7 +3340,7 @@ export default function MandelbrotSkipping() {
 
       <aside className={`scoreRail ${hud.phase === "result" ? "hasResult" : ""}`} aria-label="Score and local high scores">
         <section className="liveScore" aria-live="polite">
-          <span className="liveLabel">{hud.phase === "result" ? "Final score" : "Live score"}</span>
+          <span className="liveLabel">{hud.phase === "result" ? "Final score" : "Score"}</span>
           <strong className="liveNumber">{formatNumber(hud.score)}</strong>
           <span className="liveMeta">{hud.skips} skips · {hud.deepest ? formatNumber(hud.deepest) : "0"} deep · {hud.coverage} cells · {Math.round(hud.spread * 100)}% spread</span>
           <span className="liveProgress"><i style={{ width: `${Math.max(2, hud.progress * 100)}%` }} /></span>
@@ -3405,7 +3439,7 @@ export default function MandelbrotSkipping() {
           <section className="railResult" aria-label="Throw result">
             <div className="resultEyebrow">{
               watchingShare ? `${sharePlayerLabel(replayName)} throw`
-                : scores[0]?.id === currentResultId ? "New local best"
+                : currentIsHighscore ? "New highscore!"
                   : "Throw complete"
             }</div>
             <div className="resultStats">{hud.skips} exact paths · {formatNumber(hud.deepest)} deep · {hud.coverage} distinct cells · {Math.round(hud.spread * 100)}% spread.</div>

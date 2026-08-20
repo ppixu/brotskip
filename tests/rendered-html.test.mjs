@@ -20,7 +20,8 @@ test("server-renders Mandelbrot Skipping", async () => {
   assert.match(html, /z² \+ sea/);
   assert.match(html, /Local legends/);
   assert.match(html, /Drag the white orb/);
-  assert.match(html, /Live score/);
+  assert.match(html, />Score</);
+  assert.doesNotMatch(html, /Live score/);
   assert.match(html, /Score and local high scores/);
   assert.match(html, /Line persist/);
   assert.match(html, /Aim orbit preview/);

@@ -135,11 +135,69 @@ button, input { font: inherit; }
   display: block;
   margin-top: 2px;
   color: #dffbff;
-  font-size: 32px;
+  font-size: 64px;
   font-weight: 760;
   line-height: 1;
   letter-spacing: -.055em;
   font-variant-numeric: tabular-nums;
+}
+.compactHighscores {
+  display: flex;
+  width: min(220px, calc(100vw - 60px));
+  margin-bottom: 12px;
+  flex-direction: column;
+  gap: 3px;
+  color: #8ba9b3;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.compactHighscoresTitle {
+  color: #b9d7df;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+}
+.compactHighscoreEntry {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 7px;
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, .07);
+  text-align: left;
+}
+.compactHighscoreEntry.current {
+  color: white;
+  animation: highscoreListEnter 620ms cubic-bezier(.2, .8, .2, 1) both;
+}
+.compactHighscoreRank { color: #526d79; }
+.compactHighscoreName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.compactHighscoreValue { color: #c8f7ff; font-weight: 750; }
+.compactHighscoreEmpty { color: #607985; text-align: left; }
+.compactScoreAnnouncement {
+  display: block;
+  margin-top: 9px;
+  color: var(--cyan);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  animation: highscoreAnnouncement 700ms cubic-bezier(.2, .8, .2, 1) both;
+}
+@keyframes highscoreListEnter {
+  from { opacity: 0; transform: translateY(-10px) scale(.94); }
+  60% { opacity: 1; transform: translateY(2px) scale(1.03); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes highscoreAnnouncement {
+  from { opacity: 0; transform: translateY(6px); }
+  55% { opacity: 1; transform: translateY(-1px); }
+  to { opacity: 1; transform: none; }
 }
 .railToggle {
   position: absolute;
@@ -310,7 +368,7 @@ button, input { font: inherit; }
 .liveNumber {
   margin-top: 2px;
   color: white;
-  font-size: 42px;
+  font-size: 84px;
   font-weight: 760;
   line-height: 1;
   letter-spacing: -.055em;
@@ -786,7 +844,7 @@ button, input { font: inherit; }
     border-left: 0;
   }
   .liveScore { grid-column: 1; grid-row: 1; padding: 0 0 8px; }
-  .liveNumber { font-size: 34px; }
+  .liveNumber { font-size: 68px; }
   .tuningPanel { grid-column: 1; grid-row: 2; min-height: 0; margin: 0; padding: 8px 0 0; overflow: auto; border-bottom: 0; }
   .tuningHeading { margin-bottom: 5px; }
   .tuningControl { margin-top: 5px; }
@@ -821,13 +879,14 @@ button, input { font: inherit; }
   .gameShell { grid-template-rows: minmax(0, 1fr); }
   .gameShell.railOpen { grid-template-rows: minmax(0, 1fr) 270px; }
   .scoreRail { grid-template-columns: 132px minmax(0, 1fr); column-gap: 12px; }
-  .liveNumber { font-size: 30px; }
+  .liveNumber { font-size: 60px; }
   .scoreEntry { grid-template-columns: 18px minmax(0, 1fr); }
   .scoreNumber { grid-column: 2; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .liveProgress i, .liveNumber, .introLoadProgress, .introLoadProgress i { transition: none; }
+  .compactHighscoreEntry.current, .compactScoreAnnouncement { animation: none; }
   .introOverlay { transition: none; }
   .introChrome, .introPaper, .introPlay { transition: none; }
   .introCloudHost.fading { transition: opacity 200ms linear; }
