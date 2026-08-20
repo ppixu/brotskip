@@ -14,6 +14,8 @@ test("every GameAudio method is a safe no-op without an AudioContext", () => {
     audio.init();
     audio.setVolume(0.5);
     audio.setMuted(true);
+    audio.ambientStart();
+    audio.playStart();
     audio.throwStart();
     audio.splash(1, 0, 0);
     audio.update([orbit], "flying", 1000);

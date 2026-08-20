@@ -6,6 +6,7 @@
  */
 import { createChiptuneEngine, type ChiptuneEngine } from "./chiptune.ts";
 import { createEngineShell, UPDATE_INTERVAL_SECONDS, type EngineShell } from "./engine.ts";
+import { createIntroAudio, type IntroAudio } from "./intro.ts";
 import {
   createFeatureTracker,
   createMilestoneDetector,
@@ -21,6 +22,8 @@ export type GameAudio = {
   init(): void;
   setVolume(volume: number): void;
   setMuted(muted: boolean): void;
+  ambientStart(): void;
+  playStart(): void;
   throwStart(): void;
   splash(skipIndex: number, glyph: number, panPosition: number): void;
   update(orbits: readonly OrbitFeatureInput[], phase: GamePhase, nowMs: number): void;
@@ -34,6 +37,7 @@ const UPDATE_INTERVAL_MS = UPDATE_INTERVAL_SECONDS * 1000;
 export function createGameAudio(): GameAudio {
   let shell: EngineShell | null = null;
   let engine: ChiptuneEngine | null = null;
+  let intro: IntroAudio | null = null;
   let volume = .9;
   let muted = false;
   let palette: Palette | null = null;
@@ -64,6 +68,13 @@ export function createGameAudio(): GameAudio {
     return engine;
   }
 
+  function ensureIntro(): IntroAudio | null {
+    const current = ensureShell();
+    if (!current) return null;
+    if (!intro) intro = createIntroAudio(current);
+    return intro;
+  }
+
   function establishPalette(cr: number, ci: number) {
     palette = paletteFromLanding(cr, ci);
     const current = ensureEngine();
@@ -90,6 +101,16 @@ export function createGameAudio(): GameAudio {
       try {
         muted = next;
         shell?.setMuted(next);
+      } catch { /* audio stays optional */ }
+    },
+    ambientStart() {
+      try {
+        ensureIntro()?.start();
+      } catch { /* audio stays optional */ }
+    },
+    playStart() {
+      try {
+        ensureIntro()?.play();
       } catch { /* audio stays optional */ }
     },
     throwStart() {
@@ -149,11 +170,13 @@ export function createGameAudio(): GameAudio {
     },
     destroy() {
       try {
+        intro?.stop();
         engine?.silence();
         shell?.dispose();
         void shell?.context.close().catch(() => { /* already closed */ });
         shell = null;
         engine = null;
+        intro = null;
       } catch { /* audio stays optional */ }
     },
   };

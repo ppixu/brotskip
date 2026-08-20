@@ -1492,6 +1492,7 @@ export default function MandelbrotSkipping() {
     if (introFadingRef.current) return;
     introFadingRef.current = true;
     setIntroFading(true);
+    gameAudioRef.current?.playStart();
     window.setTimeout(() => {
       introActiveRef.current = false;
       spectatorRef.current = false;
@@ -1586,6 +1587,13 @@ export default function MandelbrotSkipping() {
     let orbitScores: OrbitScore[] = [];
     const gameAudio = createGameAudio();
     gameAudioRef.current = gameAudio;
+    function unlockIntroAudio() {
+      if (!introActiveRef.current || introFadingRef.current) return;
+      gameAudio.init();
+      gameAudio.ambientStart();
+    }
+    if (introActiveRef.current) unlockIntroAudio();
+    window.addEventListener("pointerdown", unlockIntroAudio);
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const gridCanvas = document.createElement("canvas");
     const gridContext = gridCanvas.getContext("2d");
@@ -3124,6 +3132,7 @@ export default function MandelbrotSkipping() {
       canvas.removeEventListener("pointerup", release);
       canvas.removeEventListener("pointercancel", cancelAim);
       window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("pointerdown", unlockIntroAudio);
       gameAudioRef.current = null;
       gameAudio.destroy();
       playThrowRef.current = null;
