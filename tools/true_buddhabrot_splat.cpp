@@ -1,6 +1,6 @@
 // Standard z <- z^2 + c Buddhabrot escape paths -> standard 3DGS PLY.
-// XY is the rotated z-plane. Z is Im(c): a 3-axis slice of the 4D (z, c) density,
-// not a stack of 2D Buddhabrots along orbit time.
+// XY is the rotated z-plane. Z is normalized orbit time in a thin slab
+// so the front view is the 2D Buddhabrot, not a cubic Im(c) slice.
 
 #include <algorithm>
 #include <atomic>
@@ -21,6 +21,7 @@ constexpr double C_IMAG_MIN = -1.42;
 constexpr double C_IMAG_MAX = 1.42;
 constexpr double FIELD_MIN = -2.35;
 constexpr double FIELD_MAX = 2.35;
+constexpr double DEPTH_HALF = 0.42;
 constexpr float SH_C0 = 0.28209479177387814f;
 
 struct Complex {
@@ -108,11 +109,12 @@ uint32_t escape_time(const Complex& c, uint32_t max_iterations) {
   return 0;
 }
 
-Point3 project_orbit(const Complex& z, const Complex& c) {
+Point3 project_orbit(const Complex& z, uint32_t step, uint32_t escape) {
+  const double t = (static_cast<double>(step) + 0.5) / std::max(escape, 1u) - 0.5;
   return {
       z.imag,
       -(z.real + 0.5),
-      c.imag,
+      t * DEPTH_HALF,
   };
 }
 
@@ -124,7 +126,7 @@ void add_orbit(std::vector<uint32_t>& hits, const Options& options,
   for (uint32_t step = 0; step + 1 < escape; ++step) {
     z = iterate(z, c);
     if (step < 2) continue;
-    const Point3 point = project_orbit(z, c);
+    const Point3 point = project_orbit(z, step, escape);
     if (point.x < FIELD_MIN || point.x >= FIELD_MAX ||
         point.y < FIELD_MIN || point.y >= FIELD_MAX ||
         point.z < FIELD_MIN || point.z >= FIELD_MAX) continue;
@@ -164,7 +166,7 @@ void write_ply(const Options& options, const std::vector<Candidate>& splats) {
   std::ofstream output(options.output, std::ios::binary);
   if (!output) throw std::runtime_error("could not open output PLY");
   output << "ply\nformat binary_little_endian 1.0\n"
-         << "comment 4D (z, c) Buddhabrot projected to Im(z), -Re(z), Im(c)\n"
+         << "comment Buddhabrot XYT volume: Im(z), -Re(z), normalized orbit time\n"
          << "element vertex " << splats.size() << "\n";
   const char* fields[] = {
       "x", "y", "z", "nx", "ny", "nz", "f_dc_0", "f_dc_1", "f_dc_2",
@@ -174,7 +176,8 @@ void write_ply(const Options& options, const std::vector<Candidate>& splats) {
 
   const size_t plane = static_cast<size_t>(options.resolution) * options.resolution;
   const float sigma = static_cast<float>((FIELD_MAX - FIELD_MIN) / options.resolution * 0.22);
-  const float log_sigma = std::log(sigma);
+  const float log_sigma_xy = std::log(sigma);
+  const float log_sigma_z = std::log(sigma * 0.28f);
   for (const Candidate& splat : splats) {
     const uint32_t z_index = splat.voxel / plane;
     const uint32_t remainder = splat.voxel % plane;
@@ -192,7 +195,7 @@ void write_ply(const Options& options, const std::vector<Candidate>& splats) {
         (splat.red - 0.5f) / SH_C0,
         (splat.green - 0.5f) / SH_C0,
         (splat.blue - 0.5f) / SH_C0,
-        opacity, log_sigma, log_sigma, log_sigma,
+        opacity, log_sigma_xy, log_sigma_xy, log_sigma_z,
         1.0f, 0.0f, 0.0f, 0.0f};
     for (float value : values) append_float(output, value);
   }

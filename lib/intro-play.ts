@@ -1,4 +1,7 @@
 import type { ViewTransform } from "./view-map.ts";
+import { SPLAT_RE_OFFSET } from "./splat-orbit.ts";
+
+export { SPLAT_RE_OFFSET };
 
 export const INTRO_PLAY_ALIGN_MS = 1800;
 export const INTRO_PLAY_FACE_MS = 700;
@@ -7,9 +10,6 @@ export const INTRO_PLAY_FADE_MS = 1400;
 export const INTRO_PLAY_EXIT_MS = INTRO_PLAY_FADE_DELAY_MS + INTRO_PLAY_FADE_MS + 180;
 export const INTRO_PLAY_FOV = 42;
 export const INTRO_PLAY_END_FOV = 5;
-/** Matches tools/true_buddhabrot_splat.cpp: y = -(Re(z) + 0.5). */
-export const SPLAT_RE_OFFSET = 0.5;
-/** Zoom the gaussian in so its silhouette matches the 2D pond Buddha. */
 export const PLAY_SPLAT_DISTANCE_SCALE = 0.56;
 /** Look higher in splat space so the Buddha sits lower on screen. */
 export const PLAY_SPLAT_TARGET_Y_LIFT = 0.14;

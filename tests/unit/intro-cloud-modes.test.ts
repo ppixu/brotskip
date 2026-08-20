@@ -22,9 +22,8 @@ test("the second SPZ is generated from standard escaping z squared plus c paths"
   assert.match(generator, /z\.real \* z\.real - z\.imag \* z\.imag \+ c\.real/);
   assert.match(generator, /2\.0 \* z\.real \* z\.imag \+ c\.imag/);
   assert.match(generator, /norm_squared\(z\) > 4\.0/);
-  assert.match(generator, /-\(z\.real \+ 0\.5\),\s*c\.imag/);
-  assert.match(generator, /4D \(z, c\)/);
-  assert.doesNotMatch(generator, /normalized orbit time/);
-  assert.doesNotMatch(generator, /XYT volume/);
-  assert.doesNotMatch(generator, /DEPTH_HALF/);
+  assert.match(generator, /DEPTH_HALF/);
+  assert.match(generator, /t \* DEPTH_HALF/);
+  assert.doesNotMatch(generator, /-\(z\.real \+ 0\.5\),\s*c\.imag/);
+  assert.doesNotMatch(generator, /4D \(z, c\)/);
 });
