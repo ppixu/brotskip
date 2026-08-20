@@ -8,6 +8,8 @@ import {
   INTRO_PLAY_FADE_DELAY_MS,
   INTRO_PLAY_FADE_MS,
   INTRO_PLAY_FOV,
+  INTRO_START_DISTANCE,
+  INTRO_START_SCALE,
   PLAY_ALIGN_YAW,
   PLAY_POND_VIEW,
   PLAY_SPLAT_DISTANCE_SCALE,
@@ -24,6 +26,12 @@ import {
   resolveIntroPlayTune,
   splatDistanceForHalfY,
 } from "../../lib/intro-play.ts";
+
+test("intro start Buddha is 0.2x the previous orbit scale", () => {
+  assert.equal(INTRO_START_SCALE, 0.2);
+  assert.equal(INTRO_START_DISTANCE.classic, 25);
+  assert.equal(INTRO_START_DISTANCE.henon, 15.75);
+});
 
 test("play camera uses the tuned pond framing as defaults", () => {
   assert.equal(PLAY_POND_VIEW.centerX, -0.58);
@@ -73,8 +81,8 @@ test("flatten eases in and out over the whole alignment", () => {
 test("play alignment zooms and rotates with ease-in-out cubic and holds FOV", () => {
   assert.ok(INTRO_PLAY_ALIGN_MS >= 1600);
   assert.ok(INTRO_PLAY_FADE_DELAY_MS < INTRO_PLAY_ALIGN_MS, "pond Buddha should start showing through during the zoom");
-  assert.ok(INTRO_PLAY_FADE_DELAY_MS >= 800);
-  assert.ok(INTRO_PLAY_FADE_MS >= 3800, "splat fade should linger");
+  assert.equal(INTRO_PLAY_FADE_DELAY_MS, 400);
+  assert.equal(INTRO_PLAY_FADE_MS, 2400);
   assert.ok(INTRO_PLAY_EXIT_MS >= INTRO_PLAY_FADE_DELAY_MS + INTRO_PLAY_FADE_MS);
 
   const quarter = INTRO_PLAY_ALIGN_MS / 4;

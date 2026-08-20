@@ -1,5 +1,6 @@
 export const FLASHLIGHT_HALF_ANGLE = 0.29;
 export const FLASHLIGHT_EDGE_BLUR_PX = 32;
+export const FLASHLIGHT_CACHE_ALPHA = 0.85;
 export const FLASHLIGHT_PLANNED_SKIPS = 3;
 export const INTRO_THROWS_PER_WAVE = 16;
 export const INTRO_THROW_STAGGER_MS = 45;

@@ -96,7 +96,7 @@ test("loading Buddhabrot uses the precomputed rotating Gaussian cloud", () => {
   assert.match(source, /pointEnergy = atmosphere\.energy/);
 });
 
-test("flashlight is a GPU cone on the live pond; cached blit is GPU-fail only", () => {
+test("flashlight is a GPU cone on the live pond; cached Buddha slice fills the cone while aiming", () => {
   const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
   assert.match(source, /drawMappedBuddhabrot/);
   assert.match(source, /drawBuddhabrotOutline/);
@@ -108,6 +108,10 @@ test("flashlight is a GPU cone on the live pond; cached blit is GPU-fail only", 
   assert.match(source, /if \(!introFadingRef\.current\) return;/);
   assert.doesNotMatch(source, /introActiveRef\.current && !introFadingRef\.current/);
   assert.match(source, /phase !== "aiming" \|\| introActiveRef\.current/);
+  assert.doesNotMatch(source, /!engineRef\.current && buddhabrotSource/);
+  assert.match(source, /if \(buddhabrotSource && flashlightContext\)/);
+  assert.match(source, /FLASHLIGHT_CACHE_ALPHA/);
+  assert.match(source, /ctx\.globalAlpha = FLASHLIGHT_CACHE_ALPHA/);
   assert.match(source, /createBuddhabrotGenerator/);
   assert.match(source, /liveBuddhabrot/);
   assert.match(source, /generator\.step\(/);
@@ -226,7 +230,7 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(css, /\.introOverlay\.fading \.introPaper/);
   assert.match(css, /\.introOverlay\.fading \.introPlay/);
   assert.match(css, /\.introCloudHost\.fading \{[^}]*opacity:\s*0/);
-  assert.match(css, /transition:\s*opacity\s+4000ms\s+cubic-bezier\(0\.65,\s*0,\s*0\.35,\s*1\)\s+1100ms/);
+  assert.match(css, /transition:\s*opacity\s+2400ms\s+cubic-bezier\(0\.65,\s*0,\s*0\.35,\s*1\)\s+400ms/);
   const paperRule = css.match(/\.introPaper \{([^}]+)\}/)?.[1] ?? "";
   const titleRule = css.match(/\.introPaperTitle \{([^}]+)\}/)?.[1] ?? "";
   const dropCapRule = css.match(/\.introPaperLede::first-letter \{([^}]+)\}/)?.[1] ?? "";

@@ -5,11 +5,16 @@ export { SPLAT_RE_OFFSET };
 
 export const INTRO_PLAY_ALIGN_MS = 1800;
 export const INTRO_PLAY_FACE_MS = 700;
-export const INTRO_PLAY_FADE_DELAY_MS = 1100;
-export const INTRO_PLAY_FADE_MS = 4000;
+export const INTRO_PLAY_FADE_DELAY_MS = 400;
+export const INTRO_PLAY_FADE_MS = 2400;
 export const INTRO_PLAY_EXIT_MS = INTRO_PLAY_FADE_DELAY_MS + INTRO_PLAY_FADE_MS + 180;
 export const INTRO_PLAY_FOV = 10;
 export const INTRO_PLAY_END_FOV = 10;
+export const INTRO_START_SCALE = 0.2;
+export const INTRO_START_DISTANCE = {
+  classic: 25,
+  henon: 15.75,
+} as const;
 export const PLAY_SPLAT_DISTANCE_SCALE = 0.71;
 /** Look at the pond center so the splat head lines up with the 2D Buddha. */
 export const PLAY_SPLAT_TARGET_Y_LIFT = 0.03;

@@ -24,6 +24,7 @@ import {
   writeCachedTexture,
 } from "@/lib/buddhabrot/cache";
 import {
+  FLASHLIGHT_CACHE_ALPHA,
   FLASHLIGHT_HALF_ANGLE,
   FLASHLIGHT_EDGE_BLUR_PX,
   INTRO_ATMOSPHERE,
@@ -2778,7 +2779,7 @@ export default function MandelbrotSkipping() {
       if (!geometry) return;
       const { apexX, apexY, directionX, directionY, range } = geometry;
 
-      if (!engineRef.current && buddhabrotSource && flashlightContext) {
+      if (buddhabrotSource && flashlightContext) {
         if (flashlightDirty) {
           flashlightContext.clearRect(0, 0, width, height);
           drawMappedBuddhabrot(flashlightContext);
@@ -2808,7 +2809,7 @@ export default function MandelbrotSkipping() {
           flashlightDirty = false;
         }
         ctx.save();
-        ctx.globalAlpha = 0.32;
+        ctx.globalAlpha = FLASHLIGHT_CACHE_ALPHA;
         ctx.drawImage(flashlightCanvas, 0, 0, width, height);
         ctx.restore();
       }

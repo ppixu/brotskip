@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  FLASHLIGHT_CACHE_ALPHA,
   FLASHLIGHT_HALF_ANGLE,
   FLASHLIGHT_EDGE_BLUR_PX,
   INTRO_ATMOSPHERE,
@@ -43,6 +44,8 @@ const cone = {
 test("flashlight is a cone mask, not a cheaper iterator", () => {
   assert.ok(FLASHLIGHT_EDGE_BLUR_PX >= 24);
   assert.ok(FLASHLIGHT_HALF_ANGLE > 0);
+  assert.ok(FLASHLIGHT_CACHE_ALPHA >= 0.75, "precalculated slice must be bright enough to read in the cone");
+  assert.ok(FLASHLIGHT_CACHE_ALPHA <= 1);
 });
 
 test("display layer gains match intro, play, and aiming", () => {

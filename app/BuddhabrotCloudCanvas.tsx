@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
 import {
   INTRO_PLAY_FOV,
+  INTRO_START_DISTANCE,
   introPlayFlatten,
   introPlayPose,
   resolveIntroPlayTune,
@@ -73,12 +74,12 @@ export default function BuddhabrotCloudCanvas({
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x030408);
-    const camera = new THREE.PerspectiveCamera(INTRO_PLAY_FOV, 1, 0.05, 80);
+    const camera = new THREE.PerspectiveCamera(INTRO_PLAY_FOV, 1, 0.05, 120);
     const target = new THREE.Vector3(0, 0, 0);
     const classic = variant === "classic";
     let yaw = classic ? 0.16 : 0.72;
     let pitch = classic ? 0.12 : 0.32;
-    let distance = classic ? 5.0 : 3.15;
+    let distance = classic ? INTRO_START_DISTANCE.classic : INTRO_START_DISTANCE.henon;
     let alignFrom: {
       yaw: number;
       pitch: number;
