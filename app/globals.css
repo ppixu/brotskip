@@ -87,7 +87,7 @@ button, input { font: inherit; }
 .gameBrandTitle {
   display: block;
   color: #f4fdff;
-  font-size: 34px;
+  font-size: 68px;
   font-weight: 760;
   letter-spacing: -.03em;
   line-height: 1.05;
@@ -99,7 +99,7 @@ button, input { font: inherit; }
 }
 .gameBrandVersion {
   color: #9ec5cf;
-  font-size: 11px;
+  font-size: 5.5px;
   font-weight: 650;
   letter-spacing: .04em;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -843,7 +843,7 @@ button, input { font: inherit; }
   .railHint, .railFooter, .gpuNote { display: none; }
   .playfieldDock { left: 10px; bottom: 10px; }
   .gameBrand { top: 10px; left: 10px; }
-  .gameBrandTitle { font-size: 26px; }
+  .gameBrandTitle { font-size: 52px; }
   .replayBanner { top: 64px; left: 10px; }
   .replayBannerName { font-size: 18px; }
   .introPaper {

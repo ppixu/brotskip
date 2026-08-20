@@ -19,10 +19,11 @@ test("the header shows a large Mandelpond title with a small matching package ve
   assert.match(game, /className="gameBrandHeading"/);
   const titleRule = css.match(/\.gameBrandTitle \{([^}]+)\}/)?.[1] ?? "";
   const versionRule = css.match(/\.gameBrandVersion \{([^}]+)\}/)?.[1] ?? "";
-  const titleSize = Number(titleRule.match(/font-size:\s*(\d+)px/)?.[1] ?? 0);
-  const versionSize = Number(versionRule.match(/font-size:\s*(\d+)px/)?.[1] ?? 0);
-  assert.ok(titleSize >= 32, `Mandelpond title should be bigger than 22px, got ${titleSize}`);
-  assert.ok(versionSize > 0 && versionSize <= 13, `version should be small next to the title, got ${versionSize}`);
+  const titleSize = Number(titleRule.match(/font-size:\s*(\d+(?:\.\d+)?)px/)?.[1] ?? 0);
+  const versionSize = Number(versionRule.match(/font-size:\s*(\d+(?:\.\d+)?)px/)?.[1] ?? 0);
+  assert.equal(titleSize, 68);
+  assert.equal(versionSize, 5.5);
+  assert.match(css, /\.gameBrandTitle \{ font-size: 52px; \}/);
 });
 
 test("title and tagline sit in the left corner and reload to loading", () => {
