@@ -166,6 +166,7 @@ export default function BuddhabrotCloudCanvas({
       const group = new THREE.Group();
       group.position.copy(sample.center);
       group.quaternion.copy(sample.quaternion);
+      group.quaternion.multiply(new THREE.Quaternion().random());
 
       const rings = RIPPLE_DELAYS.map((_, index) => {
         const material = new THREE.MeshBasicMaterial({
