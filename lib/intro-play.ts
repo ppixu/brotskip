@@ -6,10 +6,10 @@ export { SPLAT_RE_OFFSET };
 export const INTRO_PLAY_ALIGN_MS = 1800;
 export const INTRO_PLAY_FACE_MS = 700;
 export const INTRO_PLAY_FADE_DELAY_MS = 1100;
-export const INTRO_PLAY_FADE_MS = 2400;
+export const INTRO_PLAY_FADE_MS = 4000;
 export const INTRO_PLAY_EXIT_MS = INTRO_PLAY_FADE_DELAY_MS + INTRO_PLAY_FADE_MS + 180;
-export const INTRO_PLAY_FOV = 42;
-export const INTRO_PLAY_END_FOV = 5.3;
+export const INTRO_PLAY_FOV = 10;
+export const INTRO_PLAY_END_FOV = 10;
 export const PLAY_SPLAT_DISTANCE_SCALE = 0.71;
 /** Look at the pond center so the splat head lines up with the 2D Buddha. */
 export const PLAY_SPLAT_TARGET_Y_LIFT = 0.03;
@@ -59,9 +59,10 @@ export function introPlayApparentHalfY(pose: Pick<IntroCameraPose, "distance" | 
   return pose.distance * Math.tan((pose.fov * Math.PI) / 360);
 }
 
-function linearT(elapsed: number, duration: number, reduceMotion = false) {
+function easeInOutCubic(elapsed: number, duration: number, reduceMotion = false) {
   if (reduceMotion) return 1;
-  return Math.max(0, Math.min(1, elapsed / duration));
+  const x = Math.max(0, Math.min(1, elapsed / duration));
+  return x < 0.5 ? 4 * x * x * x : 1 - ((-2 * x + 2) ** 3) / 2;
 }
 
 function lerp(from: number, to: number, t: number) {
@@ -83,8 +84,8 @@ export function introPlayCamera(
   return {
     yaw,
     pitch: 0,
-    fov: resolved.endFov,
-    distance: splatDistanceForHalfY(playSplatHalfY(view, resolved.scale), resolved.endFov),
+    fov: INTRO_PLAY_FOV,
+    distance: splatDistanceForHalfY(playSplatHalfY(view, resolved.scale), INTRO_PLAY_FOV),
     target: { x: pond.x + resolved.targetX, y: pond.y + resolved.targetY, z: pond.z },
   };
 }
@@ -97,23 +98,19 @@ export function playAlignYaw(current: number, target = PLAY_ALIGN_YAW) {
 }
 
 export function introPlayFlatten(elapsed: number, reduceMotion = false) {
-  return lerp(1, 0.04, linearT(elapsed, INTRO_PLAY_ALIGN_MS, reduceMotion));
+  return lerp(1, 0.04, easeInOutCubic(elapsed, INTRO_PLAY_ALIGN_MS, reduceMotion));
 }
 
 export function introPlayFaceT(elapsed: number, reduceMotion = false) {
-  return linearT(elapsed, INTRO_PLAY_ALIGN_MS, reduceMotion);
+  return easeInOutCubic(elapsed, INTRO_PLAY_ALIGN_MS, reduceMotion);
 }
 
 export function introPlayZoomT(elapsed: number, reduceMotion = false) {
-  return linearT(elapsed, INTRO_PLAY_ALIGN_MS, reduceMotion);
-}
-
-export function introPlayDollyT(elapsed: number, reduceMotion = false) {
-  return introPlayZoomT(elapsed, reduceMotion);
+  return easeInOutCubic(elapsed, INTRO_PLAY_ALIGN_MS, reduceMotion);
 }
 
 export function introPlayAlignT(elapsed: number, reduceMotion = false) {
-  return linearT(elapsed, INTRO_PLAY_ALIGN_MS, reduceMotion);
+  return easeInOutCubic(elapsed, INTRO_PLAY_ALIGN_MS, reduceMotion);
 }
 
 export function lerpIntroCamera(from: IntroCameraPose, to: IntroCameraPose, t: number): IntroCameraPose {
@@ -122,7 +119,7 @@ export function lerpIntroCamera(from: IntroCameraPose, to: IntroCameraPose, t: n
     yaw: lerp(from.yaw, to.yaw, amount),
     pitch: lerp(from.pitch, to.pitch, amount),
     distance: lerp(from.distance, to.distance, amount),
-    fov: lerp(from.fov, to.fov, amount),
+    fov: from.fov,
     target: {
       x: lerp(from.target.x, to.target.x, amount),
       y: lerp(from.target.y, to.target.y, amount),

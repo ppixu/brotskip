@@ -253,7 +253,6 @@ export default function BuddhabrotCloudCanvas({
         pitch = pose.pitch;
         distance = pose.distance;
         target.set(pose.target.x, pose.target.y, pose.target.z);
-        camera.fov = pose.fov;
         splat.scale.z = introPlayFlatten(elapsed, reduceMotion);
         scene.background = null;
         renderer.setClearColor(0x000000, 0);
