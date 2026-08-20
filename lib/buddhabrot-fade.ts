@@ -1,8 +1,18 @@
 import { BUDDHABROT_OUTLINE_ALPHA } from "./buddhabrot-outline.ts";
 import { INTRO_PLAY_FADE_DELAY_MS, INTRO_PLAY_FADE_MS } from "./intro-play.ts";
 
-export function buddhabrotBackgroundAlpha(elapsedMs: number) {
+export const BUDDHABROT_SLING_FADE_MS = 650;
+
+function smoothstep(progress: number) {
+  const clamped = Math.max(0, Math.min(1, progress));
+  return clamped * clamped * (3 - 2 * clamped);
+}
+
+export function buddhabrotIntroCrossfadeAlpha(elapsedMs: number) {
   const progress = Math.max(0, Math.min(1, (elapsedMs - INTRO_PLAY_FADE_DELAY_MS) / INTRO_PLAY_FADE_MS));
-  const eased = progress * progress * (3 - 2 * progress);
-  return BUDDHABROT_OUTLINE_ALPHA * (1 - eased);
+  return BUDDHABROT_OUTLINE_ALPHA * smoothstep(progress);
+}
+
+export function buddhabrotSlingFadeAlpha(elapsedMs: number) {
+  return BUDDHABROT_OUTLINE_ALPHA * (1 - smoothstep(elapsedMs / BUDDHABROT_SLING_FADE_MS));
 }

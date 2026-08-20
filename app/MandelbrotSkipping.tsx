@@ -97,7 +97,7 @@ import {
 } from "@/lib/tutorial-arrow";
 import { defaultIntroPlayTune, INTRO_PLAY_ALIGN_MS, INTRO_PLAY_EXIT_MS, PLAY_POND_VIEW, type IntroPlayTune } from "@/lib/intro-play";
 import { buddhabrotImageTransform } from "@/lib/buddhabrot-outline";
-import { buddhabrotBackgroundAlpha } from "@/lib/buddhabrot-fade";
+import { buddhabrotIntroCrossfadeAlpha, buddhabrotSlingFadeAlpha } from "@/lib/buddhabrot-fade";
 
 type Phase = "ready" | "aiming" | "flying" | "resolving" | "result";
 
@@ -1631,7 +1631,9 @@ export default function MandelbrotSkipping() {
     let introTrails: Array<{ path: Array<{ x: number; y: number }>; born: number }> = [];
     let lastIntroLaunch = 0;
     let lastIntroBackground = 0;
-    let buddhabrotFadeStarted = 0;
+    let buddhabrotIntroFadeStarted = 0;
+    let buddhabrotSlingFadeStarted = 0;
+    let buddhabrotBackgroundRevealed = false;
     let previewKey = "";
     let hasThrown = false;
     let liveBuddhabrot: {
@@ -2765,14 +2767,26 @@ export default function MandelbrotSkipping() {
     }
 
     function drawBuddhabrotOutline(now: number) {
-      const source = liveBuddhabrot?.ready ? liveBuddhabrot.canvas : buddhabrotSource;
-      if (!source) return;
-      if (!introFadingRef.current) {
-        buddhabrotFadeStarted = 0;
+      if (introActiveRef.current && !introFadingRef.current) {
+        buddhabrotIntroFadeStarted = 0;
+        buddhabrotSlingFadeStarted = 0;
+        buddhabrotBackgroundRevealed = false;
         return;
       }
-      if (buddhabrotFadeStarted === 0) buddhabrotFadeStarted = now;
-      const alpha = buddhabrotBackgroundAlpha(now - buddhabrotFadeStarted);
+
+      let alpha = 0;
+      if (introFadingRef.current) {
+        if (buddhabrotIntroFadeStarted === 0) buddhabrotIntroFadeStarted = now;
+        buddhabrotBackgroundRevealed = true;
+        alpha = buddhabrotIntroCrossfadeAlpha(now - buddhabrotIntroFadeStarted);
+      } else if (buddhabrotBackgroundRevealed) {
+        alpha = buddhabrotSlingFadeStarted === 0
+          ? buddhabrotSlingFadeAlpha(0)
+          : buddhabrotSlingFadeAlpha(now - buddhabrotSlingFadeStarted);
+      }
+
+      const source = buddhabrotSource ?? (liveBuddhabrot?.ready ? liveBuddhabrot.canvas : null);
+      if (!source) return;
       if (alpha <= 0) return;
       ctx.save();
       ctx.globalAlpha = alpha;
@@ -3014,6 +3028,7 @@ export default function MandelbrotSkipping() {
         gameAudio.init();
         pointerMode = "aim";
         phase = "aiming";
+        if (buddhabrotSlingFadeStarted === 0) buddhabrotSlingFadeStarted = performance.now();
         plannedSkips = sampleSkipCount(Math.random);
         previewKey = "";
         flashlightDirty = true;
