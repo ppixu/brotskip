@@ -8,12 +8,12 @@ export const INTRO_PLAY_FACE_MS = 700;
 export const INTRO_PLAY_FADE_DELAY_MS = 400;
 export const INTRO_PLAY_FADE_MS = 2400;
 export const INTRO_PLAY_EXIT_MS = INTRO_PLAY_FADE_DELAY_MS + INTRO_PLAY_FADE_MS + 180;
-export const INTRO_PLAY_FOV = 4;
-export const INTRO_PLAY_END_FOV = 4;
-export const INTRO_START_SCALE = 0.2;
+export const INTRO_PLAY_FOV = 25;
+export const INTRO_PLAY_END_FOV = 25;
+export const INTRO_START_SCALE = 0.4;
 export const INTRO_START_DISTANCE = {
-  classic: 25,
-  henon: 15.75,
+  classic: 12.5,
+  henon: 7.875,
 } as const;
 export const PLAY_SPLAT_DISTANCE_SCALE = 0.71;
 export const INTRO_SPLAT_SIZE = 1.35;
