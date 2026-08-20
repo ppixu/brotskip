@@ -58,3 +58,17 @@ test("the right menu is collapsed by default with a compact score and expand arr
   assert.match(css, /\.railToggle \{/);
   assert.match(css, /\.gameShell\.railOpen/);
 });
+
+test("the theme switch starts dark and offers a persisted light mode", () => {
+  const game = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../../app/globals.css", import.meta.url), "utf8");
+  assert.match(game, /className="themeToggle"/);
+  assert.match(game, /aria-pressed=\{lightMode\}/);
+  assert.match(game, /Switch to light mode/);
+  assert.match(game, /Switch to dark mode/);
+  assert.match(game, /localStorage\.setItem\(THEME_KEY/);
+  assert.match(css, /\.themeToggle \{/);
+  assert.match(css, /\.themeToggleTrack \{/);
+  assert.match(css, /\.gameShell\.lightMode \{/);
+  assert.match(css, /\.gameShell\.lightMode \.playfield/);
+});

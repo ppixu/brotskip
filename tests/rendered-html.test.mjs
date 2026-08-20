@@ -30,6 +30,8 @@ test("server-renders Mandelbrot Skipping", async () => {
   assert.match(html, /Rotate 90° right/);
   assert.doesNotMatch(html, /Replay opening/);
   assert.match(html, /Show menu/);
+  assert.match(html, /Switch to light mode/);
+  assert.match(html, /class="themeToggle"/);
   assert.match(html, /Share throw/);
   assert.match(html, /Replay throw/);
   assert.match(html, />Buddhabrot</);

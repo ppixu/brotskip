@@ -114,6 +114,55 @@ button, input { font: inherit; }
   letter-spacing: .04em;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+.themeToggle {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid rgba(151, 231, 240, .22);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .42);
+  color: #9ec5cf;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+}
+.themeToggle:hover,
+.themeToggle:focus-visible {
+  border-color: rgba(210, 247, 255, .55);
+  color: #dffbff;
+  outline: none;
+}
+.themeToggleIcon {
+  width: 12px;
+  color: currentColor;
+  font-size: 14px;
+  line-height: 1;
+  text-align: center;
+}
+.themeToggleTrack {
+  display: block;
+  width: 26px;
+  height: 14px;
+  padding: 2px;
+  border-radius: 999px;
+  background: #10242a;
+  box-shadow: inset 0 0 0 1px rgba(151, 231, 240, .22);
+}
+.themeToggleThumb {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--cyan);
+  box-shadow: 0 0 7px rgba(98, 232, 255, .55);
+  transition: transform 180ms ease, background 180ms ease;
+}
+.themeToggle[aria-pressed="true"] .themeToggleThumb { transform: translateX(12px); }
 .compactScore {
   position: absolute;
   right: 36px;
@@ -887,8 +936,151 @@ button, input { font: inherit; }
 @media (prefers-reduced-motion: reduce) {
   .liveProgress i, .liveNumber, .introLoadProgress, .introLoadProgress i { transition: none; }
   .compactHighscoreEntry.current, .compactScoreAnnouncement { animation: none; }
+  .themeToggleThumb { transition: none; }
   .introOverlay { transition: none; }
   .introChrome, .introPaper, .introPlay { transition: none; }
   .introCloudHost.fading { transition: opacity 200ms linear; }
   .howItWorksPanel { transition: none; }
 }
+
+.gameShell.lightMode {
+  --ink: #17333a;
+  --muted: #607b82;
+  --shore: #edf4f2;
+  --rail: #f8fbfa;
+  --cyan: #087d99;
+  color-scheme: light;
+}
+.gameShell.lightMode .playfield { background: #edf4f2; }
+.gameShell.lightMode .gpuCanvas,
+.gameShell.lightMode .gameCanvas,
+.gameShell.lightMode .introCloudHost {
+  filter: invert(1) hue-rotate(180deg) saturate(.64) brightness(.97);
+}
+.gameShell.lightMode .gameCanvas:focus-visible { outline-color: rgba(8, 125, 153, .65); }
+.gameShell.lightMode .gameBrand,
+.gameShell.lightMode .compactScore,
+.gameShell.lightMode .replayBanner { text-shadow: 0 1px 12px rgba(46, 75, 77, .18); }
+.gameShell.lightMode .gameBrandTitle { color: #17333a; }
+.gameShell.lightMode .gameBrandVersion,
+.gameShell.lightMode .gameBrandTag { color: #607b82; }
+.gameShell.lightMode .compactScoreNumber { color: #174854; }
+.gameShell.lightMode .compactHighscores { color: #607b82; }
+.gameShell.lightMode .compactHighscoresTitle { color: #315e68; }
+.gameShell.lightMode .compactHighscoreEntry { border-bottom-color: rgba(28, 76, 84, .12); }
+.gameShell.lightMode .compactHighscoreEntry.current { color: #17333a; }
+.gameShell.lightMode .compactHighscoreRank { color: #789199; }
+.gameShell.lightMode .compactHighscoreValue { color: #087d99; }
+.gameShell.lightMode .compactHighscoreEmpty { color: #789199; }
+.gameShell.lightMode .railToggle,
+.gameShell.lightMode .themeToggle,
+.gameShell.lightMode .howItWorksTrigger {
+  border-color: rgba(20, 76, 84, .22);
+  background: rgba(248, 251, 250, .82);
+  color: #4d737b;
+}
+.gameShell.lightMode .railToggle:hover,
+.gameShell.lightMode .railToggle:focus-visible,
+.gameShell.lightMode .themeToggle:hover,
+.gameShell.lightMode .themeToggle:focus-visible,
+.gameShell.lightMode .howItWorksTrigger:hover,
+.gameShell.lightMode .howItWorksTrigger:focus-visible {
+  border-color: rgba(8, 125, 153, .52);
+  color: #174854;
+}
+.gameShell.lightMode .themeToggleTrack {
+  background: #d8e8e5;
+  box-shadow: inset 0 0 0 1px rgba(20, 76, 84, .2);
+}
+.gameShell.lightMode .themeToggleThumb {
+  background: #087d99;
+  box-shadow: 0 0 7px rgba(8, 125, 153, .35);
+}
+.gameShell.lightMode .replayBannerName { color: #543f70; }
+.gameShell.lightMode .replayBannerLabel { color: #806ba0; }
+.gameShell.lightMode .scoreRail { border-left-color: rgba(20, 76, 84, .14); }
+.gameShell.lightMode .liveNumber { color: #17333a; }
+.gameShell.lightMode .scoreRail:not(.hasResult) .liveNumber { color: #087d99; }
+.gameShell.lightMode .liveMeta { color: #607b82; }
+.gameShell.lightMode .liveProgress { background: rgba(20, 76, 84, .1); }
+.gameShell.lightMode .liveProgress i { box-shadow: 0 0 8px rgba(8, 125, 153, .36); }
+.gameShell.lightMode .rethrowButton,
+.gameShell.lightMode .playfieldThrowActions button {
+  border-color: rgba(20, 76, 84, .25);
+  background: rgba(255, 255, 255, .55);
+  color: #315e68;
+}
+.gameShell.lightMode .rethrowButton:hover,
+.gameShell.lightMode .rethrowButton:focus-visible,
+.gameShell.lightMode .playfieldThrowActions button:hover,
+.gameShell.lightMode .playfieldThrowActions button:focus-visible {
+  border-color: rgba(8, 125, 153, .55);
+  background: rgba(255, 255, 255, .82);
+  color: #17333a;
+}
+.gameShell.lightMode .tuningPanel,
+.gameShell.lightMode .railResult { border-color: rgba(20, 76, 84, .12); }
+.gameShell.lightMode .tuningHeading,
+.gameShell.lightMode .tuningControl output { color: #315e68; }
+.gameShell.lightMode .tuningHeading span:last-child { color: #789199; }
+.gameShell.lightMode .tuningControl { color: #607b82; }
+.gameShell.lightMode .tuningNote { color: #789199; }
+.gameShell.lightMode .tuningCheck { color: #4d737b; }
+.gameShell.lightMode .tuningControl input[type="range"]::-webkit-slider-runnable-track,
+.gameShell.lightMode .tuningControl input[type="range"]::-moz-range-track { background: rgba(20, 76, 84, .18); }
+.gameShell.lightMode .tuningControl input[type="range"]::-webkit-slider-thumb,
+.gameShell.lightMode .tuningControl input[type="range"]::-moz-range-thumb { border-color: rgba(255, 255, 255, .85); }
+.gameShell.lightMode .railResult .resultEyebrow { color: #315e68; }
+.gameShell.lightMode .resultStats { color: #607b82; }
+.gameShell.lightMode .nameInput { border-bottom-color: rgba(20, 76, 84, .25); color: #17333a; }
+.gameShell.lightMode .throwButton {
+  border-color: rgba(8, 125, 153, .45);
+  background: #087d99;
+  color: white;
+}
+.gameShell.lightMode .throwButton:hover { background: #096c83; }
+.gameShell.lightMode .scoreEntry { border-bottom-color: rgba(20, 76, 84, .1); }
+.gameShell.lightMode .scoreEntry.current { color: #17333a; }
+.gameShell.lightMode .rank { color: #789199; }
+.gameShell.lightMode .scoreMeta { color: #789199; }
+.gameShell.lightMode .scoreNumber { color: #087d99; }
+.gameShell.lightMode .emptyScores,
+.gameShell.lightMode .railHint { color: #789199; }
+.gameShell.lightMode .railFooter { color: #8ca2a5; }
+.gameShell.lightMode .gpuNote { color: #a34d4d; }
+.gameShell.lightMode .howItWorksPanel {
+  border-color: rgba(20, 76, 84, .16);
+  background: rgba(248, 251, 250, .96);
+  box-shadow: 0 18px 40px rgba(46, 75, 77, .18);
+  color: #4d737b;
+}
+.gameShell.lightMode .howItWorksKicker { color: #315e68; }
+.gameShell.lightMode .howItWorksFormula,
+.gameShell.lightMode .howItWorksPanel i { color: #174854; }
+.gameShell.lightMode .howItWorksPanel a { color: #087d99; }
+.gameShell.lightMode .introOverlay {
+  background: radial-gradient(circle at 50% 46%, transparent 16%, rgba(255, 255, 255, .08) 58%, rgba(255, 255, 255, .72) 100%);
+}
+.gameShell.lightMode .introPaper {
+  background: rgba(248, 251, 250, .72);
+  color: #17333a;
+}
+.gameShell.lightMode .introPaperJournal { color: rgba(23, 51, 58, .58); }
+.gameShell.lightMode .introPaperSource a,
+.gameShell.lightMode .introPaperCite a { color: rgba(23, 51, 58, .74); }
+.gameShell.lightMode .introPaperSource a { text-decoration-color: rgba(23, 51, 58, .35); }
+.gameShell.lightMode .introPaperSource a:hover,
+.gameShell.lightMode .introPaperSource a:focus-visible,
+.gameShell.lightMode .introPaperCite a:hover,
+.gameShell.lightMode .introPaperCite a:focus-visible { color: #087d99; }
+.gameShell.lightMode .introPlay {
+  border-color: rgba(20, 76, 84, .35);
+  background: rgba(248, 251, 250, .76);
+  color: #17333a;
+}
+.gameShell.lightMode .introPlay:hover,
+.gameShell.lightMode .introPlay:focus-visible {
+  border-color: rgba(8, 125, 153, .62);
+  background: rgba(255, 255, 255, .92);
+}
+.gameShell.lightMode .introLoadProgress { background: rgba(20, 76, 84, .12); }

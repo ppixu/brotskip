@@ -250,6 +250,7 @@ const SCORE_SAMPLE_STRIDE = 4;
 const MAX_HOP_SCREEN_MULTIPLIER = 2;
 const SCORE_KEY = "mandelbrot-skipping:scores:v2";
 const LEGACY_SCORE_KEY = "mandelbrot-skipping:scores:v1";
+const THEME_KEY = "mandelbrot-skipping:theme:v1";
 const TAU = Math.PI * 2;
 const POND_CENTER = { x: PLAY_POND_VIEW.centerX, y: PLAY_POND_VIEW.centerY };
 const VIEW_HALF_Y = PLAY_POND_VIEW.halfY;
@@ -1423,9 +1424,17 @@ export default function MandelbrotSkipping() {
   const [currentResultId, setCurrentResultId] = useState<string | null>(null);
   const [tuning, setTuning] = useState<Tuning>({ ...DEFAULT_TUNING });
   const [railOpen, setRailOpen] = useState(false);
+  const [lightMode, setLightMode] = useState(false);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => setScores(loadScores()));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      try { setLightMode(window.localStorage.getItem(THEME_KEY) === "light"); } catch { /* dark mode still works */ }
+    });
     return () => cancelAnimationFrame(frame);
   }, []);
 
@@ -1563,6 +1572,14 @@ export default function MandelbrotSkipping() {
     invalidateGridRef.current();
     invalidateFlashlightRef.current();
   }, []);
+
+  const toggleTheme = () => {
+    setLightMode((previous) => {
+      const next = !previous;
+      try { window.localStorage.setItem(THEME_KEY, next ? "light" : "dark"); } catch { /* theme still toggles for this visit */ }
+      return next;
+    });
+  };
 
   useEffect(() => {
     const canvas = gameCanvasRef.current;
@@ -3253,7 +3270,7 @@ export default function MandelbrotSkipping() {
   const currentIsHighscore = hud.phase === "result" && !watchingShare && Boolean(currentResultId) && scores[0]?.id === currentResultId;
 
   return (
-    <main className={`gameShell ${replayMode ? "replayMode" : ""} ${railOpen ? "railOpen" : ""}`}>
+    <main className={`gameShell ${lightMode ? "lightMode" : ""} ${replayMode ? "replayMode" : ""} ${railOpen ? "railOpen" : ""}`}>
       <section className="playfield" aria-label="Mandelpond rock skipping game">
         <canvas ref={gpuCanvasRef} className="gpuCanvas" aria-hidden="true" />
         <canvas ref={gameCanvasRef} className="gameCanvas" tabIndex={0} aria-label="Throw ready. Drag the white orb backward and release it across the water" />
@@ -3263,6 +3280,17 @@ export default function MandelbrotSkipping() {
             <span className="gameBrandVersion">{GAME_VERSION}</span>
           </span>
           <span className="gameBrandTag">{GAME_TAGLINE}</span>
+        </button>
+        <button
+          type="button"
+          className="themeToggle"
+          aria-pressed={lightMode}
+          aria-label={lightMode ? "Switch to dark mode" : "Switch to light mode"}
+          title={lightMode ? "Switch to dark mode" : "Switch to light mode"}
+          onClick={toggleTheme}
+        >
+          <span className="themeToggleIcon" aria-hidden="true">{lightMode ? "☼" : "☾"}</span>
+          <span className="themeToggleTrack" aria-hidden="true"><i className="themeToggleThumb" /></span>
         </button>
         {replayMode && (
           <p className="replayBanner" aria-live="polite">
