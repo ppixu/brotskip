@@ -44,8 +44,8 @@ test("play camera uses the tuned pond framing as defaults", () => {
   assert.equal(pond.z, 0);
   const camera = introPlayCamera(PLAY_POND_VIEW);
   assert.equal(camera.pitch, 0);
-  assert.equal(INTRO_PLAY_FOV, 20);
-  assert.equal(INTRO_PLAY_END_FOV, 20);
+  assert.equal(INTRO_PLAY_FOV, 4);
+  assert.equal(INTRO_PLAY_END_FOV, 4);
   assert.equal(camera.fov, INTRO_PLAY_FOV);
   assert.equal(PLAY_SPLAT_DISTANCE_SCALE, 0.71);
   assert.equal(PLAY_SPLAT_TARGET_Y_LIFT, 0.03);
