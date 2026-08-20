@@ -22,6 +22,10 @@ test("the intro cloud is doubled and emits fading 3D rings from real splats", ()
   assert.match(source, /introPlayPose\(alignFrom, elapsed, reduceMotion, tuneRef\.current\)/);
   assert.match(source, /introPlayFlatten/);
   assert.match(source, /splat\.scale\.z/);
+  assert.match(source, /onProgress:/);
+  assert.match(source, /event\.loaded \/ event\.total/);
+  assert.match(source, /onLoadProgress\?\.\(1\)/);
+  assert.match(source, /onReady\?\.\(\)/);
   assert.match(source, /fadingRef/);
   assert.match(source, /alpha:\s*true/);
   assert.match(source, /setClearColor\(0x000000,\s*0\)/);

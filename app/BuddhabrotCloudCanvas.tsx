@@ -40,11 +40,13 @@ function makeBeaconTexture() {
 type CloudVariant = "henon" | "classic";
 
 export default function BuddhabrotCloudCanvas({
-  fading,
+  fading, onLoadProgress, onReady,
   variant = "henon",
   tune,
 }: {
   fading: boolean;
+  onLoadProgress?: (progress: number) => void;
+  onReady?: () => void;
   variant?: CloudVariant;
   tune?: Partial<IntroPlayTune>;
 }) {
@@ -104,7 +106,15 @@ export default function BuddhabrotCloudCanvas({
 
     const assetName = classic ? "true-buddhabrot-4096.spz" : "henon-buddhabrot-4096.spz";
     const assetUrl = new URL(assetName, window.location.href).href;
-    const splat = new SplatMesh({ url: assetUrl, lod: false });
+    const splat = new SplatMesh({
+      url: assetUrl,
+      lod: false,
+      onProgress: (event) => {
+        if (event.lengthComputable && event.total > 0) {
+          onLoadProgress?.(THREE.MathUtils.clamp(event.loaded / event.total, 0, 1));
+        }
+      },
+    });
     splat.opacity = 0.82;
     scene.add(splat);
 
@@ -299,6 +309,8 @@ export default function BuddhabrotCloudCanvas({
       if (!disposed) {
         splatReady = true;
         nextRippleAt = performance.now() + 420;
+        onLoadProgress?.(1);
+        onReady?.();
         setReady(true);
       }
     }).catch(() => {
@@ -335,7 +347,7 @@ export default function BuddhabrotCloudCanvas({
       };
       disposeCloud();
     };
-  }, [variant]);
+  }, [variant, onLoadProgress, onReady]);
 
   return (
     <div
