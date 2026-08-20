@@ -10,9 +10,9 @@ export const INTRO_PLAY_FADE_MS = 2400;
 export const INTRO_PLAY_EXIT_MS = INTRO_PLAY_FADE_DELAY_MS + INTRO_PLAY_FADE_MS + 180;
 export const INTRO_PLAY_FOV = 42;
 export const INTRO_PLAY_END_FOV = 5;
-export const PLAY_SPLAT_DISTANCE_SCALE = 1;
-/** Look higher in splat space so the Buddha sits lower on screen. */
-export const PLAY_SPLAT_TARGET_Y_LIFT = 0.14;
+export const PLAY_SPLAT_DISTANCE_SCALE = 1.22;
+/** Look at the pond center so the splat head lines up with the 2D Buddha. */
+export const PLAY_SPLAT_TARGET_Y_LIFT = 0;
 /** Face the z-plane so the front view is the 2D Buddhabrot. */
 export const PLAY_ALIGN_YAW = 0;
 export const PLAY_POND_VIEW: ViewTransform = { centerX: -0.58, centerY: 0, halfY: 0.8 };
@@ -95,7 +95,8 @@ export function introPlayZoomT(elapsed: number, reduceMotion = false) {
 }
 
 export function introPlayDollyT(elapsed: number, reduceMotion = false) {
-  return introPlayZoomT(elapsed, reduceMotion);
+  if (reduceMotion) return 1;
+  return easeOutCubic(elapsed / INTRO_PLAY_ALIGN_MS);
 }
 
 export function introPlayAlignT(elapsed: number, reduceMotion = false) {
