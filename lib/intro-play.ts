@@ -1,8 +1,8 @@
 import type { ViewTransform } from "./view-map.ts";
 
 export const INTRO_PLAY_ALIGN_MS = 1400;
-export const INTRO_PLAY_FADE_DELAY_MS = 1100;
-export const INTRO_PLAY_FADE_MS = 600;
+export const INTRO_PLAY_FADE_DELAY_MS = 1200;
+export const INTRO_PLAY_FADE_MS = 1100;
 export const INTRO_PLAY_EXIT_MS = INTRO_PLAY_FADE_DELAY_MS + INTRO_PLAY_FADE_MS + 180;
 export const INTRO_PLAY_FOV = 42;
 /** Matches tools/true_buddhabrot_splat.cpp: y = -(Re(z) + 0.5). */
@@ -36,13 +36,12 @@ export function introPlayCamera(view: ViewTransform = PLAY_POND_VIEW, yaw = 0): 
   };
 }
 
-/** Keep spinning in the idle direction until the next face-on yaw. */
+/** Shortest yaw to a face-on view of the rotated z-plane. */
 export function playAlignYaw(current: number) {
   const tau = Math.PI * 2;
   const wrapped = ((current % tau) + tau) % tau;
-  let remaining = (tau - wrapped) % tau;
-  if (remaining < Math.PI / 2) remaining += tau;
-  return current + remaining;
+  if (wrapped <= Math.PI) return current - wrapped;
+  return current + (tau - wrapped);
 }
 
 export function introPlayFlatten(alignT: number) {

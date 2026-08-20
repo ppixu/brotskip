@@ -104,6 +104,7 @@ test("flashlight is a GPU cone on the live pond; cached blit is GPU-fail only", 
   assert.match(source, /function drawMappedBuddhabrot[\s\S]*?imageSmoothingEnabled = false/);
   assert.match(source, /drawMappedBuddhabrot\(ctx, buddhabrotSource\)/);
   assert.match(source, /ctx\.globalAlpha = 0\.28/);
+  assert.match(source, /introActiveRef\.current && !introFadingRef\.current/);
   assert.doesNotMatch(source, /extractBuddhabrotOutline/);
   assert.doesNotMatch(source, /let buddhabrotOutline/);
   assert.match(source, /readCachedTexture/);
@@ -218,7 +219,7 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(css, /\.introOverlay\.fading \.introPaper/);
   assert.match(css, /\.introOverlay\.fading \.introPlay/);
   assert.match(css, /\.introCloudHost\.fading \{[^}]*opacity:\s*0/);
-  assert.match(css, /transition:\s*opacity\s+600ms\s+ease\s+1100ms/);
+  assert.match(css, /transition:\s*opacity\s+1100ms\s+ease\s+1200ms/);
   const paperRule = css.match(/\.introPaper \{([^}]+)\}/)?.[1] ?? "";
   const titleRule = css.match(/\.introPaperTitle \{([^}]+)\}/)?.[1] ?? "";
   const dropCapRule = css.match(/\.introPaperLede::first-letter \{([^}]+)\}/)?.[1] ?? "";

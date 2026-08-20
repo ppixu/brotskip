@@ -31,13 +31,17 @@ test("play camera looks at the splat point for the pond center, scaled to the pl
   assert.ok(Math.abs(camera.target.y - target.y) < 1e-9);
 });
 
-test("Play keeps spinning forward to the next face-on yaw so the Gaussian can lie flat", () => {
+test("Play takes the shortest turn to face-on, without an extra full spin", () => {
+  const tau = Math.PI * 2;
   const classic = playAlignYaw(0.16);
   const henon = playAlignYaw(0.72);
-  assert.ok(classic - 0.16 >= Math.PI / 2);
-  assert.ok(henon - 0.72 >= Math.PI / 2);
-  assert.ok(Math.abs(((classic % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) < 1e-9);
-  assert.ok(Math.abs(((henon % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) < 1e-9);
+  const spun = playAlignYaw(5.8);
+  assert.ok(Math.abs(classic) < 1e-9);
+  assert.ok(Math.abs(henon) < 1e-9);
+  assert.ok(Math.abs(classic - 0.16) < Math.PI);
+  assert.ok(Math.abs(henon - 0.72) < Math.PI);
+  assert.ok(Math.abs(((spun % tau) + tau) % tau) < 1e-9);
+  assert.ok(Math.abs(spun - 5.8) < Math.PI);
   assert.equal(introPlayFlatten(0), 1);
   assert.ok(introPlayFlatten(1) < 0.08);
   assert.ok(introPlayFlatten(0.5) > 0.5);
@@ -46,7 +50,7 @@ test("Play keeps spinning forward to the next face-on yaw so the Gaussian can li
 test("play alignment eases from the current orbit to the pond pose, then the overlay can exit", () => {
   assert.ok(INTRO_PLAY_ALIGN_MS >= 1200);
   assert.ok(INTRO_PLAY_FADE_DELAY_MS >= INTRO_PLAY_ALIGN_MS * 0.75);
-  assert.ok(INTRO_PLAY_FADE_MS >= 400);
+  assert.ok(INTRO_PLAY_FADE_MS >= 900);
   assert.ok(INTRO_PLAY_EXIT_MS >= INTRO_PLAY_FADE_DELAY_MS + INTRO_PLAY_FADE_MS);
   assert.equal(introPlayAlignT(0), 0);
   assert.equal(introPlayAlignT(INTRO_PLAY_ALIGN_MS), 1);
@@ -62,7 +66,7 @@ test("play alignment eases from the current orbit to the pond pose, then the ove
   };
   const to = introPlayCamera(PLAY_POND_VIEW, playAlignYaw(from.yaw));
   const mid = lerpIntroCamera(from, to, 0.5);
-  assert.ok(mid.yaw > from.yaw);
+  assert.ok(Math.abs(mid.yaw - 0.36) < 1e-9);
   assert.ok(mid.distance < 5);
   assert.ok(mid.target.y > 0);
 

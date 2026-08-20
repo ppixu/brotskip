@@ -2728,6 +2728,7 @@ export default function MandelbrotSkipping() {
 
     function drawBuddhabrotOutline() {
       if (!buddhabrotSource) return;
+      if (introActiveRef.current && !introFadingRef.current) return;
       ctx.save();
       ctx.globalAlpha = 0.28;
       drawMappedBuddhabrot(ctx, buddhabrotSource);
