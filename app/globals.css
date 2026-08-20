@@ -567,7 +567,7 @@ button, input { font: inherit; }
 .introCloudHost.fading {
   opacity: 0;
   background: transparent;
-  transition: opacity 1400ms ease-out 1800ms;
+  transition: opacity 2400ms ease-out 1100ms;
 }
 .introPaper {
   position: absolute;

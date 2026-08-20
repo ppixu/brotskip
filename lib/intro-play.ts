@@ -5,8 +5,8 @@ export { SPLAT_RE_OFFSET };
 
 export const INTRO_PLAY_ALIGN_MS = 1800;
 export const INTRO_PLAY_FACE_MS = 700;
-export const INTRO_PLAY_FADE_DELAY_MS = 1800;
-export const INTRO_PLAY_FADE_MS = 1400;
+export const INTRO_PLAY_FADE_DELAY_MS = 1100;
+export const INTRO_PLAY_FADE_MS = 2400;
 export const INTRO_PLAY_EXIT_MS = INTRO_PLAY_FADE_DELAY_MS + INTRO_PLAY_FADE_MS + 180;
 export const INTRO_PLAY_FOV = 42;
 export const INTRO_PLAY_END_FOV = 5;
@@ -91,12 +91,11 @@ export function introPlayFaceT(elapsed: number, reduceMotion = false) {
 
 export function introPlayZoomT(elapsed: number, reduceMotion = false) {
   if (reduceMotion) return 1;
-  return easeOutQuad(elapsed / INTRO_PLAY_FACE_MS);
+  return easeOutCubic(elapsed / INTRO_PLAY_ALIGN_MS);
 }
 
 export function introPlayDollyT(elapsed: number, reduceMotion = false) {
-  if (reduceMotion) return 1;
-  return easeOutQuad((elapsed - INTRO_PLAY_FACE_MS) / (INTRO_PLAY_ALIGN_MS - INTRO_PLAY_FACE_MS));
+  return introPlayZoomT(elapsed, reduceMotion);
 }
 
 export function introPlayAlignT(elapsed: number, reduceMotion = false) {

@@ -16,6 +16,7 @@ import {
   introPlayAlignT,
   introPlayApparentHalfY,
   introPlayCamera,
+  introPlayDollyT,
   introPlayFaceT,
   introPlayFlatten,
   introPlayPose,
@@ -69,11 +70,12 @@ test("flatten waits until the Buddha faces the camera, then settles flat", () =>
   assert.ok(introPlayFlatten(INTRO_PLAY_ALIGN_MS) < 0.08);
 });
 
-test("play alignment faces first, then dollies back to FOV 5 at constant Buddha size", () => {
+test("play alignment eases size and FOV together, then the splat fades longer over the pond", () => {
   assert.ok(INTRO_PLAY_ALIGN_MS >= 1600);
   assert.ok(INTRO_PLAY_FACE_MS <= INTRO_PLAY_ALIGN_MS * 0.45);
-  assert.ok(INTRO_PLAY_FADE_DELAY_MS >= INTRO_PLAY_ALIGN_MS);
-  assert.ok(INTRO_PLAY_FADE_MS >= 1100);
+  assert.ok(INTRO_PLAY_FADE_DELAY_MS < INTRO_PLAY_ALIGN_MS, "pond Buddha should start showing through during the zoom");
+  assert.ok(INTRO_PLAY_FADE_DELAY_MS >= 800);
+  assert.ok(INTRO_PLAY_FADE_MS >= 2200);
   assert.ok(INTRO_PLAY_EXIT_MS >= INTRO_PLAY_FADE_DELAY_MS + INTRO_PLAY_FADE_MS);
 
   assert.equal(introPlayFaceT(0), 0);
@@ -81,9 +83,13 @@ test("play alignment faces first, then dollies back to FOV 5 at constant Buddha 
   assert.ok(introPlayFaceT(INTRO_PLAY_FACE_MS / 2) > 0.65);
   assert.equal(introPlayZoomT(0), 0);
   assert.equal(introPlayZoomT(INTRO_PLAY_ALIGN_MS), 1);
+  assert.ok(introPlayZoomT(INTRO_PLAY_FACE_MS) < 0.85, "size zoom must still be running after the face turn");
   assert.ok(introPlayZoomT(INTRO_PLAY_ALIGN_MS / 2) > 0.65);
   assert.ok(introPlayAlignT(INTRO_PLAY_ALIGN_MS / 2) > 0.65);
   assert.equal(introPlayAlignT(10, true), 1);
+  for (const elapsed of [0, INTRO_PLAY_FACE_MS, INTRO_PLAY_ALIGN_MS / 2, INTRO_PLAY_ALIGN_MS]) {
+    assert.equal(introPlayDollyT(elapsed), introPlayZoomT(elapsed), "FOV and size share one ease-out");
+  }
 
   const from = {
     yaw: 0.72,
@@ -96,26 +102,31 @@ test("play alignment faces first, then dollies back to FOV 5 at constant Buddha 
   const faced = introPlayPose(from, INTRO_PLAY_FACE_MS);
   assert.ok(Math.abs(faced.yaw - to.yaw) < 1e-6);
   assert.ok(Math.abs(faced.pitch - to.pitch) < 1e-6);
-  assert.ok(Math.abs(faced.fov - INTRO_PLAY_FOV) < 1e-6);
+  assert.ok(faced.fov < INTRO_PLAY_FOV - 1, "FOV starts with the size zoom, not after it");
+  assert.ok(faced.fov > INTRO_PLAY_END_FOV + 1);
 
   const end = introPlayPose(from, INTRO_PLAY_ALIGN_MS);
   assert.ok(Math.abs(end.yaw - to.yaw) < 1e-9);
   assert.ok(Math.abs(end.fov - INTRO_PLAY_END_FOV) < 1e-9);
   assert.ok(Math.abs(end.distance - to.distance) < 1e-9);
-  assert.ok(end.distance > faced.distance, "dolly zooms the camera back");
-  assert.ok(
-    Math.abs(introPlayApparentHalfY(faced) - introPlayApparentHalfY(end)) < 0.02,
-    "Buddha size stays constant during the dolly",
-  );
+  assert.ok(end.distance > from.distance, "narrower FOV dollies the camera back");
+  assert.ok(introPlayApparentHalfY(end) < introPlayApparentHalfY(from), "Buddha keeps zooming in");
+  assert.ok(faced.distance > from.distance, "camera must not dive in before the FOV lerp");
 
   let previousYaw = from.yaw;
   let previousSize = introPlayApparentHalfY(from);
+  let previousFov = from.fov;
+  let previousDistance = from.distance;
   for (let elapsed = 0; elapsed <= INTRO_PLAY_ALIGN_MS; elapsed += 40) {
     const pose = introPlayPose(from, elapsed);
     const size = introPlayApparentHalfY(pose);
-    assert.ok(size <= previousSize + 1e-9, "Buddha must not shrink back");
+    assert.ok(size <= previousSize + 1e-9, "Buddha size must ease in, never reverse");
+    assert.ok(pose.fov <= previousFov + 1e-9, "FOV must ease toward ortho, never reverse");
+    assert.ok(pose.distance >= previousDistance - 1e-9, "distance must not dive in then pull back");
     assert.ok((pose.yaw - previousYaw) * (to.yaw - from.yaw) >= -1e-9, "yaw must not reverse");
     previousSize = size;
+    previousFov = pose.fov;
+    previousDistance = pose.distance;
     previousYaw = pose.yaw;
   }
 });
