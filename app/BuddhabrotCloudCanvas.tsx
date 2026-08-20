@@ -3,6 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
+import {
+  INTRO_PLAY_VIEW,
+  introPlayAlignT,
+  lerpIntroCamera,
+} from "@/lib/intro-play";
 
 const RIPPLE_LIFETIME_MS = 2_800;
 const RIPPLE_DELAYS = [0, 260, 520] as const;
@@ -39,6 +44,8 @@ export default function BuddhabrotCloudCanvas({
   variant?: CloudVariant;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const fadingRef = useRef(fading);
+  fadingRef.current = fading;
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -64,7 +71,9 @@ export default function BuddhabrotCloudCanvas({
     const classic = variant === "classic";
     let yaw = classic ? 0.16 : 0.72;
     let pitch = classic ? 0.12 : 0.32;
-    const distance = classic ? 5.0 : 3.15;
+    let distance = classic ? 5.0 : 3.15;
+    let alignFrom: { yaw: number; pitch: number; distance: number } | null = null;
+    let alignStarted = 0;
     let dragging = false;
     let lastPointerX = 0;
     let lastPointerY = 0;
@@ -86,7 +95,7 @@ export default function BuddhabrotCloudCanvas({
     scene.add(splat);
 
     const onPointerDown = (event: PointerEvent) => {
-      if (event.button !== 0) return;
+      if (event.button !== 0 || fadingRef.current) return;
       dragging = true;
       lastPointerX = event.clientX;
       lastPointerY = event.clientY;
@@ -180,7 +189,7 @@ export default function BuddhabrotCloudCanvas({
     }
 
     function updateRipples(now: number) {
-      if (splatReady && !reduceMotion && now >= nextRippleAt && ripples.length < 4) {
+      if (splatReady && !reduceMotion && !fadingRef.current && now >= nextRippleAt && ripples.length < 4) {
         spawnRipple(now);
         nextRippleAt = now + 850 + Math.random() * 1_150;
       }
@@ -219,7 +228,24 @@ export default function BuddhabrotCloudCanvas({
       if (disposed || !pageVisible) return;
       const delta = Math.min(50, now - previousTime);
       previousTime = now;
-      if (!reduceMotion && !dragging) yaw += delta * 0.000055;
+      if (fadingRef.current) {
+        if (!alignFrom) {
+          alignFrom = { yaw, pitch, distance };
+          alignStarted = now;
+        }
+        const play = {
+          yaw: INTRO_PLAY_VIEW.yaw,
+          pitch: INTRO_PLAY_VIEW.pitch,
+          distance: classic ? INTRO_PLAY_VIEW.distance.classic : INTRO_PLAY_VIEW.distance.henon,
+        };
+        const pose = lerpIntroCamera(alignFrom, play, introPlayAlignT(now - alignStarted, reduceMotion));
+        yaw = pose.yaw;
+        pitch = pose.pitch;
+        distance = pose.distance;
+      } else {
+        alignFrom = null;
+        if (!reduceMotion && !dragging) yaw += delta * 0.000055;
+      }
       const cosPitch = Math.cos(pitch);
       camera.position.set(
         target.x + Math.sin(yaw) * cosPitch * distance,

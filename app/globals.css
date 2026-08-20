@@ -472,9 +472,14 @@ button, input { font: inherit; }
   background:
     radial-gradient(circle at 50% 46%, transparent 16%, rgba(0, 0, 0, .12) 58%, rgba(0, 0, 0, .62) 100%);
   pointer-events: auto;
-  transition: opacity 600ms ease;
 }
-.introOverlay.fading { opacity: 0; pointer-events: none; }
+.introOverlay.fading { pointer-events: none; }
+.introOverlay.fading .introChrome,
+.introOverlay.fading .introPaper,
+.introOverlay.fading .introPlay {
+  opacity: 0;
+  pointer-events: none;
+}
 .introCloudHost,
 .introCloudHost canvas {
   position: absolute;
@@ -496,7 +501,10 @@ button, input { font: inherit; }
 }
 .introCloudHost canvas.dragging { cursor: grabbing; }
 .introCloudHost.ready { opacity: 1; }
-.introCloudHost.fading { opacity: 0; }
+.introCloudHost.fading {
+  opacity: 0;
+  transition: opacity 500ms ease 720ms;
+}
 .introPaper {
   position: absolute;
   left: 14px;
@@ -507,6 +515,7 @@ button, input { font: inherit; }
   background: rgba(0, 0, 0, 0.18);
   color: #fff;
   font-family: Palatino, "Palatino Linotype", "Iowan Old Style", "Times New Roman", Times, serif;
+  transition: opacity 280ms ease;
 }
 .introPaperJournal {
   margin: 0;
@@ -573,6 +582,7 @@ button, input { font: inherit; }
   letter-spacing: .18em;
   text-transform: uppercase;
   cursor: pointer;
+  transition: opacity 280ms ease, border-color 180ms ease, background 180ms ease;
 }
 .introPlay:hover,
 .introPlay:focus-visible {
@@ -630,6 +640,7 @@ button, input { font: inherit; }
   z-index: 2;
   width: min(320px, 62vw);
   text-align: center;
+  transition: opacity 280ms ease;
 }
 .introTitle {
   display: block;
@@ -709,5 +720,7 @@ button, input { font: inherit; }
 @media (prefers-reduced-motion: reduce) {
   .liveProgress i, .liveNumber { transition: none; }
   .introOverlay { transition: none; }
+  .introChrome, .introPaper, .introPlay { transition: none; }
+  .introCloudHost.fading { transition: opacity 200ms ease; }
   .howItWorksPanel { transition: none; }
 }

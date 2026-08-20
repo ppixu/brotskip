@@ -291,7 +291,7 @@ export function sacredBallHopT(heightT: number, rising: boolean) {
 
 export function sacredBallHopScale(heightT: number, flying: boolean) {
   if (!flying) return 1;
-  return 0.58 + 0.42 * Math.max(0, Math.min(1, heightT));
+  return 1.16 + 0.28 * Math.max(0, Math.min(1, heightT));
 }
 
 export function sacredBallLifeScale(skips: number, plannedSkips: number) {

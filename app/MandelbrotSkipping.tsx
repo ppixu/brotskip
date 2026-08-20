@@ -93,6 +93,7 @@ import {
   tutorialArrowStretch,
   tutorialArrowVisible,
 } from "@/lib/tutorial-arrow";
+import { INTRO_PLAY_EXIT_MS } from "@/lib/intro-play";
 
 type Phase = "ready" | "aiming" | "flying" | "resolving" | "result";
 
@@ -1502,7 +1503,7 @@ export default function MandelbrotSkipping() {
       restartRef.current();
       setIntro(false);
       setIntroFading(false);
-    }, 600);
+    }, INTRO_PLAY_EXIT_MS);
   }, []);
   endOpeningRef.current = finishOpening;
 

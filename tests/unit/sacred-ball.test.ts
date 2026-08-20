@@ -79,6 +79,7 @@ test("a skip hop grows at the apex and finishes as the next glyph", () => {
 
 test("the ball is full size at rest, pulses with hop height, and shrinks toward the last skip", () => {
   assert.equal(sacredBallHopScale(0, false), 1);
+  assert.ok(sacredBallHopScale(0, true) > 1);
   assert.ok(sacredBallHopScale(1, true) > sacredBallHopScale(0, true));
   assert.equal(sacredBallLifeScale(0, 8), 1);
   assert.equal(sacredBallLifeScale(8, 8), SACRED_BALL_MIN_LIFE);

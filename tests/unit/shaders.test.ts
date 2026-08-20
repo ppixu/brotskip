@@ -205,6 +205,12 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.doesNotMatch(intro, /rotateRight/);
   assert.doesNotMatch(css, /introBuddhaZoom/);
   assert.match(css, /introPaper/);
+  assert.doesNotMatch(css, /\.introOverlay\.fading \{ opacity: 0/);
+  assert.match(css, /\.introOverlay\.fading \.introChrome/);
+  assert.match(css, /\.introOverlay\.fading \.introPaper/);
+  assert.match(css, /\.introOverlay\.fading \.introPlay/);
+  assert.match(css, /\.introCloudHost\.fading \{[^}]*opacity:\s*0/);
+  assert.match(css, /transition:\s*opacity\s+500ms\s+ease\s+720ms/);
   const paperRule = css.match(/\.introPaper \{([^}]+)\}/)?.[1] ?? "";
   const titleRule = css.match(/\.introPaperTitle \{([^}]+)\}/)?.[1] ?? "";
   const dropCapRule = css.match(/\.introPaperLede::first-letter \{([^}]+)\}/)?.[1] ?? "";
@@ -218,10 +224,12 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.doesNotMatch(css, /gpuCanvas\.introStashed/);
   const game = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
   assert.match(game, /setIntro\(true\)/);
+  assert.match(game, /INTRO_PLAY_EXIT_MS/);
+  assert.doesNotMatch(game, /setTimeout\(\(\) => \{[\s\S]*?setIntro\(false\)[\s\S]*?\}, 600\)/);
   assert.doesNotMatch(game, /setIntro\(\{ progress/);
   assert.match(css, /--throw-stone-x:\s*50%/);
   assert.match(css, /--throw-stone-y:\s*82%/);
-  const playRule = css.match(/\.introPlay \{([^}]+)\}/)?.[1] ?? "";
+  const playRule = css.match(/(?:^|\n)\.introPlay \{([^}]+)\}/)?.[1] ?? "";
   const rethrowRule = css.match(/\.playfieldThrowControl \{([^}]+)\}/)?.[1] ?? "";
   assert.match(playRule, /left:\s*var\(--throw-stone-x\)/);
   assert.match(playRule, /top:\s*var\(--throw-stone-y\)/);
