@@ -73,7 +73,7 @@ import {
   type ViewTransform,
 } from "@/lib/view-map";
 import {
-  parseThrowShare,
+  initialThrowShare,
   sharePlayerLabel,
   throwShareUrl,
   type SharedThrow,
@@ -1482,7 +1482,9 @@ export default function MandelbrotSkipping() {
   }, []);
 
   useEffect(() => {
-    const share = parseThrowShare(window.location);
+    const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+    const share = initialThrowShare(window.location, navigation?.type);
+    pendingShareRef.current = share;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     setPondReady(true);
     if (share || reduceMotion) return;
@@ -1537,9 +1539,6 @@ export default function MandelbrotSkipping() {
 
   useEffect(() => {
     if (!pondReady || intro) return;
-    if (pendingShareRef.current === undefined) {
-      pendingShareRef.current = parseThrowShare(window.location);
-    }
     const shot = pendingShareRef.current;
     if (!shot) return;
     let timer = 0;

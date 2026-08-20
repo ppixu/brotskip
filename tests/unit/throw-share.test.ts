@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   decodeSharedThrow,
   encodeSharedThrow,
+  initialThrowShare,
   parseThrowShare,
   sharePlayerLabel,
   throwShareUrl,
@@ -72,6 +73,13 @@ test("query-string throw links still parse", () => {
   assert.ok(parsed);
   assert.equal(parsed.skips, 7);
   assert.equal(parsed.name, "YOU");
+});
+
+test("a replay link runs on initial navigation but not after refresh", () => {
+  const replayLocation = new URL(throwShareUrl("https://ppixu.github.io/brotskip/", shot));
+  assert.ok(initialThrowShare(replayLocation, "navigate"));
+  assert.ok(initialThrowShare(replayLocation, "back_forward"));
+  assert.equal(initialThrowShare(replayLocation, "reload"), null);
 });
 
 test("share player labels use a possessive name", () => {

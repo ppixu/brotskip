@@ -190,6 +190,13 @@ export function parseThrowShare(location: { hash: string; search: string }): Sha
   return raw ? decodeSharedThrow(raw) : null;
 }
 
+export function initialThrowShare(
+  location: { hash: string; search: string },
+  navigationType?: string,
+): SharedThrow | null {
+  return navigationType === "reload" ? null : parseThrowShare(location);
+}
+
 export function throwShareUrl(href: string, shot: SharedThrow) {
   const url = new URL(href);
   url.searchParams.delete("t");
