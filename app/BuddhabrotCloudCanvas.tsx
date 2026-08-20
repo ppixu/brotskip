@@ -197,7 +197,7 @@ export default function BuddhabrotCloudCanvas({
         toneMapped: false,
       });
       const beacon = new THREE.Sprite(beaconMaterial);
-      beacon.scale.setScalar(0.18);
+      beacon.scale.setScalar(0.09);
       group.add(beacon);
       scene.add(group);
       ripples.push({ born: now, group, beacon, rings });
@@ -213,7 +213,7 @@ export default function BuddhabrotCloudCanvas({
         const elapsed = now - ripple.born;
         const beaconT = Math.min(1, elapsed / 760);
         ripple.beacon.material.opacity = Math.pow(1 - beaconT, 1.7);
-        ripple.beacon.scale.setScalar(0.12 + Math.sin(beaconT * Math.PI) * 0.13);
+        ripple.beacon.scale.setScalar(0.06 + Math.sin(beaconT * Math.PI) * 0.065);
         for (let ringIndex = 0; ringIndex < ripple.rings.length; ringIndex++) {
           const ring = ripple.rings[ringIndex];
           const ringElapsed = elapsed - RIPPLE_DELAYS[ringIndex];

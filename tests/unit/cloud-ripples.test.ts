@@ -14,6 +14,8 @@ test("the intro cloud is doubled and emits fading 3D rings from real splats", ()
   assert.match(source, /quaternion\.multiply/);
   assert.match(source, /new THREE\.RingGeometry/);
   assert.match(source, /new THREE\.Sprite/);
+  assert.match(source, /beacon\.scale\.setScalar\(0\.09\)/);
+  assert.match(source, /beacon\.scale\.setScalar\(0\.06 \+ Math\.sin\(beaconT \* Math\.PI\) \* 0\.065\)/);
   assert.match(source, /material\.opacity = Math\.sin/);
   assert.match(source, /removeRipple\(ripple\)/);
   assert.match(source, /introPlayPose\(alignFrom, elapsed, reduceMotion, tuneRef\.current\)/);
