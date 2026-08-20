@@ -1,5 +1,8 @@
 import { TRAIL_BOUNDS, complexToScreen, type AtlasBounds, type ViewTransform } from "./view-map.ts";
 
+/** 50% brighter than the previous 0.042 pond blit. */
+export const BUDDHABROT_OUTLINE_ALPHA = 0.063;
+
 export type AffineTransform = {
   a: number;
   b: number;

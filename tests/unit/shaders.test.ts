@@ -102,9 +102,14 @@ test("flashlight is a GPU cone on the live pond; cached blit is GPU-fail only", 
   assert.match(source, /drawBuddhabrotOutline/);
   assert.match(source, /buddhabrotImageTransform/);
   assert.match(source, /function drawMappedBuddhabrot[\s\S]*?imageSmoothingEnabled = false/);
-  assert.match(source, /drawMappedBuddhabrot\(ctx, buddhabrotSource\)/);
-  assert.match(source, /ctx\.globalAlpha = 0\.042/);
+  assert.match(source, /drawMappedBuddhabrot\(ctx, source\)/);
+  assert.match(source, /BUDDHABROT_OUTLINE_ALPHA/);
+  assert.match(source, /ctx\.globalAlpha = BUDDHABROT_OUTLINE_ALPHA/);
   assert.match(source, /introActiveRef\.current && !introFadingRef\.current/);
+  assert.match(source, /createBuddhabrotGenerator/);
+  assert.match(source, /liveBuddhabrot/);
+  assert.match(source, /generator\.step\(/);
+  assert.match(source, /generator\.blit\(/);
   assert.doesNotMatch(source, /extractBuddhabrotOutline/);
   assert.doesNotMatch(source, /let buddhabrotOutline/);
   assert.match(source, /readCachedTexture/);
@@ -219,7 +224,7 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(css, /\.introOverlay\.fading \.introPaper/);
   assert.match(css, /\.introOverlay\.fading \.introPlay/);
   assert.match(css, /\.introCloudHost\.fading \{[^}]*opacity:\s*0/);
-  assert.match(css, /transition:\s*opacity\s+1100ms\s+ease\s+1200ms/);
+  assert.match(css, /transition:\s*opacity\s+1400ms\s+ease-out\s+1800ms/);
   const paperRule = css.match(/\.introPaper \{([^}]+)\}/)?.[1] ?? "";
   const titleRule = css.match(/\.introPaperTitle \{([^}]+)\}/)?.[1] ?? "";
   const dropCapRule = css.match(/\.introPaperLede::first-letter \{([^}]+)\}/)?.[1] ?? "";
@@ -234,8 +239,9 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   const game = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
   assert.match(game, /setIntro\(true\)/);
   assert.match(game, /INTRO_PLAY_EXIT_MS/);
-  assert.match(game, /lerpView\(/);
-  assert.match(game, /introPlayAlignT\(/);
+  assert.match(game, /applyView\(PLAY_POND_VIEW\)/);
+  assert.doesNotMatch(game, /lerpView\(/);
+  assert.doesNotMatch(game, /introPlayAlignT\(/);
   assert.match(game, /PLAY_POND_VIEW/);
   assert.doesNotMatch(game, /setTimeout\(\(\) => \{[\s\S]*?setIntro\(false\)[\s\S]*?\}, 600\)/);
   assert.doesNotMatch(game, /setIntro\(\{ progress/);

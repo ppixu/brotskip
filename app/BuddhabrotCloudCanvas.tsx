@@ -5,12 +5,8 @@ import * as THREE from "three";
 import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
 import {
   INTRO_PLAY_FOV,
-  PLAY_POND_VIEW,
-  introPlayAlignT,
-  introPlayCamera,
   introPlayFlatten,
-  lerpIntroCamera,
-  playAlignYaw,
+  introPlayPose,
 } from "@/lib/intro-play";
 
 const RIPPLE_LIFETIME_MS = 2_800;
@@ -62,9 +58,10 @@ export default function BuddhabrotCloudCanvas({
     let pageVisible = !document.hidden;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false });
+    const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.setClearColor(0x030408, 1);
     renderer.domElement.setAttribute("aria-hidden", "true");
     host.appendChild(renderer.domElement);
 
@@ -237,17 +234,20 @@ export default function BuddhabrotCloudCanvas({
           alignFrom = { yaw, pitch, distance, target: { x: target.x, y: target.y, z: target.z } };
           alignStarted = now;
         }
-        const alignT = introPlayAlignT(now - alignStarted, reduceMotion);
-        const play = introPlayCamera(PLAY_POND_VIEW, playAlignYaw(alignFrom.yaw));
-        const pose = lerpIntroCamera(alignFrom, play, alignT);
+        const elapsed = now - alignStarted;
+        const pose = introPlayPose(alignFrom, elapsed, reduceMotion);
         yaw = pose.yaw;
         pitch = pose.pitch;
         distance = pose.distance;
         target.set(pose.target.x, pose.target.y, pose.target.z);
-        splat.scale.z = introPlayFlatten(alignT);
+        splat.scale.z = introPlayFlatten(elapsed, reduceMotion);
+        scene.background = null;
+        renderer.setClearColor(0x000000, 0);
       } else {
         alignFrom = null;
         splat.scale.z = 1;
+        scene.background = new THREE.Color(0x030408);
+        renderer.setClearColor(0x030408, 1);
         if (!reduceMotion && !dragging) yaw += delta * 0.000055;
       }
       const cosPitch = Math.cos(pitch);

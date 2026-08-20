@@ -3,16 +3,19 @@ import test from "node:test";
 import {
   INTRO_PLAY_ALIGN_MS,
   INTRO_PLAY_EXIT_MS,
+  INTRO_PLAY_FACE_MS,
   INTRO_PLAY_FADE_DELAY_MS,
   INTRO_PLAY_FADE_MS,
   INTRO_PLAY_FOV,
   PLAY_POND_VIEW,
+  PLAY_SPLAT_DISTANCE_SCALE,
   complexToSplat,
   introPlayAlignT,
   introPlayCamera,
+  introPlayFaceT,
   introPlayFlatten,
-  lerpIntroCamera,
-  lerpView,
+  introPlayPose,
+  introPlayZoomT,
   playAlignYaw,
   splatDistanceForHalfY,
 } from "../../lib/intro-play.ts";
@@ -27,7 +30,11 @@ test("play camera looks at the splat point for the pond center, scaled to the pl
   assert.equal(target.z, 0);
   const camera = introPlayCamera(PLAY_POND_VIEW);
   assert.equal(camera.pitch, 0);
-  assert.ok(Math.abs(camera.distance - splatDistanceForHalfY(PLAY_POND_VIEW.halfY, INTRO_PLAY_FOV)) < 1e-9);
+  const framed = splatDistanceForHalfY(PLAY_POND_VIEW.halfY, INTRO_PLAY_FOV);
+  assert.ok(PLAY_SPLAT_DISTANCE_SCALE < 0.9);
+  assert.ok(PLAY_SPLAT_DISTANCE_SCALE > 0.7);
+  assert.ok(Math.abs(camera.distance - framed * PLAY_SPLAT_DISTANCE_SCALE) < 1e-9);
+  assert.ok(camera.distance < framed);
   assert.ok(Math.abs(camera.target.y - target.y) < 1e-9);
 });
 
@@ -42,20 +49,29 @@ test("Play takes the shortest turn to face-on, without an extra full spin", () =
   assert.ok(Math.abs(henon - 0.72) < Math.PI);
   assert.ok(Math.abs(((spun % tau) + tau) % tau) < 1e-9);
   assert.ok(Math.abs(spun - 5.8) < Math.PI);
-  assert.equal(introPlayFlatten(0), 1);
-  assert.ok(introPlayFlatten(1) < 0.08);
-  assert.ok(introPlayFlatten(0.5) > 0.5);
 });
 
-test("play alignment eases from the current orbit to the pond pose, then the overlay can exit", () => {
-  assert.ok(INTRO_PLAY_ALIGN_MS >= 1200);
-  assert.ok(INTRO_PLAY_FADE_DELAY_MS >= INTRO_PLAY_ALIGN_MS * 0.75);
-  assert.ok(INTRO_PLAY_FADE_MS >= 900);
+test("flatten waits until the Buddha faces the camera, then settles flat", () => {
+  assert.ok(INTRO_PLAY_FACE_MS < INTRO_PLAY_ALIGN_MS);
+  assert.equal(introPlayFlatten(0), 1);
+  assert.equal(introPlayFlatten(INTRO_PLAY_FACE_MS * 0.5), 1);
+  assert.ok(introPlayFlatten(INTRO_PLAY_ALIGN_MS) < 0.08);
+});
+
+test("play alignment faces the camera first, then zooms with an ease-out that never reverses", () => {
+  assert.ok(INTRO_PLAY_ALIGN_MS >= 1600);
+  assert.ok(INTRO_PLAY_FACE_MS <= INTRO_PLAY_ALIGN_MS * 0.45);
+  assert.ok(INTRO_PLAY_FADE_DELAY_MS >= INTRO_PLAY_ALIGN_MS);
+  assert.ok(INTRO_PLAY_FADE_MS >= 1100);
   assert.ok(INTRO_PLAY_EXIT_MS >= INTRO_PLAY_FADE_DELAY_MS + INTRO_PLAY_FADE_MS);
-  assert.equal(introPlayAlignT(0), 0);
-  assert.equal(introPlayAlignT(INTRO_PLAY_ALIGN_MS), 1);
-  assert.ok(introPlayAlignT(INTRO_PLAY_ALIGN_MS / 2) > 0.4);
-  assert.ok(introPlayAlignT(INTRO_PLAY_ALIGN_MS / 2) < 0.6);
+
+  assert.equal(introPlayFaceT(0), 0);
+  assert.equal(introPlayFaceT(INTRO_PLAY_FACE_MS), 1);
+  assert.ok(introPlayFaceT(INTRO_PLAY_FACE_MS / 2) > 0.65);
+  assert.equal(introPlayZoomT(0), 0);
+  assert.equal(introPlayZoomT(INTRO_PLAY_ALIGN_MS), 1);
+  assert.ok(introPlayZoomT(INTRO_PLAY_ALIGN_MS / 2) > 0.65);
+  assert.ok(introPlayAlignT(INTRO_PLAY_ALIGN_MS / 2) > 0.65);
   assert.equal(introPlayAlignT(10, true), 1);
 
   const from = {
@@ -65,16 +81,25 @@ test("play alignment eases from the current orbit to the pond pose, then the ove
     target: { x: 0, y: 0, z: 0 },
   };
   const to = introPlayCamera(PLAY_POND_VIEW, playAlignYaw(from.yaw));
-  const mid = lerpIntroCamera(from, to, 0.5);
-  assert.ok(Math.abs(mid.yaw - 0.36) < 1e-9);
-  assert.ok(mid.distance < 5);
-  assert.ok(mid.target.y > 0);
+  const faced = introPlayPose(from, INTRO_PLAY_FACE_MS);
+  assert.ok(Math.abs(faced.yaw - to.yaw) < 1e-6);
+  assert.ok(Math.abs(faced.pitch - to.pitch) < 1e-6);
+  assert.ok(faced.distance > to.distance + 0.2);
 
-  const viewMid = lerpView(
-    { centerX: -0.55, centerY: 0, halfY: 1.52 },
-    PLAY_POND_VIEW,
-    0.5,
-  );
-  assert.ok(Math.abs(viewMid.centerX - (-0.565)) < 1e-9);
-  assert.ok(Math.abs(viewMid.halfY - 1.16) < 1e-9);
+  const end = introPlayPose(from, INTRO_PLAY_ALIGN_MS);
+  assert.ok(Math.abs(end.yaw - to.yaw) < 1e-9);
+  assert.ok(Math.abs(end.distance - to.distance) < 1e-9);
+
+  let previousDistance = from.distance;
+  let previousYaw = from.yaw;
+  for (let elapsed = 0; elapsed <= INTRO_PLAY_ALIGN_MS; elapsed += 40) {
+    const pose = introPlayPose(from, elapsed);
+    assert.ok(pose.distance <= previousDistance + 1e-9, "zoom must not pull back");
+    assert.ok((pose.yaw - previousYaw) * (to.yaw - from.yaw) >= -1e-9, "yaw must not reverse");
+    previousDistance = pose.distance;
+    previousYaw = pose.yaw;
+  }
+
+  const late = introPlayPose(from, INTRO_PLAY_ALIGN_MS * 0.8);
+  assert.ok((late.distance - to.distance) < (from.distance - to.distance) * 0.12);
 });

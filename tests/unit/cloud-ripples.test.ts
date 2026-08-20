@@ -13,11 +13,10 @@ test("the intro cloud is doubled and emits fading 3D rings from real splats", ()
   assert.match(source, /new THREE\.Sprite/);
   assert.match(source, /material\.opacity = Math\.sin/);
   assert.match(source, /removeRipple\(ripple\)/);
-  assert.match(source, /introPlayAlignT/);
-  assert.match(source, /lerpIntroCamera/);
-  assert.match(source, /introPlayCamera/);
-  assert.match(source, /playAlignYaw/);
+  assert.match(source, /introPlayPose/);
   assert.match(source, /introPlayFlatten/);
   assert.match(source, /splat\.scale\.z/);
   assert.match(source, /fadingRef/);
+  assert.match(source, /alpha:\s*true/);
+  assert.match(source, /setClearColor\(0x000000,\s*0\)/);
 });

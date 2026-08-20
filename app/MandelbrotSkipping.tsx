@@ -94,8 +94,8 @@ import {
   tutorialArrowStretch,
   tutorialArrowVisible,
 } from "@/lib/tutorial-arrow";
-import { INTRO_PLAY_EXIT_MS, PLAY_POND_VIEW, introPlayAlignT, lerpView } from "@/lib/intro-play";
-import { buddhabrotImageTransform } from "@/lib/buddhabrot-outline";
+import { INTRO_PLAY_ALIGN_MS, INTRO_PLAY_EXIT_MS, PLAY_POND_VIEW } from "@/lib/intro-play";
+import { BUDDHABROT_OUTLINE_ALPHA, buddhabrotImageTransform } from "@/lib/buddhabrot-outline";
 
 type Phase = "ready" | "aiming" | "flying" | "resolving" | "result";
 
@@ -1600,9 +1600,15 @@ export default function MandelbrotSkipping() {
     let introTrails: Array<{ path: Array<{ x: number; y: number }>; born: number }> = [];
     let lastIntroLaunch = 0;
     let lastIntroBackground = 0;
-    let fadeAlignStarted = 0;
     let previewKey = "";
     let hasThrown = false;
+    let liveBuddhabrot: {
+      generator: ReturnType<typeof createBuddhabrotGenerator>;
+      canvas: OffscreenCanvas;
+      context: any;
+      ready: boolean;
+    } | null = null;
+    let liveBuddhabrotStarting = false;
 
     invalidateFlashlightRef.current = () => { flashlightDirty = true; };
     invalidateGridRef.current = () => { gridDirty = true; };
@@ -2727,11 +2733,12 @@ export default function MandelbrotSkipping() {
     }
 
     function drawBuddhabrotOutline() {
-      if (!buddhabrotSource) return;
+      const source = liveBuddhabrot?.ready ? liveBuddhabrot.canvas : buddhabrotSource;
+      if (!source) return;
       if (introActiveRef.current && !introFadingRef.current) return;
       ctx.save();
-      ctx.globalAlpha = 0.042;
-      drawMappedBuddhabrot(ctx, buddhabrotSource);
+      ctx.globalAlpha = BUDDHABROT_OUTLINE_ALPHA;
+      drawMappedBuddhabrot(ctx, source);
       ctx.restore();
     }
 
@@ -2777,21 +2784,59 @@ export default function MandelbrotSkipping() {
       }
     }
 
-    function alignPlayView(now: number) {
-      if (!introFadingRef.current) {
-        fadeAlignStarted = 0;
+    function alignPlayView() {
+      if (!introFadingRef.current) return;
+      const current = viewRef.current;
+      if (
+        current.centerX === PLAY_POND_VIEW.centerX
+        && current.centerY === PLAY_POND_VIEW.centerY
+        && current.halfY === PLAY_POND_VIEW.halfY
+      ) return;
+      applyView(PLAY_POND_VIEW);
+    }
+
+    async function ensureLiveBuddhabrot() {
+      if (liveBuddhabrot || liveBuddhabrotStarting || flashlightLoadCancelled) return;
+      liveBuddhabrotStarting = true;
+      const gpu = await gpuPromiseRef.current;
+      if (!gpu || flashlightLoadCancelled) {
+        liveBuddhabrotStarting = false;
         return;
       }
-      if (!fadeAlignStarted) fadeAlignStarted = now;
-      applyView(lerpView(
-        { centerX: INTRO_POND_CENTER.x, centerY: INTRO_POND_CENTER.y, halfY: INTRO_VIEW_HALF_Y },
-        PLAY_POND_VIEW,
-        introPlayAlignT(now - fadeAlignStarted, reduceMotion),
-      ));
+      const size = 2048;
+      const canvas = new OffscreenCanvas(size, size);
+      const context = canvas.getContext("webgpu") as any;
+      if (!context) {
+        liveBuddhabrotStarting = false;
+        return;
+      }
+      context.configure({
+        device: gpu.device,
+        format: gpu.preferredFormat,
+        alphaMode: "premultiplied",
+      });
+      liveBuddhabrot = {
+        generator: createBuddhabrotGenerator(gpu, { size, minDurationMs: INTRO_PLAY_ALIGN_MS }),
+        canvas,
+        context,
+        ready: false,
+      };
+      liveBuddhabrotStarting = false;
+    }
+
+    function stepLiveBuddhabrot(elapsed: number) {
+      if (!introFadingRef.current) return;
+      void ensureLiveBuddhabrot();
+      if (!liveBuddhabrot) return;
+      if (liveBuddhabrot.generator.isComplete() && liveBuddhabrot.ready) return;
+      liveBuddhabrot.generator.step(elapsed);
+      if (liveBuddhabrot.generator.blit(liveBuddhabrot.context)) {
+        liveBuddhabrot.ready = true;
+      }
     }
 
     function render(now: number) {
-      alignPlayView(now);
+      alignPlayView();
       syncOrbitDisplay();
       ctx.clearRect(0, 0, width, height);
       if (gridDirty) rebuildScientificGrid();
@@ -2883,6 +2928,7 @@ export default function MandelbrotSkipping() {
       }
       maybeOpeningThrow(now);
       spawnIntroBackgroundOrbits(now);
+      stepLiveBuddhabrot(elapsed);
       advanceOrbits(now, elapsed);
       gameAudio.update(orbitScores, phase, now);
       render(now);
@@ -3069,6 +3115,8 @@ export default function MandelbrotSkipping() {
     frame = requestAnimationFrame(loop);
     return () => {
       flashlightLoadCancelled = true;
+      liveBuddhabrot?.generator.destroy();
+      liveBuddhabrot = null;
       cancelAnimationFrame(frame);
       observer.disconnect();
       canvas.removeEventListener("pointerdown", onPointerDown);
