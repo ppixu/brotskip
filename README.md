@@ -1,8 +1,8 @@
-# Mandelbrot Skipping
+# Mandelpond
 
 A top-down rock-skipping arcade game powered by WebGPU Mandelbrot orbit trails.
 
-Drag the orange stone backward in its sling, release, and score each skip by the depth of its complex orbit. Every impact launches 100 nearby visual orbit seeds. Scores are stored locally on the device.
+Drag the white orb backward in its sling, release, and score each skip by the depth of its complex orbit. Every impact launches nearby visual orbit seeds. Scores are stored locally on the device.
 
 ## Run locally
 
