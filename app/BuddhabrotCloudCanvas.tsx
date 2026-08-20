@@ -4,9 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
 import {
-  INTRO_PLAY_VIEW,
+  INTRO_PLAY_FOV,
+  PLAY_POND_VIEW,
   introPlayAlignT,
+  introPlayCamera,
+  introPlayFlatten,
   lerpIntroCamera,
+  playAlignYaw,
 } from "@/lib/intro-play";
 
 const RIPPLE_LIFETIME_MS = 2_800;
@@ -66,13 +70,13 @@ export default function BuddhabrotCloudCanvas({
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x030408);
-    const camera = new THREE.PerspectiveCamera(42, 1, 0.01, 20);
+    const camera = new THREE.PerspectiveCamera(INTRO_PLAY_FOV, 1, 0.01, 20);
     const target = new THREE.Vector3(0, 0, 0);
     const classic = variant === "classic";
     let yaw = classic ? 0.16 : 0.72;
     let pitch = classic ? 0.12 : 0.32;
     let distance = classic ? 5.0 : 3.15;
-    let alignFrom: { yaw: number; pitch: number; distance: number } | null = null;
+    let alignFrom: { yaw: number; pitch: number; distance: number; target: { x: number; y: number; z: number } } | null = null;
     let alignStarted = 0;
     let dragging = false;
     let lastPointerX = 0;
@@ -230,20 +234,20 @@ export default function BuddhabrotCloudCanvas({
       previousTime = now;
       if (fadingRef.current) {
         if (!alignFrom) {
-          alignFrom = { yaw, pitch, distance };
+          alignFrom = { yaw, pitch, distance, target: { x: target.x, y: target.y, z: target.z } };
           alignStarted = now;
         }
-        const play = {
-          yaw: INTRO_PLAY_VIEW.yaw,
-          pitch: INTRO_PLAY_VIEW.pitch,
-          distance: classic ? INTRO_PLAY_VIEW.distance.classic : INTRO_PLAY_VIEW.distance.henon,
-        };
-        const pose = lerpIntroCamera(alignFrom, play, introPlayAlignT(now - alignStarted, reduceMotion));
+        const alignT = introPlayAlignT(now - alignStarted, reduceMotion);
+        const play = introPlayCamera(PLAY_POND_VIEW, playAlignYaw(alignFrom.yaw));
+        const pose = lerpIntroCamera(alignFrom, play, alignT);
         yaw = pose.yaw;
         pitch = pose.pitch;
         distance = pose.distance;
+        target.set(pose.target.x, pose.target.y, pose.target.z);
+        splat.scale.z = introPlayFlatten(alignT);
       } else {
         alignFrom = null;
+        splat.scale.z = 1;
         if (!reduceMotion && !dragging) yaw += delta * 0.000055;
       }
       const cosPitch = Math.cos(pitch);

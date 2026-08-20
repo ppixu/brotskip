@@ -15,9 +15,9 @@ test("server-renders Mandelbrot Skipping", async () => {
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
-  assert.match(html, /<title>Mandelbrot Skipping<\/title>/i);
-  assert.match(html, /Mandelbrot/);
-  assert.match(html, /Skipping/);
+  assert.match(html, /<title>Mandelpond<\/title>/i);
+  assert.match(html, /Mandelpond/);
+  assert.match(html, /z² \+ sea/);
   assert.match(html, /Local legends/);
   assert.match(html, /Drag the white orb/);
   assert.match(html, /Live score/);
@@ -27,7 +27,8 @@ test("server-renders Mandelbrot Skipping", async () => {
   assert.match(html, /Skip colors/);
   assert.match(html, /Coordinate axes/);
   assert.match(html, /Rotate 90° right/);
-  assert.match(html, /Replay opening/);
+  assert.doesNotMatch(html, /Replay opening/);
+  assert.match(html, /Show menu/);
   assert.match(html, /Share throw/);
   assert.match(html, /Replay throw/);
   assert.match(html, />Buddhabrot</);

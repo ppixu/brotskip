@@ -22,8 +22,11 @@ button, input { font: inherit; }
   position: fixed;
   inset: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
+  grid-template-columns: minmax(0, 1fr);
   background: var(--shore);
+}
+.gameShell.railOpen {
+  grid-template-columns: minmax(0, 1fr) 280px;
 }
 
 .playfield {
@@ -64,9 +67,92 @@ button, input { font: inherit; }
   align-items: flex-start;
   gap: 8px;
 }
-.replayBanner {
+.gameBrand {
   position: absolute;
   top: 14px;
+  left: 14px;
+  z-index: 5;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, .7);
+}
+.gameBrand:focus-visible {
+  outline: 1px solid rgba(98, 232, 255, .65);
+  outline-offset: 4px;
+}
+.gameBrandTitle {
+  display: block;
+  color: #f4fdff;
+  font-size: 22px;
+  font-weight: 760;
+  letter-spacing: -.03em;
+  line-height: 1.05;
+}
+.gameBrandTag {
+  display: block;
+  margin-top: 3px;
+  color: #9ec5cf;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .04em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.compactScore {
+  position: absolute;
+  right: 36px;
+  bottom: 14px;
+  z-index: 3;
+  text-align: right;
+  pointer-events: none;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, .7);
+}
+.compactScoreLabel {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+}
+.compactScoreNumber {
+  display: block;
+  margin-top: 2px;
+  color: #dffbff;
+  font-size: 32px;
+  font-weight: 760;
+  line-height: 1;
+  letter-spacing: -.055em;
+  font-variant-numeric: tabular-nums;
+}
+.railToggle {
+  position: absolute;
+  right: 8px;
+  bottom: 18px;
+  z-index: 4;
+  width: 22px;
+  height: 48px;
+  padding: 0;
+  border: 1px solid rgba(151, 231, 240, .22);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, .42);
+  color: #9ec5cf;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.railToggle:hover,
+.railToggle:focus-visible {
+  border-color: rgba(210, 247, 255, .55);
+  color: #dffbff;
+  outline: none;
+}
+.replayBanner {
+  position: absolute;
+  top: 62px;
   left: 14px;
   z-index: 1;
   margin: 0;
@@ -102,40 +188,14 @@ button, input { font: inherit; }
 .gameShell.replayMode .gameCanvas:focus-visible {
   outline-color: rgba(201, 160, 255, .65);
 }
-.gameShell.replayMode .replayOpening,
 .gameShell.replayMode .rethrowButton {
   border-color: rgba(196, 160, 255, .28);
   color: #d2c0ee;
 }
-.gameShell.replayMode .replayOpening:hover,
-.gameShell.replayMode .replayOpening:focus-visible,
 .gameShell.replayMode .rethrowButton:hover,
 .gameShell.replayMode .rethrowButton:focus-visible {
   border-color: rgba(232, 214, 255, .62);
   color: #f6edff;
-}
-.replayOpening {
-  min-height: 32px;
-  padding: 0 10px;
-  border: 1px solid rgba(151, 231, 240, .22);
-  border-radius: 999px;
-  background: rgba(0, 0, 0, .42);
-  color: #9ec5cf;
-  font-size: 10px;
-  font-weight: 750;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  cursor: pointer;
-}
-.replayOpening:hover,
-.replayOpening:focus-visible {
-  border-color: rgba(210, 247, 255, .55);
-  color: #dffbff;
-  outline: none;
-}
-.replayOpening:disabled {
-  opacity: .42;
-  cursor: not-allowed;
 }
 .howItWorksTrigger {
   min-height: 32px;
@@ -209,13 +269,16 @@ button, input { font: inherit; }
 .scoreRail {
   position: relative;
   z-index: 2;
-  display: flex;
+  display: none;
   min-height: 0;
   flex-direction: column;
   gap: 0;
   padding: 26px 20px 18px;
   border-left: 1px solid rgba(132, 225, 245, .12);
   background: var(--rail);
+}
+.gameShell.railOpen .scoreRail {
+  display: flex;
 }
 
 .liveScore {
@@ -503,7 +566,7 @@ button, input { font: inherit; }
 .introCloudHost.ready { opacity: 1; }
 .introCloudHost.fading {
   opacity: 0;
-  transition: opacity 500ms ease 720ms;
+  transition: opacity 600ms ease 1100ms;
 }
 .introPaper {
   position: absolute;
@@ -642,13 +705,6 @@ button, input { font: inherit; }
   text-align: center;
   transition: opacity 280ms ease;
 }
-.introTitle {
-  display: block;
-  color: #dffbff;
-  font-size: 11px;
-  letter-spacing: .22em;
-  text-transform: uppercase;
-}
 .introSetToggle {
   display: inline-flex;
   align-items: center;
@@ -669,8 +725,9 @@ button, input { font: inherit; }
 }
 
 @media (max-width: 760px) {
-  .gameShell { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 280px; }
-  .scoreRail {
+  .gameShell { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr); }
+  .gameShell.railOpen { grid-template-rows: minmax(0, 1fr) 280px; }
+  .gameShell.railOpen .scoreRail {
     display: grid;
     grid-template-columns: minmax(140px, .8fr) minmax(0, 1.2fr);
     grid-template-rows: auto minmax(0, 1fr);
@@ -697,7 +754,9 @@ button, input { font: inherit; }
   .scoreList { grid-row: 2 / span 2; }
   .railHint, .railFooter, .gpuNote { display: none; }
   .playfieldDock { left: 10px; bottom: 10px; }
-  .replayBanner { top: 10px; left: 10px; }
+  .gameBrand { top: 10px; left: 10px; }
+  .gameBrandTitle { font-size: 18px; }
+  .replayBanner { top: 52px; left: 10px; }
   .replayBannerName { font-size: 18px; }
   .introPaper {
     width: min(17rem, calc(50% - 8px));
@@ -710,7 +769,8 @@ button, input { font: inherit; }
 }
 
 @media (max-width: 430px) {
-  .gameShell { grid-template-rows: minmax(0, 1fr) 270px; }
+  .gameShell { grid-template-rows: minmax(0, 1fr); }
+  .gameShell.railOpen { grid-template-rows: minmax(0, 1fr) 270px; }
   .scoreRail { grid-template-columns: 132px minmax(0, 1fr); column-gap: 12px; }
   .liveNumber { font-size: 30px; }
   .scoreEntry { grid-template-columns: 18px minmax(0, 1fr); }

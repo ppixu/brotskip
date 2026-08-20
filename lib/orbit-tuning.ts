@@ -5,8 +5,8 @@ export const DEPTH_OPTIONS = [
 ] as const;
 
 export const MIN_ACCELERATION = 0.5;
-export const MAX_ACCELERATION = 18;
-export const DEFAULT_ACCELERATION = 10;
+export const MAX_ACCELERATION = 90;
+export const DEFAULT_ACCELERATION = 30;
 export const BASE_STEPS_PER_SOURCE = 4;
 
 export function clampAcceleration(value: number): number {

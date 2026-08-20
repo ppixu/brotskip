@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  DEFAULT_ACCELERATION,
   DEPTH_OPTIONS,
   MAX_ACCELERATION,
   MIN_ACCELERATION,
@@ -16,9 +17,10 @@ test("orbit limit reaches 2 billion iterations", () => {
 
 test("acceleration curve can be set much steeper than 10", () => {
   assert.equal(MIN_ACCELERATION, 0.5);
-  assert.equal(MAX_ACCELERATION, 18);
-  assert.equal(clampAcceleration(24), 18);
-  assert.equal(clampAcceleration(10), 10);
+  assert.equal(MAX_ACCELERATION, 90);
+  assert.equal(DEFAULT_ACCELERATION, 30);
+  assert.equal(clampAcceleration(100), 90);
+  assert.equal(clampAcceleration(30), 30);
 });
 
 test("a steep curve stays slow until late in the orbit", () => {

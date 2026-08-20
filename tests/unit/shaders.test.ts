@@ -57,7 +57,7 @@ test("loading Buddhabrot uses the precomputed rotating Gaussian cloud", () => {
   assert.match(source, /const DEFAULT_TUNING: Tuning = \{[\s\S]*?rotateRight: true/);
   assert.match(source, /const POINT_BUDGET = 400_000/);
   assert.match(source, /const INTRO_SOURCE_CAP = 4096/);
-  assert.match(source, /mandelbrot-skipping:tuning:v7/);
+  assert.match(source, /mandelbrot-skipping:tuning:v8/);
   assert.match(source, /const MAX_SOURCE_DOTS = 128/);
   assert.match(source, /sourceDots: 64,/);
   assert.match(source, /doublePixels/);
@@ -99,6 +99,9 @@ test("loading Buddhabrot uses the precomputed rotating Gaussian cloud", () => {
 test("flashlight is a GPU cone on the live pond; cached blit is GPU-fail only", () => {
   const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
   assert.match(source, /drawMappedBuddhabrot/);
+  assert.match(source, /drawBuddhabrotOutline/);
+  assert.match(source, /buddhabrotImageTransform/);
+  assert.match(source, /extractBuddhabrotOutline/);
   assert.match(source, /readCachedTexture/);
   assert.match(source, /FLASHLIGHT_EDGE_BLUR_PX/);
   assert.match(source, /createConicGradient/);
@@ -175,6 +178,7 @@ test("the game render loop only calls drawing helpers that exist", () => {
     .map((match) => match[1])
     .filter((name) => !skip.has(name));
   assert.ok(names.includes("drawRock"), `render() helpers: ${names.join(", ")}`);
+  assert.ok(names.includes("drawBuddhabrotOutline"), `render() helpers: ${names.join(", ")}`);
   for (const name of names) {
     assert.match(
       source,
@@ -210,7 +214,7 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(css, /\.introOverlay\.fading \.introPaper/);
   assert.match(css, /\.introOverlay\.fading \.introPlay/);
   assert.match(css, /\.introCloudHost\.fading \{[^}]*opacity:\s*0/);
-  assert.match(css, /transition:\s*opacity\s+500ms\s+ease\s+720ms/);
+  assert.match(css, /transition:\s*opacity\s+600ms\s+ease\s+1100ms/);
   const paperRule = css.match(/\.introPaper \{([^}]+)\}/)?.[1] ?? "";
   const titleRule = css.match(/\.introPaperTitle \{([^}]+)\}/)?.[1] ?? "";
   const dropCapRule = css.match(/\.introPaperLede::first-letter \{([^}]+)\}/)?.[1] ?? "";
@@ -225,6 +229,9 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   const game = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
   assert.match(game, /setIntro\(true\)/);
   assert.match(game, /INTRO_PLAY_EXIT_MS/);
+  assert.match(game, /lerpView\(/);
+  assert.match(game, /introPlayAlignT\(/);
+  assert.match(game, /PLAY_POND_VIEW/);
   assert.doesNotMatch(game, /setTimeout\(\(\) => \{[\s\S]*?setIntro\(false\)[\s\S]*?\}, 600\)/);
   assert.doesNotMatch(game, /setIntro\(\{ progress/);
   assert.match(css, /--throw-stone-x:\s*50%/);

@@ -1,9 +1,10 @@
 import type { Metadata, Viewport } from "next";
+import { GAME_TAGLINE, GAME_TITLE } from "@/lib/brand";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Mandelbrot Skipping",
-  description: "Sling a stone across a Mandelbrot pond and score the deepest complex orbits.",
+  title: GAME_TITLE,
+  description: GAME_TAGLINE,
 };
 
 export const viewport: Viewport = {

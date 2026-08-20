@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { acquireGpu, type GpuContext } from "@/lib/gpu";
 import BuddhabrotIntro from "./BuddhabrotIntro";
 import HowItWorks from "./HowItWorks";
+import { GAME_TAGLINE, GAME_TITLE } from "@/lib/brand";
 import {
   ESCAPE_RADIUS_SQ,
   OFFSCREEN_STREAK,
@@ -93,7 +94,8 @@ import {
   tutorialArrowStretch,
   tutorialArrowVisible,
 } from "@/lib/tutorial-arrow";
-import { INTRO_PLAY_EXIT_MS } from "@/lib/intro-play";
+import { INTRO_PLAY_EXIT_MS, PLAY_POND_VIEW, introPlayAlignT, lerpView } from "@/lib/intro-play";
+import { buddhabrotImageTransform, extractBuddhabrotOutline } from "@/lib/buddhabrot-outline";
 
 type Phase = "ready" | "aiming" | "flying" | "resolving" | "result";
 
@@ -232,7 +234,7 @@ const DEFAULT_TUNING: Tuning = {
   rotateRight: true,
   doublePixels: false,
 };
-const TUNING_KEY = "mandelbrot-skipping:tuning:v7";
+const TUNING_KEY = "mandelbrot-skipping:tuning:v8";
 const SOURCE_RADIUS_PX = 10;
 const IMPACT_LABEL_FADE_MS = 6400;
 const SLING_DRAW_PULL_RATIO = 0.30;
@@ -247,8 +249,8 @@ const MAX_HOP_SCREEN_MULTIPLIER = 2;
 const SCORE_KEY = "mandelbrot-skipping:scores:v2";
 const LEGACY_SCORE_KEY = "mandelbrot-skipping:scores:v1";
 const TAU = Math.PI * 2;
-const POND_CENTER = { x: -0.58, y: 0 };
-const VIEW_HALF_Y = 0.8;
+const POND_CENTER = { x: PLAY_POND_VIEW.centerX, y: PLAY_POND_VIEW.centerY };
+const VIEW_HALF_Y = PLAY_POND_VIEW.halfY;
 const INTRO_POND_CENTER = { x: -0.55, y: 0 };
 const INTRO_VIEW_HALF_Y = 1.52;
 const SCORE_HALF_X = 1.6;
@@ -1415,6 +1417,7 @@ export default function MandelbrotSkipping() {
   const [playerName, setPlayerName] = useState("YOU");
   const [currentResultId, setCurrentResultId] = useState<string | null>(null);
   const [tuning, setTuning] = useState<Tuning>({ ...DEFAULT_TUNING });
+  const [railOpen, setRailOpen] = useState(false);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => setScores(loadScores()));
@@ -1507,24 +1510,6 @@ export default function MandelbrotSkipping() {
   }, []);
   endOpeningRef.current = finishOpening;
 
-  const replayOpening = useCallback(() => {
-    if (introActiveRef.current) return;
-    introActiveRef.current = true;
-    spectatorRef.current = true;
-    introThrowsRef.current = 0;
-    introFadingRef.current = false;
-    engineRef.current?.clearPond();
-    engineRef.current?.clear();
-    engineRef.current?.setLayer("pond");
-    engineRef.current?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH, doublePixels: true });
-    engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
-    engineRef.current?.setDisplay({ ...displayLayerGains("intro"), cone: null, cssWidth: 1, cssHeight: 1 });
-    applyViewRef.current({ centerX: INTRO_POND_CENTER.x, centerY: INTRO_POND_CENTER.y, halfY: INTRO_VIEW_HALF_Y });
-    restartRef.current();
-    setIntroFading(false);
-    setIntro(true);
-  }, []);
-
   useEffect(() => {
     if (!pondReady || intro) return;
     if (pendingShareRef.current === undefined) {
@@ -1611,15 +1596,39 @@ export default function MandelbrotSkipping() {
     const previewContext = previewCanvas.getContext("2d");
     let flashlightDirty = true;
     let buddhabrotSource: CanvasImageSource | null = null;
+    let buddhabrotOutline: HTMLCanvasElement | null = null;
     let introRocks: FlyingRock[] = [];
     let introTrails: Array<{ path: Array<{ x: number; y: number }>; born: number }> = [];
     let lastIntroLaunch = 0;
     let lastIntroBackground = 0;
+    let fadeAlignStarted = 0;
     let previewKey = "";
     let hasThrown = false;
 
     invalidateFlashlightRef.current = () => { flashlightDirty = true; };
     invalidateGridRef.current = () => { gridDirty = true; };
+
+    function captureBuddhabrotOutline(source: CanvasImageSource) {
+      const imageWidth = "width" in source ? Number(source.width) : 0;
+      const imageHeight = "height" in source ? Number(source.height) : 0;
+      if (!imageWidth || !imageHeight) {
+        buddhabrotOutline = null;
+        return;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = imageWidth;
+      canvas.height = imageHeight;
+      const outlineContext = canvas.getContext("2d");
+      if (!outlineContext) {
+        buddhabrotOutline = null;
+        return;
+      }
+      outlineContext.drawImage(source, 0, 0);
+      const pixels = outlineContext.getImageData(0, 0, imageWidth, imageHeight);
+      const outline = extractBuddhabrotOutline(pixels.data, imageWidth, imageHeight, 40, 14);
+      outlineContext.putImageData(new ImageData(outline, imageWidth, imageHeight), 0, 0);
+      buddhabrotOutline = canvas;
+    }
 
     let flashlightLoadCancelled = false;
     void (async () => {
@@ -1630,6 +1639,7 @@ export default function MandelbrotSkipping() {
         if (cached) {
           if (flashlightLoadCancelled) return;
           buddhabrotSource = await createImageBitmap(cached);
+          captureBuddhabrotOutline(buddhabrotSource);
           flashlightDirty = true;
           return;
         }
@@ -1663,6 +1673,7 @@ export default function MandelbrotSkipping() {
           return;
         }
         buddhabrotSource = bitmap;
+        captureBuddhabrotOutline(bitmap);
         flashlightDirty = true;
         const blob = await blobPromise;
         if (blob && !flashlightLoadCancelled) await writeCachedTexture(size, blob, store);
@@ -2717,15 +2728,34 @@ export default function MandelbrotSkipping() {
       engine.setDisplay({ ...displayLayerGains("play"), cone: null, cssWidth: width, cssHeight: height });
     }
 
-    function drawMappedBuddhabrot(target: CanvasRenderingContext2D) {
-      if (!buddhabrotSource) return;
-      const topLeft = complexToScreen(TRAIL_BOUNDS.xMin, TRAIL_BOUNDS.yMax, width, height, viewRef.current, false);
-      const bottomRight = complexToScreen(TRAIL_BOUNDS.xMax, TRAIL_BOUNDS.yMin, width, height, viewRef.current, false);
-      const destX = Math.round(Math.min(topLeft.x, bottomRight.x));
-      const destY = Math.round(Math.min(topLeft.y, bottomRight.y));
-      const destWidth = Math.max(1, Math.round(Math.abs(bottomRight.x - topLeft.x)));
-      const destHeight = Math.max(1, Math.round(Math.abs(bottomRight.y - topLeft.y)));
-      target.drawImage(buddhabrotSource, destX, destY, destWidth, destHeight);
+    function drawMappedBuddhabrot(target: CanvasRenderingContext2D, source: CanvasImageSource = buddhabrotSource!) {
+      const transform = buddhabrotImageTransform(
+        "width" in source ? Number(source.width) : 1,
+        "height" in source ? Number(source.height) : 1,
+        width,
+        height,
+        viewRef.current,
+        tuningRef.current.rotateRight,
+      );
+      target.save();
+      target.setTransform(
+        transform.a * dpr,
+        transform.b * dpr,
+        transform.c * dpr,
+        transform.d * dpr,
+        transform.e * dpr,
+        transform.f * dpr,
+      );
+      target.drawImage(source, 0, 0);
+      target.restore();
+    }
+
+    function drawBuddhabrotOutline() {
+      if (!buddhabrotOutline) return;
+      ctx.save();
+      ctx.globalAlpha = 0.58;
+      drawMappedBuddhabrot(ctx, buddhabrotOutline);
+      ctx.restore();
     }
 
     function drawFlashlight() {
@@ -2770,11 +2800,26 @@ export default function MandelbrotSkipping() {
       }
     }
 
+    function alignPlayView(now: number) {
+      if (!introFadingRef.current) {
+        fadeAlignStarted = 0;
+        return;
+      }
+      if (!fadeAlignStarted) fadeAlignStarted = now;
+      applyView(lerpView(
+        { centerX: INTRO_POND_CENTER.x, centerY: INTRO_POND_CENTER.y, halfY: INTRO_VIEW_HALF_Y },
+        PLAY_POND_VIEW,
+        introPlayAlignT(now - fadeAlignStarted, reduceMotion),
+      ));
+    }
+
     function render(now: number) {
+      alignPlayView(now);
       syncOrbitDisplay();
       ctx.clearRect(0, 0, width, height);
       if (gridDirty) rebuildScientificGrid();
       if (gridCanvas) ctx.drawImage(gridCanvas, 0, 0, width, height);
+      drawBuddhabrotOutline();
       const a = anchor();
       drawFlashlight();
       drawPrediction(a);
@@ -3101,7 +3146,7 @@ export default function MandelbrotSkipping() {
     void (async () => {
       try {
         if (navigator.share) {
-          await navigator.share({ title: "Mandelbrot Skipping", url });
+          await navigator.share({ title: GAME_TITLE, url });
           return;
         }
       } catch (error) {
@@ -3118,13 +3163,21 @@ export default function MandelbrotSkipping() {
     })();
   };
 
+  const reloadToLoading = () => {
+    window.location.assign(window.location.pathname);
+  };
+
   const throwBusy = hud.phase === "flying" || hud.phase === "resolving" || Boolean(intro);
 
   return (
-    <main className={`gameShell ${replayMode ? "replayMode" : ""}`}>
-      <section className="playfield" aria-label="Mandelbrot rock skipping game">
+    <main className={`gameShell ${replayMode ? "replayMode" : ""} ${railOpen ? "railOpen" : ""}`}>
+      <section className="playfield" aria-label="Mandelpond rock skipping game">
         <canvas ref={gpuCanvasRef} className="gpuCanvas" aria-hidden="true" />
         <canvas ref={gameCanvasRef} className="gameCanvas" tabIndex={0} aria-label="Throw ready. Drag the white orb backward and release it across the water" />
+        <button type="button" className="gameBrand" onClick={reloadToLoading} aria-label={`${GAME_TITLE}. Reload to loading`}>
+          <span className="gameBrandTitle">{GAME_TITLE}</span>
+          <span className="gameBrandTag">{GAME_TAGLINE}</span>
+        </button>
         {replayMode && (
           <p className="replayBanner" aria-live="polite">
             <span className="replayBannerName">{sharePlayerLabel(replayName)}</span>
@@ -3148,17 +3201,25 @@ export default function MandelbrotSkipping() {
           </button>
         )}
         <div className="playfieldDock">
-          <button
-            type="button"
-            className="replayOpening"
-            onClick={replayOpening}
-            disabled={Boolean(intro) || Boolean(gpuError)}
-            aria-label="Replay the opening Buddhabrot sequence"
-          >
-            Replay opening
-          </button>
           <HowItWorks />
         </div>
+        {!intro && !railOpen && (
+          <div className="compactScore" aria-live="polite">
+            <span className="compactScoreLabel">{hud.phase === "result" ? "Final score" : "Live score"}</span>
+            <strong className="compactScoreNumber">{formatNumber(hud.score)}</strong>
+          </div>
+        )}
+        {!intro && (
+          <button
+            type="button"
+            className="railToggle"
+            aria-expanded={railOpen}
+            aria-label={railOpen ? "Hide menu" : "Show menu"}
+            onClick={() => setRailOpen((open) => !open)}
+          >
+            {railOpen ? "‹" : "›"}
+          </button>
+        )}
       </section>
 
       <aside className={`scoreRail ${hud.phase === "result" ? "hasResult" : ""}`} aria-label="Score and local high scores">

@@ -26,7 +26,6 @@ export default function BuddhabrotIntro({
         variant={showTrueBuddhabrot ? "classic" : "henon"}
       />
       <div className="introChrome">
-        <span className="introTitle">Mandelbrot Skipping</span>
         <label className="introSetToggle">
           <input
             type="checkbox"
