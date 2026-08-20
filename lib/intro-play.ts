@@ -8,8 +8,8 @@ export const INTRO_PLAY_FACE_MS = 700;
 export const INTRO_PLAY_FADE_DELAY_MS = 400;
 export const INTRO_PLAY_FADE_MS = 2400;
 export const INTRO_PLAY_EXIT_MS = INTRO_PLAY_FADE_DELAY_MS + INTRO_PLAY_FADE_MS + 180;
-export const INTRO_PLAY_FOV = 15;
-export const INTRO_PLAY_END_FOV = 15;
+export const INTRO_PLAY_FOV = 20;
+export const INTRO_PLAY_END_FOV = 20;
 export const INTRO_START_SCALE = 0.2;
 export const INTRO_START_DISTANCE = {
   classic: 25,
