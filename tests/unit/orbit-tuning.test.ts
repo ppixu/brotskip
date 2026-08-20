@@ -3,10 +3,12 @@ import test from "node:test";
 import {
   DEFAULT_ACCELERATION,
   DEPTH_OPTIONS,
+  FAST_FORWARD_MULTIPLIER,
   MAX_ACCELERATION,
   MIN_ACCELERATION,
   acceleratedSteps,
   clampAcceleration,
+  fastForwardSteps,
 } from "../../lib/orbit-tuning.ts";
 
 test("orbit limit reaches 2 billion iterations", () => {
@@ -39,4 +41,11 @@ test("the multiplier changes speed at the same depth", () => {
   const slow = acceleratedSteps(500_000, 1_000_000, 1_000, 10);
   const fast = acceleratedSteps(500_000, 1_000_000, 1_000, 30);
   assert.ok(fast > slow, `fast ${fast} vs slow ${slow}`);
+});
+
+test("fast forward applies an explicit ten-times batch boost", () => {
+  const normal = acceleratedSteps(500_000, 1_000_000, 10_000, 30);
+  const fast = fastForwardSteps(500_000, 1_000_000, 10_000, 30);
+  assert.equal(FAST_FORWARD_MULTIPLIER, 10);
+  assert.equal(fast, normal * FAST_FORWARD_MULTIPLIER);
 });

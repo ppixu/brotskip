@@ -32,8 +32,9 @@ test("WGSL shaders do not reuse a binding name as an entry point", () => {
 test("GPU iterations use a depth-ramped acceleration multiplier", () => {
   const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
   assert.match(source, /accelerationMultiplier: f32/);
+  assert.match(source, /iterationBoost: f32/);
   assert.match(source, /pow\(max\(params\.accelerationMultiplier, 1\.0\), depthProgress\)/);
-  assert.match(source, /f32\(\$\{BASE_STEPS_PER_SOURCE\}u\) \* acceleration/);
+  assert.match(source, /f32\(\$\{BASE_STEPS_PER_SOURCE\}u\) \* acceleration \* max\(params\.iterationBoost/);
   assert.doesNotMatch(source, /pow\(depthProgress, max\(params\.accelerationCurve/);
 });
 
@@ -276,6 +277,8 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(game, /className="playfieldShareControl"/);
   assert.match(game, /Fast forward/);
   assert.match(game, /Fast-forward iteration/);
+  assert.match(game, /FAST_FORWARD_MULTIPLIER/);
+  assert.match(game, /setIterationBoost\(FAST_FORWARD_MULTIPLIER\)/);
   assert.match(game, /onClick=\{hud\.phase === "result" \? resetAndFocusCanvas : \(\) => fastForwardRef\.current\(\)\}/);
   assert.match(css, /\.playfieldThrowActions button:disabled \{[\s\S]*?opacity:\s*\.38/);
   assert.doesNotMatch(css, /\.introPlay \{ top:/);

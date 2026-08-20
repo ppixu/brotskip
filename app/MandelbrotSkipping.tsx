@@ -56,6 +56,8 @@ import {
   clampAcceleration,
   DEFAULT_ACCELERATION,
   DEPTH_OPTIONS,
+  FAST_FORWARD_MULTIPLIER,
+  fastForwardSteps,
   MAX_ACCELERATION,
   MIN_ACCELERATION,
 } from "@/lib/orbit-tuning";
@@ -164,6 +166,7 @@ type OrbitEngine = {
   spawnAppend: (points: Array<{ x: number; y: number }>, skipIndex: number, cap?: number) => number;
   setView: (view: ViewTransform) => void;
   setTuning: (tuning: Tuning) => void;
+  setIterationBoost: (multiplier: number) => void;
   setAtmosphere: (atmosphere: OrbitAtmosphere) => void;
   setLayer: (layer: "pond" | "throw") => void;
   setDisplay: (display: {
@@ -272,6 +275,7 @@ struct Params {
   accelerationMultiplier: f32,
   atlasMode: f32,
   hiddenSteps: f32,
+  iterationBoost: f32,
   bounds: vec4f,
 }
 struct OrbitPoint { position: vec2f, depth: f32, pad: f32 }
@@ -331,7 +335,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
   let acceleration = pow(max(params.accelerationMultiplier, 1.0), depthProgress);
   let acceleratedBatch = min(
     params.batch,
-    max(${BASE_STEPS_PER_SOURCE}u, u32(f32(${BASE_STEPS_PER_SOURCE}u) * acceleration))
+    max(${BASE_STEPS_PER_SOURCE}u, u32(f32(${BASE_STEPS_PER_SOURCE}u) * acceleration * max(params.iterationBoost, 1.0)))
   );
   let lineCount = min(acceleratedBatch, params.lineQuota);
   let firstLineStep = acceleratedBatch - lineCount;
@@ -410,6 +414,7 @@ struct Params {
   accelerationMultiplier: f32,
   atlasMode: f32,
   hiddenSteps: f32,
+  iterationBoost: f32,
   bounds: vec4f,
 }
 @group(0) @binding(0) var<uniform> style: Style;
@@ -477,6 +482,7 @@ struct Params {
   accelerationMultiplier: f32,
   atlasMode: f32,
   hiddenSteps: f32,
+  iterationBoost: f32,
   bounds: vec4f,
 }
 @group(0) @binding(0) var<storage, read> segments: array<CurveSegment>;
@@ -958,6 +964,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
   let view: ViewTransform = { centerX: INTRO_POND_CENTER.x, centerY: INTRO_POND_CENTER.y, halfY: INTRO_VIEW_HALF_Y };
   let maxDepth = DEFAULT_TUNING.maxDepth;
   let accelerationMultiplier = DEFAULT_TUNING.acceleration;
+  let iterationBoost = 1;
   let linePersist = DEFAULT_TUNING.linePersist;
   let skipColors = DEFAULT_TUNING.skipColors;
   let rotateRight = DEFAULT_TUNING.rotateRight;
@@ -1041,6 +1048,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
     floats[11] = accelerationMultiplier;
     floats[12] = atlasMode;
     floats[13] = hiddenSteps;
+    floats[14] = iterationBoost;
     floats[16] = bounds.xMin;
     floats[17] = bounds.xMax;
     floats[18] = bounds.yMin;
@@ -1287,6 +1295,9 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
         doublePixels = nextDoublePixels;
         resize();
       }
+    },
+    setIterationBoost(multiplier) {
+      iterationBoost = Math.max(1, Number.isFinite(multiplier) ? multiplier : 1);
     },
     setAtmosphere(atmosphere) {
       drawLines = atmosphere.drawLines;
@@ -1790,6 +1801,7 @@ export default function MandelbrotSkipping() {
       rock = { x: a.x, y: a.y, vx: 0, vy: 0, z: 0, vz: 0, spin: 0, skips: 0, bounceAge: 10 };
       setCurrentResultId(null);
       engineRef.current?.clear();
+      engineRef.current?.setIterationBoost(1);
       engineRef.current?.setTuning(tuningRef.current);
       flashlightDirty = true;
       updateHud(true);
@@ -1799,7 +1811,7 @@ export default function MandelbrotSkipping() {
     fastForwardRef.current = () => {
       if (phase !== "flying" && phase !== "resolving") return;
       fastForward = true;
-      engineRef.current?.setTuning({ ...tuningRef.current, acceleration: MAX_ACCELERATION });
+      engineRef.current?.setIterationBoost(FAST_FORWARD_MULTIPLIER);
       updateHud(true);
     };
 
@@ -1969,7 +1981,7 @@ export default function MandelbrotSkipping() {
       for (const orbit of orbitScores) {
         if (orbit.resolved) continue;
         const perOrbit = fastForward
-          ? maxPerOrbit
+          ? fastForwardSteps(orbit.depth, tuningRef.current.maxDepth, maxPerOrbit, tuningRef.current.acceleration)
           : acceleratedSteps(orbit.depth, tuningRef.current.maxDepth, maxPerOrbit, tuningRef.current.acceleration);
         for (let step = 0; step < perOrbit && orbit.depth < tuningRef.current.maxDepth; step++) {
           const previousR = orbit.zr;
@@ -3310,9 +3322,9 @@ export default function MandelbrotSkipping() {
               type="button"
               className="playfieldThrowControl"
               onClick={hud.phase === "result" ? resetAndFocusCanvas : () => fastForwardRef.current()}
-              aria-label={hud.phase === "result" ? "Rethrow" : "Fast-forward iteration"}
+              aria-label={hud.phase === "result" ? "Rethrow" : `Fast-forward iteration ${FAST_FORWARD_MULTIPLIER} times faster`}
             >
-              {hud.phase === "result" ? "Rethrow" : "Fast forward"}
+              {hud.phase === "result" ? "Rethrow" : `Fast forward ${FAST_FORWARD_MULTIPLIER}×`}
             </button>
             <button
               type="button"

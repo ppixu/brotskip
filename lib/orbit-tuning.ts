@@ -8,6 +8,7 @@ export const MIN_ACCELERATION = 0.5;
 export const MAX_ACCELERATION = 90;
 export const DEFAULT_ACCELERATION = 30;
 export const BASE_STEPS_PER_SOURCE = 4;
+export const FAST_FORWARD_MULTIPLIER = 10;
 
 export function clampAcceleration(value: number): number {
   const rounded = Math.round((Number(value) || DEFAULT_ACCELERATION) * 10) / 10;
@@ -19,4 +20,8 @@ export function acceleratedSteps(depth: number, maxDepth: number, budget: number
   const safeMultiplier = Math.max(1, Number.isFinite(multiplier) ? multiplier : 1);
   const steps = BASE_STEPS_PER_SOURCE * Math.pow(safeMultiplier, progress);
   return Math.min(budget, Math.max(BASE_STEPS_PER_SOURCE, Math.floor(steps)));
+}
+
+export function fastForwardSteps(depth: number, maxDepth: number, budget: number, multiplier: number): number {
+  return Math.min(budget, acceleratedSteps(depth, maxDepth, budget, multiplier) * FAST_FORWARD_MULTIPLIER);
 }
