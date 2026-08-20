@@ -2,7 +2,6 @@
 
 import { useCallback, useState } from "react";
 import { BUDDHABROT_EXPLAIN } from "@/lib/buddhabrot/explain";
-import type { IntroPlayTune } from "@/lib/intro-play";
 import BuddhabrotCloudCanvas from "./BuddhabrotCloudCanvas";
 
 function paperWords(text: string) {
@@ -12,42 +11,25 @@ function paperWords(text: string) {
 }
 
 export default function BuddhabrotIntro({
-  fading, onPlay, tune,
+  fading, onPlay,
 }: {
   fading: boolean;
   onPlay?: () => void;
-  tune?: Partial<IntroPlayTune>;
 }) {
   const { wikipedia } = BUDDHABROT_EXPLAIN;
-  const [showTrueBuddhabrot, setShowTrueBuddhabrot] = useState(true);
   const [loadProgress, setLoadProgress] = useState(0);
   const [splatReady, setSplatReady] = useState(false);
   const handleLoadProgress = useCallback((progress: number) => setLoadProgress(progress), []);
   const handleReady = useCallback(() => setSplatReady(true), []);
-  const selectBuddhabrot = (showTrue: boolean) => {
-    setShowTrueBuddhabrot(showTrue);
-    setLoadProgress(0);
-    setSplatReady(false);
-  };
   return (
     <div className={`introOverlay ${fading ? "fading" : ""}`} role="status" aria-label="Charting the pond">
       <BuddhabrotCloudCanvas
-        key={showTrueBuddhabrot ? "classic" : "henon"}
         fading={fading}
-        variant={showTrueBuddhabrot ? "classic" : "henon"}
-        tune={tune}
+        variant="classic"
         onLoadProgress={handleLoadProgress}
         onReady={handleReady}
       />
       <div className="introChrome">
-        <label className="introSetToggle">
-          <input
-            type="checkbox"
-            checked={showTrueBuddhabrot}
-            onChange={(event) => selectBuddhabrot(event.target.checked)}
-          />
-          <span>True z² + c Buddhabrot</span>
-        </label>
         <span
           className={`introLoadProgress ${splatReady ? "complete" : ""}`}
           role="progressbar"
@@ -74,6 +56,11 @@ export default function BuddhabrotIntro({
               {" "}
             </span>
           ))}
+        </p>
+        <p className="introPaperSource">
+          <a href={wikipedia.references[1].url} target="_blank" rel="noreferrer">
+            Read more about the Buddhabrot on Wikipedia ↗
+          </a>
         </p>
       </article>
       {splatReady && (

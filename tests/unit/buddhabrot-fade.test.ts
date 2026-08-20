@@ -28,6 +28,10 @@ test("cached background Buddha fades out only after sling drag starts", () => {
 
 test("the game keeps the cached Buddha after intro and starts fading it on sling drag", () => {
   const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
+  assert.match(source, /resetBuddhabrotFadeRef\.current = \(\) => \{/);
+  assert.match(source, /buddhabrotSlingFadeStarted = 0/);
+  assert.match(source, /buddhabrotBackgroundRevealed = true/);
+  assert.match(source, /resetBuddhabrotFadeRef\.current\(\);/);
   assert.match(source, /buddhabrotIntroCrossfadeAlpha\(now - buddhabrotIntroFadeStarted\)/);
   assert.match(source, /buddhabrotBackgroundRevealed/);
   assert.match(source, /buddhabrotSlingFadeAlpha\(now - buddhabrotSlingFadeStarted\)/);

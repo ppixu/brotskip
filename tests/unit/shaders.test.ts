@@ -213,15 +213,17 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.doesNotMatch(intro, /\{ready &&/);
   assert.doesNotMatch(intro, /progress,/);
   assert.doesNotMatch(intro, /introMode|Precomputed 3D Gaussian cloud/);
-  assert.match(intro, /introSetToggle/);
-  assert.match(intro, /True z² \+ c Buddhabrot/);
+  assert.doesNotMatch(intro, /introSetToggle/);
+  assert.doesNotMatch(intro, /True z² \+ c Buddhabrot/);
   assert.match(intro, /BuddhabrotCloudCanvas/);
-  assert.match(intro, /variant=\{showTrueBuddhabrot \? "classic" : "henon"\}/);
+  assert.match(intro, /variant="classic"/);
   assert.doesNotMatch(intro, /TrueBuddhabrotCanvas/);
   assert.doesNotMatch(intro, /introTraverse|gif\.file/);
   assert.match(intro, /BUDDHABROT_EXPLAIN/);
   assert.match(intro, /wikipedia/);
   assert.match(intro, /introPaper/);
+  assert.match(intro, /introPaperSource/);
+  assert.match(intro, /Read more about the Buddhabrot on Wikipedia/);
   assert.doesNotMatch(intro, /introPaperRefs/);
   assert.doesNotMatch(intro, /rotateRight/);
   assert.doesNotMatch(css, /introBuddhaZoom/);
@@ -267,25 +269,26 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(game, /hud\.phase === "flying" \|\| hud\.phase === "resolving" \|\| hud\.phase === "result"/);
 });
 
-test("intro debug exposes only live splat size and replay", () => {
+test("intro hides debug controls and keeps the fixed classic cloud", () => {
   const game = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
   const intro = readFileSync(new URL("../../app/BuddhabrotIntro.tsx", import.meta.url), "utf8");
   const cloud = readFileSync(new URL("../../app/BuddhabrotCloudCanvas.tsx", import.meta.url), "utf8");
   const css = readFileSync(new URL("../../app/globals.css", import.meta.url), "utf8");
-  assert.match(game, /className="introPlayDebug"/);
-  assert.match(game, /aria-label="Intro splat debug"/);
-  assert.match(game, /Replay intro/);
-  assert.match(game, /replayIntro/);
-  assert.match(game, /introPlayTune/);
-  assert.match(game, /aria-label="Intro splat size"/);
+  assert.doesNotMatch(game, /introPlayDebug/);
+  assert.doesNotMatch(game, /Replay intro/);
+  assert.doesNotMatch(game, /introPlayTune/);
+  assert.doesNotMatch(game, /Intro splat size/);
   assert.doesNotMatch(game, /aria-label="Intro splat position [XY]"/);
   assert.doesNotMatch(game, /aria-label="Intro camera FOV"/);
-  assert.match(intro, /tune=\{tune\}/);
+  assert.doesNotMatch(intro, /introSetToggle|showTrueBuddhabrot|True z² \+ c Buddhabrot/);
+  assert.match(intro, /variant="classic"/);
   assert.match(cloud, /tune\?:/);
   assert.match(cloud, /scales: dyno\.mul\(scales, splatSize\)/);
   assert.match(cloud, /splatSize\.value = tuneRef\.current\.splatSize/);
   assert.match(cloud, /introPlayPose\(alignFrom, elapsed, reduceMotion, tuneRef\.current\)/);
-  assert.match(css, /\.introPlayDebug \{/);
+  assert.match(intro, /introPaperSource/);
+  assert.match(css, /\.introPaperSource/);
+  assert.doesNotMatch(css, /introPlayDebug|introSetToggle/);
 });
 
 test("every skip stamps a tinted glyph and later skips keep iterating", () => {

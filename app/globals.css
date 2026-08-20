@@ -114,63 +114,6 @@ button, input { font: inherit; }
   letter-spacing: .04em;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
-.introPlayDebug {
-  position: absolute;
-  top: 88px;
-  left: 14px;
-  z-index: 6;
-  width: min(220px, calc(100% - 28px));
-  padding: 10px 12px 11px;
-  border: 1px solid rgba(148, 218, 232, .18);
-  border-radius: 10px;
-  background: rgba(4, 10, 14, .72);
-  backdrop-filter: blur(10px);
-  color: #9ec5cf;
-  pointer-events: auto;
-}
-.introPlayDebugHeading {
-  margin-bottom: 6px;
-  color: #dffbff;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: .12em;
-  text-transform: uppercase;
-}
-.introPlayDebugControl {
-  display: block;
-  margin-top: 8px;
-  font-size: 10px;
-}
-.introPlayDebugControl span {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-}
-.introPlayDebugControl output {
-  color: #dffbff;
-  font-weight: 750;
-  font-variant-numeric: tabular-nums;
-}
-.introPlayDebugControl input[type="range"] {
-  width: 100%;
-  margin-top: 4px;
-}
-.introPlayDebugReplay {
-  width: 100%;
-  margin-top: 10px;
-  padding: 6px 8px;
-  border: 1px solid rgba(148, 218, 232, .28);
-  border-radius: 7px;
-  background: rgba(98, 232, 255, .08);
-  color: #dffbff;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.introPlayDebugReplay:hover,
-.introPlayDebugReplay:focus-visible {
-  background: rgba(98, 232, 255, .16);
-}
 .compactScore {
   position: absolute;
   right: 36px;
@@ -683,6 +626,23 @@ button, input { font: inherit; }
   line-height: .8;
 }
 .introPaperLede i { font-style: italic; }
+.introPaperSource {
+  margin: 12px 0 0;
+  font-size: 11px;
+  text-align: center;
+}
+.introPaperSource a {
+  color: rgba(255, 255, 255, .8);
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, .42);
+  text-underline-offset: 2px;
+}
+.introPaperSource a:hover,
+.introPaperSource a:focus-visible {
+  color: #fff;
+  text-decoration-color: #fff;
+  outline: none;
+}
 .introPaperCite {
   font-family: Palatino, "Palatino Linotype", "Times New Roman", Times, serif;
   font-size: 0.72em;
@@ -775,24 +735,6 @@ button, input { font: inherit; }
   width: min(320px, 62vw);
   text-align: center;
   transition: opacity 280ms ease;
-}
-.introSetToggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  margin-top: 7px;
-  color: rgba(194, 228, 235, .72);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 8px;
-  letter-spacing: .11em;
-  text-transform: uppercase;
-  cursor: pointer;
-}
-.introSetToggle input {
-  width: 12px;
-  height: 12px;
-  margin: 0;
-  accent-color: #9feeff;
 }
 .introLoadProgress {
   display: block;

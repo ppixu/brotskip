@@ -95,7 +95,7 @@ import {
   tutorialArrowStretch,
   tutorialArrowVisible,
 } from "@/lib/tutorial-arrow";
-import { defaultIntroPlayTune, INTRO_PLAY_ALIGN_MS, INTRO_PLAY_EXIT_MS, PLAY_POND_VIEW, type IntroPlayTune } from "@/lib/intro-play";
+import { INTRO_PLAY_ALIGN_MS, INTRO_PLAY_EXIT_MS, PLAY_POND_VIEW } from "@/lib/intro-play";
 import { buddhabrotImageTransform } from "@/lib/buddhabrot-outline";
 import { buddhabrotIntroCrossfadeAlpha, buddhabrotSlingFadeAlpha } from "@/lib/buddhabrot-fade";
 
@@ -1399,6 +1399,7 @@ export default function MandelbrotSkipping() {
   const introThrowsRef = useRef(0);
   const introFadingRef = useRef(false);
   const endOpeningRef = useRef<() => void>(() => {});
+  const resetBuddhabrotFadeRef = useRef<() => void>(() => {});
   const currentShareRef = useRef<SharedThrow | null>(null);
   const pendingShareRef = useRef<SharedThrow | null | undefined>(undefined);
   const playThrowRef = useRef<((shot: SharedThrow, fromLink?: boolean) => void) | null>(null);
@@ -1408,8 +1409,6 @@ export default function MandelbrotSkipping() {
   const introExitTimerRef = useRef(0);
   const [intro, setIntro] = useState(false);
   const [introFading, setIntroFading] = useState(false);
-  const [introReplayKey, setIntroReplayKey] = useState(0);
-  const [introPlayTune, setIntroPlayTune] = useState(defaultIntroPlayTune);
   const [pondReady, setPondReady] = useState(false);
   const [hasShare, setHasShare] = useState(false);
   const [watchingShare, setWatchingShare] = useState(false);
@@ -1493,24 +1492,6 @@ export default function MandelbrotSkipping() {
     introThrowsRef.current = 0;
     introFadingRef.current = false;
     setIntro(true);
-  }, []);
-
-  const replayIntro = useCallback(() => {
-    if (introExitTimerRef.current) {
-      window.clearTimeout(introExitTimerRef.current);
-      introExitTimerRef.current = 0;
-    }
-    introActiveRef.current = true;
-    spectatorRef.current = true;
-    introThrowsRef.current = 0;
-    introFadingRef.current = false;
-    setIntroFading(false);
-    setIntroReplayKey((key) => key + 1);
-    setIntro(true);
-    engineRef.current?.setAtmosphere(INTRO_ATMOSPHERE);
-    engineRef.current?.setLayer("pond");
-    engineRef.current?.setDisplay({ ...displayLayerGains("intro"), cone: null, cssWidth: 1, cssHeight: 1 });
-    applyViewRef.current(PLAY_POND_VIEW);
   }, []);
 
   const finishOpening = useCallback(() => {
@@ -1644,6 +1625,11 @@ export default function MandelbrotSkipping() {
     } | null = null;
     let liveBuddhabrotStarting = false;
 
+    resetBuddhabrotFadeRef.current = () => {
+      buddhabrotIntroFadeStarted = 0;
+      buddhabrotSlingFadeStarted = 0;
+      buddhabrotBackgroundRevealed = true;
+    };
     invalidateFlashlightRef.current = () => { flashlightDirty = true; };
     invalidateGridRef.current = () => { gridDirty = true; };
 
@@ -3181,6 +3167,7 @@ export default function MandelbrotSkipping() {
       gameAudioRef.current = null;
       gameAudio.destroy();
       playThrowRef.current = null;
+      resetBuddhabrotFadeRef.current = () => {};
     };
   }, []);
 
@@ -3196,6 +3183,7 @@ export default function MandelbrotSkipping() {
     spectatorRef.current = false;
     setWatchingShare(false);
     setReplayMode(false);
+    resetBuddhabrotFadeRef.current();
     if (savedTuningRef.current) {
       const saved = savedTuningRef.current;
       savedTuningRef.current = null;
@@ -3248,10 +3236,6 @@ export default function MandelbrotSkipping() {
 
   const throwBusy = hud.phase === "flying" || hud.phase === "resolving" || Boolean(intro);
 
-  const updateIntroPlayTune = (patch: Partial<IntroPlayTune>) => {
-    setIntroPlayTune((current) => ({ ...current, ...patch }));
-  };
-
   return (
     <main className={`gameShell ${replayMode ? "replayMode" : ""} ${railOpen ? "railOpen" : ""}`}>
       <section className="playfield" aria-label="Mandelpond rock skipping game">
@@ -3272,10 +3256,8 @@ export default function MandelbrotSkipping() {
         )}
         {intro && (
           <BuddhabrotIntro
-            key={introReplayKey}
             fading={introFading}
             onPlay={finishOpening}
-            tune={introPlayTune}
           />
         )}
         {(hud.phase === "flying" || hud.phase === "resolving" || hud.phase === "result") && !intro && (
@@ -3290,24 +3272,6 @@ export default function MandelbrotSkipping() {
         )}
         <div className="playfieldDock">
           <HowItWorks />
-        </div>
-        <div className="introPlayDebug" aria-label="Intro splat debug">
-          <div className="introPlayDebugHeading">Intro splats</div>
-          <label className="introPlayDebugControl">
-            <span>Size<output>{introPlayTune.splatSize.toFixed(2)}×</output></span>
-            <input
-              type="range"
-              min="0.5"
-              max="3"
-              step="0.05"
-              value={introPlayTune.splatSize}
-              aria-label="Intro splat size"
-              onChange={(event) => updateIntroPlayTune({ splatSize: Number(event.target.value) })}
-            />
-          </label>
-          <button type="button" className="introPlayDebugReplay" onClick={replayIntro}>
-            Replay intro
-          </button>
         </div>
         {!intro && !railOpen && (
           <div className="compactScore" aria-live="polite">
