@@ -38,8 +38,8 @@ test("play camera looks at a larger, lower Buddha and ends near-orthographic", (
   assert.equal(camera.fov, INTRO_PLAY_END_FOV);
   assert.ok(INTRO_PLAY_END_FOV <= 5.5);
   assert.ok(INTRO_PLAY_END_FOV >= 4.5);
-  assert.ok(PLAY_SPLAT_DISTANCE_SCALE <= 0.62);
-  assert.ok(PLAY_SPLAT_DISTANCE_SCALE >= 0.45);
+  assert.ok(PLAY_SPLAT_DISTANCE_SCALE >= 0.88);
+  assert.ok(PLAY_SPLAT_DISTANCE_SCALE <= 1.05);
   assert.ok(PLAY_SPLAT_TARGET_Y_LIFT >= 0.1);
   const halfY = PLAY_POND_VIEW.halfY * PLAY_SPLAT_DISTANCE_SCALE;
   assert.ok(Math.abs(camera.distance - splatDistanceForHalfY(halfY, INTRO_PLAY_END_FOV)) < 1e-9);
@@ -47,9 +47,9 @@ test("play camera looks at a larger, lower Buddha and ends near-orthographic", (
   assert.ok(Math.abs(camera.target.y - (pond.y + PLAY_SPLAT_TARGET_Y_LIFT)) < 1e-9);
 });
 
-test("Play turns 45 degrees past plane-on, without an extra full spin", () => {
+test("Play looks along Z at the Buddhabrot plane, without an extra spin", () => {
   const tau = Math.PI * 2;
-  assert.ok(Math.abs(PLAY_ALIGN_YAW + Math.PI / 4) < 1e-9);
+  assert.equal(PLAY_ALIGN_YAW, 0);
   const classic = playAlignYaw(0.16);
   const henon = playAlignYaw(0.72);
   const spun = playAlignYaw(5.8);
@@ -84,11 +84,12 @@ test("play alignment eases size and FOV together, then the splat fades longer ov
   assert.equal(introPlayZoomT(0), 0);
   assert.equal(introPlayZoomT(INTRO_PLAY_ALIGN_MS), 1);
   assert.ok(introPlayZoomT(INTRO_PLAY_FACE_MS) < 0.85, "size zoom must still be running after the face turn");
-  assert.ok(introPlayZoomT(INTRO_PLAY_ALIGN_MS / 2) > 0.65);
+  assert.ok(Math.abs(introPlayZoomT(INTRO_PLAY_ALIGN_MS / 2) - 0.5) < 1e-9, "size zoom is linear");
+  assert.ok(Math.abs(introPlayDollyT(INTRO_PLAY_ALIGN_MS / 2) - 0.5) < 1e-9, "FOV zoom is linear");
   assert.ok(introPlayAlignT(INTRO_PLAY_ALIGN_MS / 2) > 0.65);
   assert.equal(introPlayAlignT(10, true), 1);
   for (const elapsed of [0, INTRO_PLAY_FACE_MS, INTRO_PLAY_ALIGN_MS / 2, INTRO_PLAY_ALIGN_MS]) {
-    assert.equal(introPlayDollyT(elapsed), introPlayZoomT(elapsed), "FOV and size share one ease-out");
+    assert.equal(introPlayDollyT(elapsed), introPlayZoomT(elapsed), "FOV and size share one linear curve");
   }
 
   const from = {

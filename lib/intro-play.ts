@@ -10,11 +10,11 @@ export const INTRO_PLAY_FADE_MS = 2400;
 export const INTRO_PLAY_EXIT_MS = INTRO_PLAY_FADE_DELAY_MS + INTRO_PLAY_FADE_MS + 180;
 export const INTRO_PLAY_FOV = 42;
 export const INTRO_PLAY_END_FOV = 5;
-export const PLAY_SPLAT_DISTANCE_SCALE = 0.56;
+export const PLAY_SPLAT_DISTANCE_SCALE = 1;
 /** Look higher in splat space so the Buddha sits lower on screen. */
 export const PLAY_SPLAT_TARGET_Y_LIFT = 0.14;
-/** Face-on is 45° past the z-plane so the Buddha looks at the camera. */
-export const PLAY_ALIGN_YAW = -Math.PI / 4;
+/** Face the z-plane so the front view is the 2D Buddhabrot. */
+export const PLAY_ALIGN_YAW = 0;
 export const PLAY_POND_VIEW: ViewTransform = { centerX: -0.58, centerY: 0, halfY: 0.8 };
 
 export type IntroCameraTarget = { x: number; y: number; z: number };
@@ -69,7 +69,7 @@ export function introPlayCamera(view: ViewTransform = PLAY_POND_VIEW, yaw = PLAY
   };
 }
 
-/** Shortest yaw to the play face, 45° past a square-on z-plane. */
+/** Shortest yaw to a square-on z-plane Buddhabrot. */
 export function playAlignYaw(current: number, target = PLAY_ALIGN_YAW) {
   const tau = Math.PI * 2;
   const delta = ((target - current) % tau + tau) % tau;
@@ -91,7 +91,7 @@ export function introPlayFaceT(elapsed: number, reduceMotion = false) {
 
 export function introPlayZoomT(elapsed: number, reduceMotion = false) {
   if (reduceMotion) return 1;
-  return easeOutCubic(elapsed / INTRO_PLAY_ALIGN_MS);
+  return Math.max(0, Math.min(1, elapsed / INTRO_PLAY_ALIGN_MS));
 }
 
 export function introPlayDollyT(elapsed: number, reduceMotion = false) {
