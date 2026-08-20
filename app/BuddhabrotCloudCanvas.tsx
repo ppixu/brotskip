@@ -13,7 +13,7 @@ import {
 } from "@/lib/intro-play";
 
 const RIPPLE_LIFETIME_MS = 2_800;
-const RIPPLE_DELAYS = [0, 260, 520] as const;
+const RIPPLE_DELAYS = [0] as const;
 
 type CloudRipple = {
   born: number;

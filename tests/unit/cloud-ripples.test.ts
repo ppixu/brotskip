@@ -5,6 +5,7 @@ import test from "node:test";
 const source = readFileSync(new URL("../../app/BuddhabrotCloudCanvas.tsx", import.meta.url), "utf8");
 
 test("the intro cloud is doubled and emits fading 3D rings from real splats", () => {
+  assert.match(source, /const RIPPLE_DELAYS = \[0\] as const/);
   assert.match(source, /INTRO_START_DISTANCE/);
   assert.match(source, /classic \? INTRO_START_DISTANCE\.classic : INTRO_START_DISTANCE\.henon/);
   assert.match(source, /packed\.getSplat\(Math\.floor\(Math\.random\(\) \* count\)\)/);
