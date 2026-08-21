@@ -68,9 +68,11 @@ test("loading Buddhabrot uses the precomputed rotating Gaussian cloud", () => {
   assert.match(source, /const DEFAULT_TUNING: Tuning = \{[\s\S]*?rotateRight: true/);
   assert.match(source, /const POINT_BUDGET = 400_000/);
   assert.match(source, /const INTRO_SOURCE_CAP = 4096/);
-  assert.match(source, /mandelbrot-skipping:tuning:v8/);
+  assert.match(source, /mandelbrot-skipping:tuning:v9/);
   assert.match(source, /const MAX_SOURCE_DOTS = 128/);
+  assert.match(source, /const MAX_PREVIEW_ITERATIONS = 100/);
   assert.match(source, /sourceDots: 64,/);
+  assert.match(source, /previewIterations: 100,/);
   assert.match(source, /doublePixels/);
   assert.match(source, /gpuPixelRatio\(/);
   assert.match(source, /introMriSlice\(/);

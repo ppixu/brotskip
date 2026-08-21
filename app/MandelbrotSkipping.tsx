@@ -215,7 +215,7 @@ const LINE_VISIBLE_FLOOR = 0.05;
 const MIN_LINE_PERSIST = 0.05;
 const MAX_LINE_PERSIST = 8;
 const MIN_PREVIEW_ITERATIONS = 10;
-const MAX_PREVIEW_ITERATIONS = 50;
+const MAX_PREVIEW_ITERATIONS = 100;
 const SKIP_TINTS = [
   [80, 214, 255],
   [92, 255, 196],
@@ -234,13 +234,13 @@ const DEFAULT_TUNING: Tuning = {
   acceleration: DEFAULT_ACCELERATION,
   linePersist: 0.6,
   previewOrbits: true,
-  previewIterations: 20,
+  previewIterations: 100,
   skipColors: true,
   coordinateAxes: false,
   rotateRight: true,
   doublePixels: false,
 };
-const TUNING_KEY = "mandelbrot-skipping:tuning:v8";
+const TUNING_KEY = "mandelbrot-skipping:tuning:v9";
 const SOURCE_RADIUS_PX = 10;
 const IMPACT_LABEL_FADE_MS = 6400;
 const SLING_DRAW_PULL_RATIO = 0.30;
