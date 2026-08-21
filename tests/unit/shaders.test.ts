@@ -271,7 +271,8 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.doesNotMatch(game, /lerpView\(/);
   assert.doesNotMatch(game, /introPlayAlignT\(/);
   assert.match(game, /PLAY_POND_VIEW/);
-  assert.match(game, /gameAudio\.ambientStart\(\)/);
+  assert.match(game, /gameAudio\.init\(\)/);
+  assert.doesNotMatch(game, /gameAudio\.ambientStart\(\)/);
   assert.match(game, /gameAudioRef\.current\?\.playStart\(\)/);
   assert.doesNotMatch(game, /setTimeout\(\(\) => \{[\s\S]*?setIntro\(false\)[\s\S]*?\}, 600\)/);
   assert.doesNotMatch(game, /setIntro\(\{ progress/);

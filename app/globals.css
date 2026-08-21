@@ -39,6 +39,7 @@ button, input { font: inherit; }
   user-select: none;
   --throw-stone-x: 50%;
   --throw-stone-y: 82%;
+  --intro-pill-radius: 999px;
 }
 
 .gpuCanvas, .gameCanvas {
@@ -801,7 +802,7 @@ button, input { font: inherit; }
   min-height: 52px;
   padding: 0 28px;
   border: 1px solid rgba(220, 245, 250, .42);
-  border-radius: 999px;
+  border-radius: var(--intro-pill-radius);
   background: rgba(0, 0, 0, .55);
   color: #edfaff;
   font-size: 13px;
@@ -826,17 +827,18 @@ button, input { font: inherit; }
 }
 .introNameLabel {
   color: rgba(237, 250, 255, .65);
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: .13em;
-  text-transform: uppercase;
+  font-family: Palatino, "Palatino Linotype", "Iowan Old Style", "Times New Roman", Times, serif;
+  font-size: 10px;
+  font-variant: small-caps;
+  letter-spacing: .22em;
+  text-transform: lowercase;
 }
 .introNameInput {
   width: 100%;
   min-height: 36px;
   padding: 0 12px;
   border: 1px solid rgba(220, 245, 250, .42);
-  border-radius: 999px;
+  border-radius: var(--intro-pill-radius);
   background: rgba(0, 0, 0, .55);
   color: #edfaff;
   font-size: 12px;

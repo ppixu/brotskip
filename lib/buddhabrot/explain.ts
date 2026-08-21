@@ -9,13 +9,13 @@ export const BUDDHABROT_EXPLAIN = {
     "Points that stay trapped are discarded, so the Mandelbrot set itself stays dark. During the opening, a finished Complex Hénon escape cloud is loaded as one million tiny Gaussian splats and rotated live — the same precomputed 3D artifact, not a video or a blurred slice.",
   ],
   image: {
-    src: "/buddhabrot-paper.png",
+    src: "buddhabrot-paper.png",
     alt: "Buddhabrot density map of escaping Mandelbrot trajectories",
     credit: "CC0 — generated in-engine",
   },
   wikipedia: {
-    journal: "Notes on fractal geometry",
-    title: "The Buddhabrot",
+    journal: "Fractal density of escaping orbits",
+    title: "Buddhabrot",
     sentences: [
       {
         text: "The Buddhabrot is the probability distribution over the trajectories of points that escape the Mandelbrot fractal.",
@@ -42,15 +42,15 @@ export const BUDDHABROT_EXPLAIN = {
 } as const;
 
 export const MANDELBROT_EXPLAIN = {
-  journal: "Notes on fractal geometry",
-  title: "The Mandelbrot Set",
+  journal: "The set of orbits that never escape",
+  title: "Mandelbrot Set",
   lede: "The Mandelbrot set is a famous mathematical pattern and fractal named after mathematician Benoît Mandelbrot. It is plotted on a 2D complex number plane using a simple repeating formula, generating infinite visual complexity, self-similar shapes, and stunning colorful boundary details.",
   source: {
-    text: "Read more about the Mandelbrot set on Wikipedia ↗",
+    text: "Wikipedia",
     url: "https://en.wikipedia.org/wiki/Mandelbrot_set",
   },
   image: {
-    src: "/mandelbrot-paper.png",
+    src: "mandelbrot-paper.png",
     alt: "The Mandelbrot set plotted on the complex plane",
     credit: "CC0 — generated in-engine",
   },

@@ -44,7 +44,7 @@ export default function BuddhabrotIntro({
           <i style={{ width: `${loadProgress * 100}%` }} />
         </span>
       </div>
-      <article className="introPaper" aria-label="Buddhabrot, from Wikipedia">
+      <article className="introPaper introPaperRight" aria-label="Buddhabrot, from Wikipedia">
         <p className="introPaperJournal">{wikipedia.journal}</p>
         <h1 className="introPaperTitle">{wikipedia.title}</h1>
         <p className="introPaperLede">
@@ -65,12 +65,10 @@ export default function BuddhabrotIntro({
           <figcaption>{BUDDHABROT_EXPLAIN.image.credit}</figcaption>
         </figure>
         <p className="introPaperSource">
-          <a href={wikipedia.references[1].url} target="_blank" rel="noreferrer">
-            Read more about the Buddhabrot on Wikipedia ↗
-          </a>
+          <a href={wikipedia.references[1].url} target="_blank" rel="noreferrer">Wikipedia</a>
         </p>
       </article>
-      <article className="introPaper introPaperRight" aria-label="Mandelbrot set, from Wikipedia">
+      <article className="introPaper" aria-label="Mandelbrot set, from Wikipedia">
         <p className="introPaperJournal">{mandelbrot.journal}</p>
         <h2 className="introPaperTitle">{mandelbrot.title}</h2>
         <p className="introPaperLede">{mandelbrot.lede}</p>
