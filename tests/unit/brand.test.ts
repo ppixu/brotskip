@@ -5,7 +5,7 @@ import { GAME_TAGLINE, GAME_TITLE, GAME_VERSION } from "../../lib/brand.ts";
 
 test("the game is named Brotskipping with an on-mandelpond tagline", () => {
   assert.equal(GAME_TITLE, "Brotskipping");
-  assert.equal(GAME_TAGLINE, "on mandelpond");
+  assert.equal(GAME_TAGLINE, "on mandelpond z² + c");
 });
 
 test("the header shows a large Brotskipping title with a small matching package version", () => {

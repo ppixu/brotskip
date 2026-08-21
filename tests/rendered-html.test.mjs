@@ -17,7 +17,7 @@ test("server-renders Mandelbrot Skipping", async () => {
   const html = await response.text();
   assert.match(html, /<title>Brotskipping<\/title>/i);
   assert.match(html, /Brotskipping/);
-  assert.match(html, /on mandelpond/);
+  assert.match(html, /on mandelpond z² \+ c/);
   assert.match(html, /Local legends/);
   assert.match(html, /Drag the white orb/);
   assert.match(html, />Score</);

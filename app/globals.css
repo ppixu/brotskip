@@ -707,8 +707,28 @@ button, input { font: inherit; }
   font-family: Palatino, "Palatino Linotype", "Iowan Old Style", "Times New Roman", Times, serif;
   transition: opacity 280ms ease;
 }
-.introPaperJournal {
-  margin: 0;
+.introPaperRight {
+  left: auto;
+  right: 14px;
+}
+.introPaperFigure {
+  margin: 12px 0 0;
+}
+.introPaperFigure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  opacity: .82;
+}
+.introPaperFigure figcaption {
+  margin-top: 4px;
+  color: rgba(255, 255, 255, .5);
+  font-size: 9px;
+  font-variant: small-caps;
+  letter-spacing: .18em;
+  text-align: center;
+}
+.introPaperJournal {  margin: 0;
   color: rgba(255, 255, 255, .62);
   font-size: 9px;
   font-variant: small-caps;
@@ -792,14 +812,16 @@ button, input { font: inherit; }
   transition: opacity 280ms ease, border-color 180ms ease, background 180ms ease;
 }
 .introNameEntry {
-  position: relative;
+  position: absolute;
+  left: var(--throw-stone-x);
+  top: calc(var(--throw-stone-y) - 34px);
+  transform: translate(-50%, -100%);
   z-index: 3;
   display: flex;
   width: min(180px, min(320px, 62vw));
   flex-direction: column;
   align-items: center;
   gap: 5px;
-  margin-top: 18px;
   transition: opacity 280ms ease;
 }
 .introNameLabel {
@@ -960,6 +982,7 @@ button, input { font: inherit; }
     width: min(17rem, calc(50% - 8px));
     padding: 12px 14px 10px;
   }
+  .introPaperFigure img { opacity: .7; }
   .introPaperTitle { font-size: 24px; margin: 2px 0 8px; }
   .introPaperLede { font-size: 12px; }
   .introPaperLede::first-letter { font-size: 3.2em; }
@@ -1108,6 +1131,7 @@ button, input { font: inherit; }
   color: #17333a;
 }
 .gameShell.lightMode .introPaperJournal { color: rgba(23, 51, 58, .58); }
+.gameShell.lightMode .introPaperFigure figcaption { color: rgba(23, 51, 58, .5); }
 .gameShell.lightMode .introPaperSource a,
 .gameShell.lightMode .introPaperCite a { color: rgba(23, 51, 58, .74); }
 .gameShell.lightMode .introPaperSource a { text-decoration-color: rgba(23, 51, 58, .35); }

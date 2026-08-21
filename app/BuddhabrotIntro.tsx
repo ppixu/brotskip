@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { BUDDHABROT_EXPLAIN } from "@/lib/buddhabrot/explain";
+import { BUDDHABROT_EXPLAIN, MANDELBROT_EXPLAIN } from "@/lib/buddhabrot/explain";
 import BuddhabrotCloudCanvas from "./BuddhabrotCloudCanvas";
 
 function paperWords(text: string) {
@@ -19,6 +19,7 @@ export default function BuddhabrotIntro({
   onPlayerNameChange: (name: string) => void;
 }) {
   const { wikipedia } = BUDDHABROT_EXPLAIN;
+  const mandelbrot = MANDELBROT_EXPLAIN;
   const [loadProgress, setLoadProgress] = useState(0);
   const [splatReady, setSplatReady] = useState(false);
   const handleLoadProgress = useCallback((progress: number) => setLoadProgress(progress), []);
@@ -59,9 +60,27 @@ export default function BuddhabrotIntro({
             </span>
           ))}
         </p>
+        <figure className="introPaperFigure">
+          <img src={BUDDHABROT_EXPLAIN.image.src} alt={BUDDHABROT_EXPLAIN.image.alt} loading="lazy" />
+          <figcaption>{BUDDHABROT_EXPLAIN.image.credit}</figcaption>
+        </figure>
         <p className="introPaperSource">
           <a href={wikipedia.references[1].url} target="_blank" rel="noreferrer">
             Read more about the Buddhabrot on Wikipedia ↗
+          </a>
+        </p>
+      </article>
+      <article className="introPaper introPaperRight" aria-label="Mandelbrot set, from Wikipedia">
+        <p className="introPaperJournal">{mandelbrot.journal}</p>
+        <h2 className="introPaperTitle">{mandelbrot.title}</h2>
+        <p className="introPaperLede">{mandelbrot.lede}</p>
+        <figure className="introPaperFigure">
+          <img src={mandelbrot.image.src} alt={mandelbrot.image.alt} loading="lazy" />
+          <figcaption>{mandelbrot.image.credit}</figcaption>
+        </figure>
+        <p className="introPaperSource">
+          <a href={mandelbrot.source.url} target="_blank" rel="noreferrer">
+            {mandelbrot.source.text}
           </a>
         </p>
       </article>
