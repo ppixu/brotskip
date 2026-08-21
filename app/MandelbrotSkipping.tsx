@@ -31,10 +31,8 @@ import {
   INTRO_BACKGROUND_SPAWN_MS,
   INTRO_MAX_DEPTH,
   INTRO_SOURCE_DOTS,
-  INTRO_THROW_STAGGER_MS,
   INTRO_THROWS_PER_WAVE,
   INTRO_ROCK_DRAW_EVERY,
-  INTRO_TRAIL_FADE_MS,
   INTRO_NEBULA_SEEDS_PER_WAVE,
   MRI_PREITERATE_MS,
   PLAY_ATMOSPHERE,
@@ -201,8 +199,7 @@ type FlyingRock = {
   plannedSkips: number;
   shotId: number;
   shapeOffset: number;
-  path: Array<{ x: number; y: number }>;
-  draw: boolean;
+  ripple: boolean;
 };
 
 const GLYPH_COUNT = 7;
@@ -1643,7 +1640,6 @@ export default function MandelbrotSkipping() {
     let flashlightDirty = true;
     let buddhabrotSource: CanvasImageSource | null = null;
     let introRocks: FlyingRock[] = [];
-    let introTrails: Array<{ path: Array<{ x: number; y: number }>; born: number }> = [];
     let lastIntroLaunch = 0;
     let lastIntroBackground = 0;
     let buddhabrotIntroFadeStarted = 0;
@@ -1796,7 +1792,6 @@ export default function MandelbrotSkipping() {
       ripples = [];
       orbitScores = [];
       introRocks = [];
-      introTrails = [];
       lastIntroLaunch = 0;
       lastIntroBackground = 0;
       shapeOffset = Math.floor(Math.random() * GLYPH_COUNT);
@@ -2112,8 +2107,7 @@ export default function MandelbrotSkipping() {
         plannedSkips: 3,
         shotId,
         shapeOffset: throwIndex % GLYPH_COUNT,
-        path: [{ x: origin.x - dx * launchPull, y: origin.y - dy * launchPull }],
-        draw: throwIndex % INTRO_ROCK_DRAW_EVERY === 0,
+        ripple: throwIndex % INTRO_ROCK_DRAW_EVERY === 0,
       });
     }
 
@@ -2131,10 +2125,6 @@ export default function MandelbrotSkipping() {
         body.vy *= drag;
         body.spin += Math.hypot(body.vx, body.vy) * dt * 0.016;
         body.bounceAge += dt;
-        const last = body.path[body.path.length - 1];
-        if (body.draw && (!last || Math.hypot(body.x - last.x, body.y - last.y) >= 3)) {
-          body.path.push({ x: body.x, y: body.y });
-        }
         let alive = true;
         if (body.z <= 0 && body.vz < 0) {
           body.z = 0;
@@ -2145,7 +2135,7 @@ export default function MandelbrotSkipping() {
             body.bounceAge = 0;
             spawnImpact(body.x, body.y, body.skips, body.shapeOffset, now, {
               gpu: false,
-              ripple: body.draw,
+              ripple: body.ripple,
             });
             const remaining = body.plannedSkips - body.skips;
             body.vz = Math.max(Math.abs(body.vz) * 0.56, pondScale() * (0.05 + remaining * 0.008));
@@ -2172,7 +2162,6 @@ export default function MandelbrotSkipping() {
           }
         }
         if (alive) next.push(body);
-        else if (body.draw && introTrails.length < 3) introTrails.push({ path: body.path, born: now });
       }
       introRocks = next;
     }
@@ -2597,20 +2586,6 @@ export default function MandelbrotSkipping() {
       ctx.restore();
     }
 
-    function drawIntroTrajectory(path: Array<{ x: number; y: number }>, alpha: number) {
-      if (path.length < 2 || alpha <= 0) return;
-      ctx.save();
-      ctx.strokeStyle = `rgba(210, 220, 224, ${alpha})`;
-      ctx.lineWidth = 1;
-      ctx.lineJoin = "round";
-      ctx.lineCap = "round";
-      ctx.beginPath();
-      ctx.moveTo(path[0].x, path[0].y);
-      for (let index = 1; index < path.length; index++) ctx.lineTo(path[index].x, path[index].y);
-      ctx.stroke();
-      ctx.restore();
-    }
-
     function drawTutorialArrow(now: number) {
       if (!tutorialArrowVisible({
         introActive: introActiveRef.current,
@@ -2647,22 +2622,7 @@ export default function MandelbrotSkipping() {
     }
 
     function drawRock(now: number) {
-      if (introActiveRef.current) {
-        let activeDrawn = 0;
-        for (const body of introRocks) {
-          if (body.draw && activeDrawn < 2) {
-            drawIntroTrajectory(body.path, 0.09);
-            activeDrawn += 1;
-          }
-        }
-        introTrails = introTrails.filter((trail) => now - trail.born < INTRO_TRAIL_FADE_MS);
-        for (let i = 0; i < Math.min(2, introTrails.length); i++) {
-          const trail = introTrails[i];
-          const t = Math.min(1, (now - trail.born) / INTRO_TRAIL_FADE_MS);
-          drawIntroTrajectory(trail.path, 0.08 * (1 - t) * (1 - t));
-        }
-        return;
-      }
+      if (introActiveRef.current) return;
       if (phase === "resolving" || phase === "result") return;
       drawFlyingRock({ ...rock, plannedSkips }, shapeOffset, now);
     }

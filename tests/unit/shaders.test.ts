@@ -173,10 +173,9 @@ test("opening and flashlight hide orbit lines, go grayscale, and throw overlappi
   assert.match(source, /setAtmosphere/);
   assert.match(source, /INTRO_ATMOSPHERE/);
   assert.match(source, /introRocks/);
-  assert.match(source, /INTRO_THROW_STAGGER_MS/);
   assert.match(source, /INTRO_THROWS_PER_WAVE/);
   assert.match(source, /INTRO_ROCK_DRAW_EVERY/);
-  assert.match(source, /body\.draw/);
+  assert.match(source, /body\.ripple/);
   assert.match(source, /introLaunchOrigin/);
   assert.doesNotMatch(source, /function throwIntroRock\(\) \{\s*const a = anchor\(\);/);
   assert.doesNotMatch(source, /if \(phase === "flying" \|\| phase === "resolving" \|\| phase === "aiming"\) return;/);
@@ -185,11 +184,10 @@ test("opening and flashlight hide orbit lines, go grayscale, and throw overlappi
   assert.doesNotMatch(source, /INTRO_SETTLE_MS/);
   assert.match(source, /spawnIntroBackgroundOrbits/);
   assert.match(source, /throwIntroRock\(\);/);
-  assert.match(source, /let activeDrawn = 0/);
   assert.match(source, /spawnAppend\(seeds/);
-  assert.match(source, /INTRO_TRAIL_FADE_MS/);
-  assert.match(source, /ripple: body\.draw/);
-  assert.match(source, /drawIntroTrajectory/);
+  assert.doesNotMatch(source, /INTRO_TRAIL_FADE_MS/);
+  assert.doesNotMatch(source, /drawIntroTrajectory/);
+  assert.match(source, /ripple: body\.ripple/);
   assert.match(source, /playfieldThrowControl/);
   assert.doesNotMatch(source, /if \(now - introSettleAt >= INTRO_SETTLE_MS\) endOpeningRef\.current\(\)/);
   assert.doesNotMatch(source, /introThrowsRef\.current >= INTRO_THROW_COUNT/);
@@ -234,6 +232,8 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(intro, /wikipedia/);
   assert.match(intro, /introPaper/);
   assert.match(intro, /introPaperSource/);
+  assert.match(intro, /ExternalLinkIcon/);
+  assert.match(intro, /introPaperFigureImage/);
   assert.match(intro, /Read more about the Buddhabrot on Wikipedia/);
   assert.doesNotMatch(intro, /introPaperRefs/);
   assert.doesNotMatch(intro, /rotateRight/);
@@ -321,6 +321,8 @@ test("intro hides debug controls and keeps the fixed classic cloud", () => {
   assert.match(cloud, /introPlayPose\(alignFrom, elapsed, reduceMotion, tuneRef\.current\)/);
   assert.match(intro, /introPaperSource/);
   assert.match(css, /\.introPaperSource/);
+  assert.match(css, /\.externalLinkIcon/);
+  assert.match(css, /buddhabrot-infographic\.png/);
   assert.doesNotMatch(css, /introPlayDebug|introSetToggle/);
 });
 

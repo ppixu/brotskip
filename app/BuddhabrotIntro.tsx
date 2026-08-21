@@ -10,6 +10,16 @@ function paperWords(text: string) {
   ));
 }
 
+function ExternalLinkIcon() {
+  return (
+    <svg className="externalLinkIcon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M14 4h6v6" />
+      <path d="M20 4 11 13" />
+      <path d="M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5" />
+    </svg>
+  );
+}
+
 export default function BuddhabrotIntro({
   fading, onPlay, playerName, onPlayerNameChange,
 }: {
@@ -46,6 +56,10 @@ export default function BuddhabrotIntro({
       <article className="introPaper" aria-label="Buddhabrot, from Wikipedia">
         <p className="introPaperJournal">{wikipedia.journal}</p>
         <h1 className="introPaperTitle">{wikipedia.title}</h1>
+        <figure className="introPaperFigure">
+          <div className="introPaperFigureImage" role="img" aria-label="Cached Buddhabrot pond background" />
+          <figcaption>Cached pond</figcaption>
+        </figure>
         <p className="introPaperLede">
           {wikipedia.sentences.map((sentence) => (
             <span key={sentence.cite}>
@@ -61,7 +75,7 @@ export default function BuddhabrotIntro({
         </p>
         <p className="introPaperSource">
           <a href={wikipedia.references[1].url} target="_blank" rel="noreferrer">
-            Read more about the Buddhabrot on Wikipedia ↗
+            Read more about the Buddhabrot on Wikipedia <ExternalLinkIcon />
           </a>
         </p>
       </article>

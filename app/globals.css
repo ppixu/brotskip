@@ -724,6 +724,26 @@ button, input { font: inherit; }
   letter-spacing: .01em;
   text-align: center;
 }
+.introPaperFigure {
+  float: right;
+  width: 92px;
+  margin: 0 -2px 7px 12px;
+  color: rgba(255, 255, 255, .5);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 7px;
+  letter-spacing: .08em;
+  text-align: center;
+  text-transform: uppercase;
+}
+.introPaperFigureImage {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  background: #080c13 url("/buddhabrot-infographic.png") center / cover no-repeat;
+  border: 1px solid rgba(255, 255, 255, .25);
+}
+.introPaperFigure figcaption { margin-top: 3px; }
 .introPaperLede {
   margin: 0;
   font-size: 14px;
@@ -745,10 +765,25 @@ button, input { font: inherit; }
   text-align: center;
 }
 .introPaperSource a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: rgba(255, 255, 255, .8);
   text-decoration: underline;
   text-decoration-color: rgba(255, 255, 255, .42);
   text-underline-offset: 2px;
+}
+.externalLinkIcon {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+  vertical-align: -0.08em;
 }
 .introPaperSource a:hover,
 .introPaperSource a:focus-visible {
@@ -965,6 +1000,7 @@ button, input { font: inherit; }
   .introPaperTitle { font-size: 24px; margin: 2px 0 8px; }
   .introPaperLede { font-size: 12px; }
   .introPaperLede::first-letter { font-size: 3.2em; }
+  .introPaperFigure { width: 76px; margin-left: 9px; }
   .introPlay { min-height: 44px; }
 }
 

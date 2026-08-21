@@ -10,7 +10,6 @@ import {
   INTRO_THROW_STAGGER_MS,
   INTRO_THROWS_PER_WAVE,
   INTRO_ROCK_DRAW_EVERY,
-  INTRO_TRAIL_FADE_MS,
   INTRO_MAX_DEPTH,
   INTRO_NEBULA_SEEDS_PER_WAVE,
   MRI_CYCLE_SECONDS,
@@ -141,7 +140,6 @@ test("opening throws rocks from random points instead of the throw stone", () =>
 test("opening pre-iterates a dense Buddhabrot pool before the scan loop", () => {
   assert.ok(INTRO_BACKGROUND_SPAWN_MS <= 50);
   assert.ok(INTRO_MAX_DEPTH >= 500_000);
-  assert.ok(INTRO_TRAIL_FADE_MS >= 3500);
   assert.ok(INTRO_NEBULA_SEEDS_PER_WAVE >= 64);
   assert.ok(MRI_PREITERATE_MS >= 1000);
 });
