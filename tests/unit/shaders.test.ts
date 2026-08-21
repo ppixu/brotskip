@@ -217,6 +217,7 @@ test("the game render loop only calls drawing helpers that exist", () => {
 test("opening waits for a Play tap and gameplay rethrow sits on the throw stone", () => {
   const intro = readFileSync(new URL("../../app/BuddhabrotIntro.tsx", import.meta.url), "utf8");
   const css = readFileSync(new URL("../../app/globals.css", import.meta.url), "utf8");
+  const explain = readFileSync(new URL("../../lib/buddhabrot/explain.ts", import.meta.url), "utf8");
   assert.match(intro, />Play</);
   assert.doesNotMatch(intro, /liveProgress/);
   assert.doesNotMatch(intro, /\{ready &&/);
@@ -234,9 +235,10 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(intro, /ExternalLinkIcon/);
   assert.match(intro, /introPaperRight/);
   assert.match(intro, /introPaperFigure/);
-  assert.match(intro, /Mandelbrot set is a famous mathematical pattern/);
-  assert.match(intro, /buddhabrot-paper\.png/);
-  assert.match(intro, /mandelbrot-paper\.png/);
+  assert.match(intro, /MANDELBROT_EXPLAIN/);
+  assert.match(explain, /Mandelbrot set is a famous mathematical pattern/);
+  assert.match(explain, /buddhabrot-paper\.png/);
+  assert.match(explain, /mandelbrot-paper\.png/);
   assert.match(intro, /introPaperWiki/);
   assert.match(intro, /introPaperWikiBox/);
   assert.doesNotMatch(intro, /↗/);
