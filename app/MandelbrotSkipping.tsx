@@ -56,8 +56,6 @@ import {
   clampAcceleration,
   DEFAULT_ACCELERATION,
   DEPTH_OPTIONS,
-  FAST_FORWARD_MULTIPLIER,
-  fastForwardSteps,
   MAX_ACCELERATION,
   MIN_ACCELERATION,
 } from "@/lib/orbit-tuning";
@@ -99,7 +97,11 @@ import {
 } from "@/lib/tutorial-arrow";
 import { INTRO_PLAY_ALIGN_MS, INTRO_PLAY_EXIT_MS, PLAY_POND_VIEW } from "@/lib/intro-play";
 import { buddhabrotImageTransform } from "@/lib/buddhabrot-outline";
-import { buddhabrotIntroCrossfadeAlpha, buddhabrotSlingFadeAlpha } from "@/lib/buddhabrot-fade";
+import {
+  buddhabrotIntroCrossfadeAlpha,
+  buddhabrotShadeFadeAlpha,
+  buddhabrotSlingFadeAlpha,
+} from "@/lib/buddhabrot-fade";
 
 type Phase = "ready" | "aiming" | "flying" | "resolving" | "result";
 
@@ -1420,7 +1422,6 @@ export default function MandelbrotSkipping() {
   const spectatorRef = useRef(false);
   const savedTuningRef = useRef<Tuning | null>(null);
   const throwAgainRef = useRef<() => void>(() => {});
-  const fastForwardRef = useRef<() => void>(() => {});
   const introExitTimerRef = useRef(0);
   const [intro, setIntro] = useState(false);
   const [introFading, setIntroFading] = useState(false);
@@ -1643,10 +1644,10 @@ export default function MandelbrotSkipping() {
     let lastIntroBackground = 0;
     let buddhabrotIntroFadeStarted = 0;
     let buddhabrotSlingFadeStarted = 0;
+    let buddhabrotShadeFadeStarted = 0;
     let buddhabrotBackgroundRevealed = false;
     let previewKey = "";
     let hasThrown = false;
-    let fastForward = false;
     let liveBuddhabrot: {
       generator: ReturnType<typeof createBuddhabrotGenerator>;
       canvas: OffscreenCanvas;
@@ -1658,6 +1659,7 @@ export default function MandelbrotSkipping() {
     resetBuddhabrotFadeRef.current = () => {
       buddhabrotIntroFadeStarted = 0;
       buddhabrotSlingFadeStarted = 0;
+      buddhabrotShadeFadeStarted = 0;
       buddhabrotBackgroundRevealed = true;
     };
     invalidateFlashlightRef.current = () => { flashlightDirty = true; };
@@ -1784,7 +1786,6 @@ export default function MandelbrotSkipping() {
     function resetRound() {
       shotId += 1;
       phase = "ready";
-      fastForward = false;
       pointerId = -1;
       pointerMode = "none";
       impacts = [];
@@ -1806,13 +1807,6 @@ export default function MandelbrotSkipping() {
       updateHud(true);
     }
     restartRef.current = resetRound;
-
-    fastForwardRef.current = () => {
-      if (phase !== "flying" && phase !== "resolving") return;
-      fastForward = true;
-      engineRef.current?.setIterationBoost(FAST_FORWARD_MULTIPLIER);
-      updateHud(true);
-    };
 
     function launchRock(angle: number, rawPower: number) {
       if (!introActiveRef.current) {
@@ -1839,6 +1833,7 @@ export default function MandelbrotSkipping() {
       rock.skips = 0;
       rock.bounceAge = 10;
       phase = "flying";
+      if (!introActiveRef.current) buddhabrotShadeFadeStarted = performance.now();
       hasThrown = true;
       gameAudio.init();
       gameAudio.throwStart();
@@ -1979,9 +1974,7 @@ export default function MandelbrotSkipping() {
       const maxHopPx = Math.hypot(width, height) * MAX_HOP_SCREEN_MULTIPLIER;
       for (const orbit of orbitScores) {
         if (orbit.resolved) continue;
-        const perOrbit = fastForward
-          ? fastForwardSteps(orbit.depth, tuningRef.current.maxDepth, maxPerOrbit, tuningRef.current.acceleration)
-          : acceleratedSteps(orbit.depth, tuningRef.current.maxDepth, maxPerOrbit, tuningRef.current.acceleration);
+        const perOrbit = acceleratedSteps(orbit.depth, tuningRef.current.maxDepth, maxPerOrbit, tuningRef.current.acceleration);
         for (let step = 0; step < perOrbit && orbit.depth < tuningRef.current.maxDepth; step++) {
           const previousR = orbit.zr;
           const previousI = orbit.zi;
@@ -2772,9 +2765,13 @@ export default function MandelbrotSkipping() {
         buddhabrotBackgroundRevealed = true;
         alpha = buddhabrotIntroCrossfadeAlpha(now - buddhabrotIntroFadeStarted);
       } else if (buddhabrotBackgroundRevealed) {
-        alpha = buddhabrotSlingFadeStarted === 0
+        const slingAlpha = buddhabrotSlingFadeStarted === 0
           ? buddhabrotSlingFadeAlpha(0)
           : buddhabrotSlingFadeAlpha(now - buddhabrotSlingFadeStarted);
+        const shadeAlpha = buddhabrotShadeFadeStarted === 0
+          ? 0
+          : buddhabrotShadeFadeAlpha(now - buddhabrotShadeFadeStarted);
+        alpha = Math.max(slingAlpha, shadeAlpha);
       }
 
       const source = buddhabrotSource ?? (liveBuddhabrot?.ready ? liveBuddhabrot.canvas : null);
@@ -3284,14 +3281,11 @@ export default function MandelbrotSkipping() {
         )}
         {(hud.phase === "flying" || hud.phase === "resolving" || hud.phase === "result") && !intro && (
           <div className="playfieldThrowActions">
-            <button
-              type="button"
-              className="playfieldThrowControl"
-              onClick={hud.phase === "result" ? resetAndFocusCanvas : () => fastForwardRef.current()}
-              aria-label={hud.phase === "result" ? "Rethrow" : `Fast-forward iteration ${FAST_FORWARD_MULTIPLIER} times faster`}
-            >
-              {hud.phase === "result" ? "Rethrow" : `Fast forward ${FAST_FORWARD_MULTIPLIER}×`}
-            </button>
+            {hud.phase === "result" && (
+              <button type="button" className="playfieldThrowControl" onClick={resetAndFocusCanvas} aria-label="Rethrow">
+                Rethrow
+              </button>
+            )}
             <button
               type="button"
               className="playfieldShareControl"

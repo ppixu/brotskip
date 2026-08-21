@@ -297,11 +297,10 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(rethrowActionsRule, /top:\s*var\(--throw-stone-y\)/);
   assert.match(game, /className="playfieldThrowActions"/);
   assert.match(game, /className="playfieldShareControl"/);
-  assert.match(game, /Fast forward/);
-  assert.match(game, /Fast-forward iteration/);
-  assert.match(game, /FAST_FORWARD_MULTIPLIER/);
-  assert.match(game, /setIterationBoost\(FAST_FORWARD_MULTIPLIER\)/);
-  assert.match(game, /onClick=\{hud\.phase === "result" \? resetAndFocusCanvas : \(\) => fastForwardRef\.current\(\)\}/);
+  assert.doesNotMatch(game, /Fast forward/i);
+  assert.doesNotMatch(game, /FAST_FORWARD_MULTIPLIER/);
+  assert.doesNotMatch(game, /fastForwardRef/);
+  assert.match(game, /onClick=\{resetAndFocusCanvas\}/);
   assert.match(css, /\.playfieldThrowActions button:disabled \{[\s\S]*?opacity:\s*\.38/);
   assert.doesNotMatch(css, /\.introPlay \{ top:/);
   assert.match(game, /function anchor\(\) \{ return \{ x: width \* 0\.5, y: height \* 0\.82 \}/);
