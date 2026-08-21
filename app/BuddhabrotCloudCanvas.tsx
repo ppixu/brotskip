@@ -22,6 +22,56 @@ type CloudRipple = {
   rings: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>[];
 };
 
+const ORBIT_C_REAL = [-2.12, 0.72] as const;
+const ORBIT_C_IMAG = [-1.42, 1.42] as const;
+const ORBIT_MAX_POINTS = 96;
+const COMET_TRAVEL_MS = 9_500;
+const COMET_HOLD_MS = 3_200;
+const COMET_FADE_MS = 1_900;
+const COMET_MAX_COUNT = 4;
+
+type OrbitComet = {
+  born: number;
+  count: number;
+  line: THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>;
+};
+
+/**
+ * Real z → z² + c escape trajectories, projected exactly like the splat
+ * generator's project_orbit(): x = im(z), y = -(re(z) + ½), depth = im(c),
+ * over the ±ORBIT_FIELD field the .spz cloud was voxelised into — so every
+ * comet path lies along the cloud's own density structure.
+ */
+function sampleOrbitPath(): { cim: number; re: number[]; im: number[] } | null {
+  for (let attempt = 0; attempt < 96; attempt++) {
+    const cre = ORBIT_C_REAL[0] + Math.random() * (ORBIT_C_REAL[1] - ORBIT_C_REAL[0]);
+    const cim = ORBIT_C_IMAG[0] + Math.random() * (ORBIT_C_IMAG[1] - ORBIT_C_IMAG[0]);
+    let zr = 0;
+    let zi = 0;
+    let escaped = false;
+    const re: number[] = [];
+    const im: number[] = [];
+    for (let step = 0; step < 240; step++) {
+      const nr = zr * zr - zi * zi + cre;
+      const ni = 2 * zr * zi + cim;
+      zr = nr;
+      zi = ni;
+      if (zr * zr + zi * zi > 16) {
+        escaped = true;
+        break;
+      }
+      if (step >= 2) {
+        re.push(zr);
+        im.push(zi);
+      }
+    }
+    if (escaped && re.length >= 12) {
+      return { cim, re: re.slice(0, ORBIT_MAX_POINTS), im: im.slice(0, ORBIT_MAX_POINTS) };
+    }
+  }
+  return null;
+}
+
 function makeBeaconTexture() {
   const canvas = document.createElement("canvas");
   canvas.width = 64;
@@ -169,6 +219,95 @@ export default function BuddhabrotCloudCanvas({
     const ripples: CloudRipple[] = [];
     let splatReady = false;
     let nextRippleAt = Number.POSITIVE_INFINITY;
+    const comets: OrbitComet[] = [];
+    let nextCometAt = Number.POSITIVE_INFINITY;
+
+    function removeComet(comet: OrbitComet) {
+      scene.remove(comet.line);
+      comet.line.geometry.dispose();
+      comet.line.material.dispose();
+    }
+
+    function spawnComet(now: number, anchor?: THREE.Vector3) {
+      if (comets.length >= COMET_MAX_COUNT) return;
+      const path = sampleOrbitPath();
+      if (!path) return;
+      // Anchor the first hop on a waterpond ripple circle when one is nearby,
+      // keeping the trajectory's own shape and splat-space orientation.
+      const baseX = path.im[0];
+      const baseY = -(path.re[0] + 0.5);
+      const baseZ = path.cim;
+      const startX = anchor ? anchor.x : baseX;
+      const startY = anchor ? anchor.y : baseY;
+      const startZ = anchor ? anchor.z : baseZ;
+      const count = path.re.length;
+      const positions = new Float32Array((count + 1) * 3);
+      for (let index = 0; index < count; index++) {
+        positions[index * 3] = path.im[index] - baseX + startX;
+        positions[index * 3 + 1] = -(path.re[index] + 0.5) - baseY + startY;
+        positions[index * 3 + 2] = path.cim - baseZ + startZ;
+      }
+      positions[count * 3] = startX;
+      positions[count * 3 + 1] = startY;
+      positions[count * 3 + 2] = startZ;
+      const colors = new Float32Array((count + 1) * 3);
+      for (let index = 0; index <= count; index++) {
+        const t = index / count;
+        colors[index * 3] = 0.16 + 0.84 * t * t;
+        colors[index * 3 + 1] = 0.42 + 0.58 * t;
+        colors[index * 3 + 2] = 1;
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      geometry.setDrawRange(0, 0);
+      const material = new THREE.LineBasicMaterial({
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.78,
+        blending: THREE.AdditiveBlending,
+        depthTest: false,
+        depthWrite: false,
+        toneMapped: false,
+      });
+      const line = new THREE.Line(geometry, material);
+      line.frustumCulled = false;
+      scene.add(line);
+      comets.push({ born: now, count, line });
+    }
+
+    function updateComets(now: number) {
+      for (let index = comets.length - 1; index >= 0; index--) {
+        const comet = comets[index];
+        const elapsed = now - comet.born;
+        const attribute = comet.line.geometry.getAttribute("position") as THREE.BufferAttribute;
+        if (elapsed < COMET_TRAVEL_MS) {
+          const travel = (elapsed / COMET_TRAVEL_MS) * (comet.count - 1);
+          const segment = Math.min(comet.count - 2, Math.floor(travel));
+          const fraction = travel - segment;
+          const headIndex = comet.count;
+          attribute.setX(headIndex, attribute.getX(segment) + (attribute.getX(segment + 1) - attribute.getX(segment)) * fraction);
+          attribute.setY(headIndex, attribute.getY(segment) + (attribute.getY(segment + 1) - attribute.getY(segment)) * fraction);
+          attribute.setZ(headIndex, attribute.getZ(segment) + (attribute.getZ(segment + 1) - attribute.getZ(segment)) * fraction);
+          attribute.needsUpdate = true;
+          comet.line.geometry.setDrawRange(0, segment + 2);
+        } else if (elapsed < COMET_TRAVEL_MS + COMET_HOLD_MS) {
+          attribute.setX(comet.count, attribute.getX(comet.count - 1));
+          attribute.setY(comet.count, attribute.getY(comet.count - 1));
+          attribute.setZ(comet.count, attribute.getZ(comet.count - 1));
+          attribute.needsUpdate = true;
+          comet.line.geometry.setDrawRange(0, comet.count + 1);
+        } else {
+          const fade = 1 - (elapsed - COMET_TRAVEL_MS - COMET_HOLD_MS) / COMET_FADE_MS;
+          if (fade <= 0) {
+            removeComet(comet);
+            comets.splice(index, 1);
+          } else {
+            comet.line.material.opacity = 0.78 * fade;
+          }
+        }
+      }
+    }
 
     function removeRipple(ripple: CloudRipple) {
       scene.remove(ripple.group);
@@ -240,6 +379,22 @@ export default function BuddhabrotCloudCanvas({
         spawnRipple(now);
         nextRippleAt = now + 850 + Math.random() * 1_150;
       }
+      if (splatReady && !reduceMotion && !fadingRef.current && now >= nextCometAt && comets.length < COMET_MAX_COUNT) {
+        // Launch from a point on the newest waterpond circle, if one is alive.
+        const latest = ripples[ripples.length - 1];
+        let anchor: THREE.Vector3 | undefined;
+        if (latest) {
+          const ringT = THREE.MathUtils.clamp((now - latest.born) / RIPPLE_LIFETIME_MS, 0, 1);
+          const radius = 0.02 + ringT * 0.32;
+          const angle = Math.random() * Math.PI * 2;
+          anchor = new THREE.Vector3(Math.cos(angle) * radius, Math.sin(angle) * radius, 0)
+            .applyQuaternion(latest.group.quaternion)
+            .add(latest.group.position);
+        }
+        spawnComet(now, anchor);
+        nextCometAt = now + 2_600 + Math.random() * 3_400;
+      }
+      updateComets(now);
       for (let index = ripples.length - 1; index >= 0; index--) {
         const ripple = ripples[index];
         const elapsed = now - ripple.born;
@@ -332,6 +487,7 @@ export default function BuddhabrotCloudCanvas({
       if (!disposed) {
         splatReady = true;
         nextRippleAt = performance.now() + 420;
+        nextCometAt = performance.now() + 900;
         onLoadProgress?.(1);
         onReady?.();
         setReady(true);
@@ -350,6 +506,7 @@ export default function BuddhabrotCloudCanvas({
       renderer.domElement.removeEventListener("pointerup", onPointerUp);
       renderer.domElement.removeEventListener("pointercancel", onPointerUp);
       for (const ripple of ripples) removeRipple(ripple);
+      for (const comet of comets) removeComet(comet);
       ripples.length = 0;
       rippleGeometry.dispose();
       beaconTexture.dispose();

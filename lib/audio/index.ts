@@ -22,7 +22,6 @@ export type GameAudio = {
   init(): void;
   setVolume(volume: number): void;
   setMuted(muted: boolean): void;
-  ambientStart(): void;
   playStart(): void;
   throwStart(): void;
   splash(skipIndex: number, glyph: number, panPosition: number): void;
@@ -101,11 +100,6 @@ export function createGameAudio(): GameAudio {
       try {
         muted = next;
         shell?.setMuted(next);
-      } catch { /* audio stays optional */ }
-    },
-    ambientStart() {
-      try {
-        ensureIntro()?.start();
       } catch { /* audio stays optional */ }
     },
     playStart() {

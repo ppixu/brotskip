@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { BUDDHABROT_EXPLAIN } from "@/lib/buddhabrot/explain";
+import { BUDDHABROT_EXPLAIN, MANDELBROT_EXPLAIN } from "@/lib/buddhabrot/explain";
 import BuddhabrotCloudCanvas from "./BuddhabrotCloudCanvas";
 
 function paperWords(text: string) {
@@ -29,6 +29,7 @@ export default function BuddhabrotIntro({
   onPlayerNameChange: (name: string) => void;
 }) {
   const { wikipedia } = BUDDHABROT_EXPLAIN;
+  const mandelbrot = MANDELBROT_EXPLAIN;
   const [loadProgress, setLoadProgress] = useState(0);
   const [splatReady, setSplatReady] = useState(false);
   const handleLoadProgress = useCallback((progress: number) => setLoadProgress(progress), []);
@@ -53,13 +54,9 @@ export default function BuddhabrotIntro({
           <i style={{ width: `${loadProgress * 100}%` }} />
         </span>
       </div>
-      <article className="introPaper" aria-label="Buddhabrot, from Wikipedia">
+      <article className="introPaper introPaperRight" aria-label="Buddhabrot, from Wikipedia">
         <p className="introPaperJournal">{wikipedia.journal}</p>
         <h1 className="introPaperTitle">{wikipedia.title}</h1>
-        <figure className="introPaperFigure">
-          <div className="introPaperFigureImage" role="img" aria-label="Cached Buddhabrot pond background" />
-          <figcaption>Cached pond</figcaption>
-        </figure>
         <p className="introPaperLede">
           {wikipedia.sentences.map((sentence) => (
             <span key={sentence.cite}>
@@ -72,15 +69,32 @@ export default function BuddhabrotIntro({
               {" "}
             </span>
           ))}
-        </p>
-        <p className="introPaperSource">
-          <a href={wikipedia.references[1].url} target="_blank" rel="noreferrer">
-            Read more about the Buddhabrot on Wikipedia <ExternalLinkIcon />
+          {" "}
+          <a className="introPaperWiki" href={wikipedia.references[1].url} target="_blank" rel="noreferrer">
+            Wikipedia
           </a>
+          <span className="introPaperWikiBox"><ExternalLinkIcon /></span>
         </p>
+        <figure className="introPaperFigure">
+          <img src={BUDDHABROT_EXPLAIN.image.src} alt={BUDDHABROT_EXPLAIN.image.alt} loading="lazy" />
+        </figure>
+      </article>
+      <article className="introPaper" aria-label="Mandelbrot set, from Wikipedia">
+        <p className="introPaperJournal">{mandelbrot.journal}</p>
+        <h2 className="introPaperTitle">{mandelbrot.title}</h2>
+        <p className="introPaperLede">
+          {mandelbrot.lede}{" "}
+          <a className="introPaperWiki" href={mandelbrot.source.url} target="_blank" rel="noreferrer">
+            Wikipedia
+          </a>
+          <span className="introPaperWikiBox"><ExternalLinkIcon /></span>
+        </p>
+        <figure className="introPaperFigure">
+          <img src={mandelbrot.image.src} alt={mandelbrot.image.alt} loading="lazy" />
+        </figure>
       </article>
       <div className="introNameEntry">
-        <label className="introNameLabel" htmlFor="intro-name">Score name</label>
+        <label className="introNameLabel" htmlFor="intro-name">Your name</label>
         <input
           id="intro-name"
           className="introNameInput"

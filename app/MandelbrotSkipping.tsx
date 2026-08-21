@@ -1625,7 +1625,6 @@ export default function MandelbrotSkipping() {
     function unlockIntroAudio() {
       if (!introActiveRef.current || introFadingRef.current) return;
       gameAudio.init();
-      gameAudio.ambientStart();
     }
     if (introActiveRef.current) unlockIntroAudio();
     window.addEventListener("pointerdown", unlockIntroAudio);
