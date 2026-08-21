@@ -7,7 +7,9 @@ export const DEPTH_OPTIONS = [
 export const MIN_ACCELERATION = 0.5;
 export const MAX_ACCELERATION = 90;
 export const DEFAULT_ACCELERATION = 30;
-export const BASE_STEPS_PER_SOURCE = 4;
+export const BASE_STEPS_PER_SOURCE = 1;
+export const ACCELERATION_RAMP_DEPTH = 1024;
+export const ACCELERATION_CURVE_POWER = 2;
 export const FAST_FORWARD_MULTIPLIER = 10;
 
 export function clampAcceleration(value: number): number {
@@ -16,9 +18,13 @@ export function clampAcceleration(value: number): number {
 }
 
 export function acceleratedSteps(depth: number, maxDepth: number, budget: number, multiplier: number): number {
-  const progress = Math.max(0, Math.min(1, depth / Math.max(maxDepth, 1)));
-  const safeMultiplier = Math.max(1, Number.isFinite(multiplier) ? multiplier : 1);
-  const steps = BASE_STEPS_PER_SOURCE * Math.pow(safeMultiplier, progress);
+  const safeDepth = Number.isFinite(depth) ? Math.max(0, Math.min(depth, Math.max(0, maxDepth))) : 0;
+  const safeMultiplier = Math.max(
+    MIN_ACCELERATION,
+    Math.min(MAX_ACCELERATION, Number.isFinite(multiplier) ? multiplier : DEFAULT_ACCELERATION),
+  );
+  const progress = safeDepth / ACCELERATION_RAMP_DEPTH;
+  const steps = BASE_STEPS_PER_SOURCE + safeMultiplier * Math.pow(progress, ACCELERATION_CURVE_POWER);
   return Math.min(budget, Math.max(BASE_STEPS_PER_SOURCE, Math.floor(steps)));
 }
 

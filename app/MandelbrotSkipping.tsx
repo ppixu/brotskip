@@ -51,6 +51,8 @@ import {
   type OrbitAtmosphere,
 } from "@/lib/flashlight-probe";
 import {
+  ACCELERATION_CURVE_POWER,
+  ACCELERATION_RAMP_DEPTH,
   acceleratedSteps,
   BASE_STEPS_PER_SOURCE,
   clampAcceleration,
@@ -331,12 +333,15 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
   if (source >= params.sourceCount) { return; }
   var state = states[source];
   if (state.alive == 0u || state.step >= params.maxDepth) { return; }
-  let depthProgress = clamp(f32(state.step) / max(f32(params.maxDepth), 1.0), 0.0, 1.0);
-  let acceleration = pow(max(params.accelerationMultiplier, 1.0), depthProgress);
-  let acceleratedBatch = min(
-    params.batch,
-    max(${BASE_STEPS_PER_SOURCE}u, u32(f32(${BASE_STEPS_PER_SOURCE}u) * acceleration * max(params.iterationBoost, 1.0)))
+  let rampDepth = f32(state.step) / ${ACCELERATION_RAMP_DEPTH}.0;
+  let curveAcceleration = pow(rampDepth, ${ACCELERATION_CURVE_POWER}.0);
+  let curvedBatch = min(
+    f32(params.batch),
+    f32(${BASE_STEPS_PER_SOURCE}u) + max(params.accelerationMultiplier, ${MIN_ACCELERATION}) * curveAcceleration
   );
+  let normalBatch = max(${BASE_STEPS_PER_SOURCE}u, u32(curvedBatch));
+  let boost = max(1u, u32(params.iterationBoost));
+  let acceleratedBatch = min(params.batch, normalBatch * boost);
   let lineCount = min(acceleratedBatch, params.lineQuota);
   let firstLineStep = acceleratedBatch - lineCount;
   for (var i = 0u; i < acceleratedBatch; i++) {

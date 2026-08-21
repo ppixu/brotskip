@@ -29,13 +29,15 @@ test("WGSL shaders do not reuse a binding name as an entry point", () => {
   }
 });
 
-test("GPU iterations use a depth-ramped acceleration multiplier", () => {
+test("GPU iterations use a steep absolute-depth acceleration curve", () => {
   const source = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
   assert.match(source, /accelerationMultiplier: f32/);
   assert.match(source, /iterationBoost: f32/);
-  assert.match(source, /pow\(max\(params\.accelerationMultiplier, 1\.0\), depthProgress\)/);
-  assert.match(source, /f32\(\$\{BASE_STEPS_PER_SOURCE\}u\) \* acceleration \* max\(params\.iterationBoost/);
-  assert.doesNotMatch(source, /pow\(depthProgress, max\(params\.accelerationCurve/);
+  assert.match(source, /f32\(state\.step\) \/ \$\{ACCELERATION_RAMP_DEPTH\}\.0/);
+  assert.match(source, /pow\(rampDepth, \$\{ACCELERATION_CURVE_POWER\}\.0\)/);
+  assert.match(source, /max\(params\.accelerationMultiplier, \$\{MIN_ACCELERATION\}\) \* curveAcceleration/);
+  assert.match(source, /normalBatch \* boost/);
+  assert.doesNotMatch(source, /let depthProgress = clamp\(f32\(state\.step\) \/ max\(f32\(params\.maxDepth\)/);
 });
 
 test("orbit trails accumulate in native-pixel pond and throw layers", () => {
