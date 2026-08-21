@@ -1,12 +1,11 @@
 /**
- * Loading-screen bed and Play-tap jingle. A faint pentatonic pad under the
- * intro, then a short Nintendo start phrase that fades the bed away.
+ * Loading-screen silence and Play-tap jingle. The intro plays nothing under
+ * it; a short Nintendo start phrase plays on the Play tap.
  */
 import { scheduleCleanup, type EngineShell } from "./engine.ts";
 import { degreeToFrequency, MAX_TRANSIENT_HZ, paletteFromLanding } from "./theory.ts";
 
 export const INTRO_AMBIENT_PEAK = 0.032;
-export const INTRO_AMBIENT_FADE_IN_SECONDS = 2.4;
 export const INTRO_AMBIENT_FADE_SECONDS = 1.4;
 
 const INTRO_PALETTE = paletteFromLanding(-0.58, 0);
@@ -104,30 +103,11 @@ export function createIntroAudio(shell: EngineShell): IntroAudio {
     start() {
       if (started || released) return;
       started = true;
-      const now = context.currentTime;
-      const mix = [0.28, 0.32, 0.18, 0.16, 0.06];
-      introAmbientDegrees().forEach((degree, index) => {
-        const oscillator = context.createOscillator();
-        const gain = context.createGain();
-        oscillator.type = index === 0 ? "triangle" : "sine";
-        oscillator.frequency.value = degreeToFrequency(INTRO_PALETTE, degree, 900);
-        oscillator.detune.value = index % 2 === 0 ? -6 : 7;
-        gain.gain.value = mix[index] ?? 0.1;
-        oscillator.connect(gain).connect(bus);
-        oscillator.start(now);
-        voices.push({ oscillator, gain });
-      });
-      fadeBus(INTRO_AMBIENT_PEAK, INTRO_AMBIENT_FADE_IN_SECONDS);
     },
     play() {
       if (released) return;
       released = true;
-      fadeBus(0.0001, INTRO_AMBIENT_FADE_SECONDS);
       playJingle();
-      const haltAt = context.currentTime + INTRO_AMBIENT_FADE_SECONDS + 0.08;
-      for (const voice of voices) {
-        try { voice.oscillator.stop(haltAt); } catch { /* already stopped */ }
-      }
     },
     stop() {
       released = true;

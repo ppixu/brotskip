@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   INTRO_AMBIENT_FADE_SECONDS,
@@ -16,7 +17,7 @@ function pentatonicTone(degree: number) {
   return ((degree % 5) + 5) % 5;
 }
 
-test("loading ambient is a faint tonic-triad pad, quieter than gameplay chords", () => {
+test("the loading screen has no ambient bed; its peak stays below gameplay chords", () => {
   const degrees = introAmbientDegrees();
   assert.ok(degrees.length >= 3);
   for (const degree of degrees) {
@@ -24,6 +25,10 @@ test("loading ambient is a faint tonic-triad pad, quieter than gameplay chords",
   }
   assert.ok(INTRO_AMBIENT_PEAK < 0.05);
   assert.ok(INTRO_AMBIENT_PEAK < chordGain(0.6, 0.5, false));
+  const intro = readFileSync(new URL("../../lib/audio/intro.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(intro, /oscillator\.start\(now\)/);
+  assert.match(intro, /playJingle\(\)/);
+  assert.match(intro, /playJingleDegrees/);
 });
 
 test("Play tap plays a short tonic jingle and fades the bed under it", () => {
