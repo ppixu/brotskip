@@ -59,28 +59,29 @@ export default function BuddhabrotIntro({
               {" "}
             </span>
           ))}
+          {" "}
+          <a className="introPaperWiki" href={wikipedia.references[1].url} target="_blank" rel="noreferrer">
+            Wikipedia
+          </a>
+          <span className="introPaperWikiBox">↗</span>
         </p>
         <figure className="introPaperFigure">
           <img src={BUDDHABROT_EXPLAIN.image.src} alt={BUDDHABROT_EXPLAIN.image.alt} loading="lazy" />
-          <figcaption>{BUDDHABROT_EXPLAIN.image.credit}</figcaption>
         </figure>
-        <p className="introPaperSource">
-          <a href={wikipedia.references[1].url} target="_blank" rel="noreferrer">Wikipedia</a>
-        </p>
       </article>
       <article className="introPaper" aria-label="Mandelbrot set, from Wikipedia">
         <p className="introPaperJournal">{mandelbrot.journal}</p>
         <h2 className="introPaperTitle">{mandelbrot.title}</h2>
-        <p className="introPaperLede">{mandelbrot.lede}</p>
+        <p className="introPaperLede">
+          {mandelbrot.lede}{" "}
+          <a className="introPaperWiki" href={mandelbrot.source.url} target="_blank" rel="noreferrer">
+            Wikipedia
+          </a>
+          <span className="introPaperWikiBox">↗</span>
+        </p>
         <figure className="introPaperFigure">
           <img src={mandelbrot.image.src} alt={mandelbrot.image.alt} loading="lazy" />
-          <figcaption>{mandelbrot.image.credit}</figcaption>
         </figure>
-        <p className="introPaperSource">
-          <a href={mandelbrot.source.url} target="_blank" rel="noreferrer">
-            {mandelbrot.source.text}
-          </a>
-        </p>
       </article>
       <div className="introNameEntry">
         <label className="introNameLabel" htmlFor="intro-name">Your name</label>

@@ -238,8 +238,10 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(intro, /Mandelbrot set is a famous mathematical pattern/);
   assert.match(intro, /buddhabrot-paper\.png/);
   assert.match(intro, /mandelbrot-paper\.png/);
-  assert.match(intro, /introPaperSource/);
-  assert.match(intro, /Read more about the Buddhabrot on Wikipedia/);
+  assert.match(intro, /introPaperWiki/);
+  assert.match(intro, /introPaperWikiBox/);
+  assert.doesNotMatch(intro, /Read more about/);
+  assert.doesNotMatch(intro, /introPaperSource|figcaption|generated in-engine/i);
   assert.doesNotMatch(intro, /introPaperRefs/);
   assert.doesNotMatch(intro, /rotateRight/);
   assert.doesNotMatch(css, /introBuddhaZoom/);
@@ -328,8 +330,8 @@ test("intro hides debug controls and keeps the fixed classic cloud", () => {
   assert.match(cloud, /scales: dyno\.mul\(scales, splatSize\)/);
   assert.match(cloud, /splatSize\.value = tuneRef\.current\.splatSize/);
   assert.match(cloud, /introPlayPose\(alignFrom, elapsed, reduceMotion, tuneRef\.current\)/);
-  assert.match(intro, /introPaperSource/);
-  assert.match(css, /\.introPaperSource/);
+  assert.match(intro, /introPaperWiki/);
+  assert.match(css, /\.introPaperWiki/);
   assert.doesNotMatch(css, /introPlayDebug|introSetToggle/);
 });
 

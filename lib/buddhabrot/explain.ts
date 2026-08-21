@@ -11,7 +11,6 @@ export const BUDDHABROT_EXPLAIN = {
   image: {
     src: "buddhabrot-paper.png",
     alt: "Buddhabrot density map of escaping Mandelbrot trajectories",
-    credit: "CC0 — generated in-engine",
   },
   wikipedia: {
     journal: "Fractal density of escaping orbits",
@@ -52,7 +51,6 @@ export const MANDELBROT_EXPLAIN = {
   image: {
     src: "mandelbrot-paper.png",
     alt: "The Mandelbrot set plotted on the complex plane",
-    credit: "CC0 — generated in-engine",
   },
 } as const;
 

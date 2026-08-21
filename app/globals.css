@@ -721,14 +721,6 @@ button, input { font: inherit; }
   height: auto;
   opacity: .82;
 }
-.introPaperFigure figcaption {
-  margin-top: 4px;
-  color: rgba(255, 255, 255, .5);
-  font-size: 9px;
-  font-variant: small-caps;
-  letter-spacing: .18em;
-  text-align: center;
-}
 .introPaperJournal {  margin: 0;
   color: rgba(255, 255, 255, .62);
   font-size: 9px;
@@ -760,22 +752,26 @@ button, input { font: inherit; }
   line-height: .8;
 }
 .introPaperLede i { font-style: italic; }
-.introPaperSource {
-  margin: 12px 0 0;
-  font-size: 11px;
-  text-align: center;
-}
-.introPaperSource a {
+.introPaperWiki {
   color: rgba(255, 255, 255, .8);
   text-decoration: underline;
   text-decoration-color: rgba(255, 255, 255, .42);
   text-underline-offset: 2px;
 }
-.introPaperSource a:hover,
-.introPaperSource a:focus-visible {
+.introPaperWiki:hover,
+.introPaperWiki:focus-visible {
   color: #fff;
   text-decoration-color: #fff;
   outline: none;
+}
+.introPaperWikiBox {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 3px;
+  border: 1px solid rgba(255, 255, 255, .42);
+  border-radius: 4px;
+  font-size: .78em;
+  line-height: 1.1;
 }
 .introPaperCite {
   font-family: Palatino, "Palatino Linotype", "Times New Roman", Times, serif;
@@ -1133,7 +1129,6 @@ button, input { font: inherit; }
   color: #17333a;
 }
 .gameShell.lightMode .introPaperJournal { color: rgba(23, 51, 58, .58); }
-.gameShell.lightMode .introPaperFigure figcaption { color: rgba(23, 51, 58, .5); }
 .gameShell.lightMode .introPaperSource a,
 .gameShell.lightMode .introPaperCite a { color: rgba(23, 51, 58, .74); }
 .gameShell.lightMode .introPaperSource a { text-decoration-color: rgba(23, 51, 58, .35); }
