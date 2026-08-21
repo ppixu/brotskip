@@ -74,9 +74,6 @@ export default function BuddhabrotIntro({
           </a>
           <span className="introPaperWikiBox"><ExternalLinkIcon /></span>
         </p>
-        <figure className="introPaperFigure">
-          <img src={BUDDHABROT_EXPLAIN.image.src} alt={BUDDHABROT_EXPLAIN.image.alt} loading="lazy" />
-        </figure>
       </article>
       <div className="introNameEntry">
         <label className="introNameLabel" htmlFor="intro-name">Your name</label>

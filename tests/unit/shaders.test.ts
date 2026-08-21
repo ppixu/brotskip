@@ -235,7 +235,7 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(intro, /wikipedia/);
   assert.match(intro, /introPaper/);
   assert.match(intro, /ExternalLinkIcon/);
-  assert.match(intro, /introPaperFigure/);
+  assert.doesNotMatch(intro, /introPaperFigure|buddhabrot-paper\.png/);
   assert.doesNotMatch(intro, /MANDELBROT_EXPLAIN|Mandelbrot set/);
   assert.match(explain, /Mandelbrot set is a famous mathematical pattern/);
   assert.match(explain, /buddhabrot-paper\.png/);
@@ -249,7 +249,7 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.doesNotMatch(css, /introBuddhaZoom/);
   assert.match(css, /introPaper/);
   assert.doesNotMatch(css, /\.introPaperRight/);
-  assert.match(css, /\.introPaperFigure/);
+  assert.doesNotMatch(css, /\.introPaperFigure/);
   assert.doesNotMatch(css, /\.introOverlay\.fading \{ opacity: 0/);
   assert.match(css, /\.introOverlay\.fading \.introChrome/);
   assert.match(css, /\.introOverlay\.fading \.introPaper/);

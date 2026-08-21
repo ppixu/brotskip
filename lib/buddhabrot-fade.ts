@@ -2,8 +2,8 @@ import { BUDDHABROT_OUTLINE_ALPHA } from "./buddhabrot-outline.ts";
 import { INTRO_PLAY_FADE_DELAY_MS, INTRO_PLAY_FADE_MS } from "./intro-play.ts";
 
 export const BUDDHABROT_SLING_FADE_MS = 650;
-export const BUDDHABROT_SHADE_DELAY_MS = 1400;
 export const BUDDHABROT_SHADE_FADE_MS = 1800;
+export const BUDDHABROT_SHADE_GAIN = 0.7;
 
 function smoothstep(progress: number) {
   const clamped = Math.max(0, Math.min(1, progress));
@@ -20,6 +20,6 @@ export function buddhabrotSlingFadeAlpha(elapsedMs: number) {
 }
 
 export function buddhabrotShadeFadeAlpha(elapsedMs: number) {
-  const progress = Math.max(0, Math.min(1, (elapsedMs - BUDDHABROT_SHADE_DELAY_MS) / BUDDHABROT_SHADE_FADE_MS));
-  return BUDDHABROT_OUTLINE_ALPHA * smoothstep(progress);
+  const progress = Math.max(0, Math.min(1, elapsedMs / BUDDHABROT_SHADE_FADE_MS));
+  return BUDDHABROT_OUTLINE_ALPHA * BUDDHABROT_SHADE_GAIN * smoothstep(progress);
 }

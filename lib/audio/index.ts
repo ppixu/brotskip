@@ -26,7 +26,7 @@ export type GameAudio = {
   throwStart(): void;
   splash(skipIndex: number, glyph: number, panPosition: number): void;
   update(orbits: readonly OrbitFeatureInput[], phase: GamePhase, nowMs: number): void;
-  finish(scoreRatio: number): void;
+  finish(scoreRatio: number): number;
   reset(): void;
   destroy(): void;
 };
@@ -149,8 +149,9 @@ export function createGameAudio(): GameAudio {
     },
     finish(scoreRatio) {
       try {
-        engine?.finish(Math.max(0, Math.min(1, scoreRatio)));
+        return engine?.finish(Math.max(0, Math.min(1, scoreRatio))) ?? 0;
       } catch { /* audio stays optional */ }
+      return 0;
     },
     reset() {
       try {

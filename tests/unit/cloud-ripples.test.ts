@@ -32,4 +32,5 @@ test("the intro cloud is doubled and emits fading 3D rings from real splats", ()
   assert.doesNotMatch(source, /camera\.fov = pose\.fov/);
   assert.match(source, /camera\.fov = INTRO_PLAY_FOV/);
   assert.match(source, /updateProjectionMatrix\(\)/);
+  assert.doesNotMatch(source, /OrbitComet|spawnComet|THREE\.Line/);
 });

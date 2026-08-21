@@ -1833,7 +1833,6 @@ export default function MandelbrotSkipping() {
       rock.skips = 0;
       rock.bounceAge = 10;
       phase = "flying";
-      if (!introActiveRef.current) buddhabrotShadeFadeStarted = performance.now();
       hasThrown = true;
       gameAudio.init();
       gameAudio.throwStart();
@@ -1947,9 +1946,10 @@ export default function MandelbrotSkipping() {
         history.replaceState(null, "", throwShareUrl(window.location.href, currentShareRef.current));
       }
       setHud({ phase, score: total, skips: rock.skips, deepest, progress: 1, coverage, spread });
-      gameAudio.finish(finishComplexity({
+      const victoryDuration = gameAudio.finish(finishComplexity({
         score: total, deepest, coverage, skips: rock.skips,
       }));
+      if (!introActiveRef.current) buddhabrotShadeFadeStarted = performance.now() + victoryDuration * 1000;
     }
 
     function advanceOrbits(now: number, elapsed: number) {

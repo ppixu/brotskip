@@ -708,15 +708,6 @@ button, input { font: inherit; }
   font-family: Palatino, "Palatino Linotype", "Iowan Old Style", "Times New Roman", Times, serif;
   transition: opacity 280ms ease;
 }
-.introPaperFigure {
-  margin: 12px 0 0;
-}
-.introPaperFigure img {
-  display: block;
-  width: 100%;
-  height: auto;
-  opacity: .82;
-}
 .introPaperJournal {  margin: 0;
   color: rgba(255, 255, 255, .62);
   font-size: 9px;
@@ -990,11 +981,9 @@ button, input { font: inherit; }
     width: min(17rem, calc(50% - 8px));
     padding: 12px 14px 10px;
   }
-  .introPaperFigure img { opacity: .7; }
   .introPaperTitle { font-size: 24px; margin: 2px 0 8px; }
   .introPaperLede { font-size: 12px; }
   .introPaperLede::first-letter { font-size: 3.2em; }
-  .introPaperFigure { width: 76px; margin-left: 9px; }
   .introPlay { min-height: 44px; }
 }
 

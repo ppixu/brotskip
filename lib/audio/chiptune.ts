@@ -175,7 +175,7 @@ export type ChiptuneEngine = {
   milestone(event: Milestone): void;
   update(frame: FeatureFrame, resolving: boolean): void;
   silence(): void;
-  finish(scoreRatio: number): void;
+  finish(scoreRatio: number): number;
   reset(): void;
 };
 
@@ -190,6 +190,12 @@ type ArpVoice = {
 export function createChiptuneEngine(shell: EngineShell): ChiptuneEngine {
   const context = shell.context;
   const output = shell.output;
+  const gameplayTransientBus = context.createGain();
+  const victoryBus = context.createGain();
+  gameplayTransientBus.gain.value = 1;
+  victoryBus.gain.value = .0001;
+  gameplayTransientBus.connect(output);
+  victoryBus.connect(output);
   const noiseBuffer = makeNoiseBuffer(context, .35);
   const pulseWaves = {
     125: context.createPeriodicWave(...Object.values(pulsePartials(.125)) as [Float32Array, Float32Array]),
@@ -247,6 +253,24 @@ export function createChiptuneEngine(shell: EngineShell): ChiptuneEngine {
 
   let palette: Palette | null = null;
   let lastChordGlyph = 0;
+  let finishGeneration = 0;
+
+  function setBusGain(bus: GainNode, value: number, timeConstant = .02) {
+    const now = context.currentTime;
+    bus.gain.cancelScheduledValues(now);
+    bus.gain.setTargetAtTime(value, now, timeConstant);
+  }
+
+  function silenceVoices() {
+    const now = context.currentTime;
+    for (const voice of chordVoices) voice.gain.gain.setTargetAtTime(.0001, now, .06);
+    for (const voice of arpVoices) {
+      voice.gain.gain.setTargetAtTime(.0001, now, .05);
+      voice.nextTime = 0;
+    }
+    bassGain.gain.setTargetAtTime(.0001, now, .18);
+    bassFifthGain.gain.setTargetAtTime(.0001, now, .18);
+  }
 
   function applyWave(oscillator: OscillatorNode, patch: GlyphPatch) {
     if (patch.waveform === "pulse") {
@@ -264,6 +288,7 @@ export function createChiptuneEngine(shell: EngineShell): ChiptuneEngine {
     type: OscillatorType,
     panPosition: number,
     extra?: { startRatio?: number },
+    bus: GainNode = gameplayTransientBus,
   ) {
     const oscillator = context.createOscillator();
     const gain = context.createGain();
@@ -276,7 +301,7 @@ export function createChiptuneEngine(shell: EngineShell): ChiptuneEngine {
     gain.gain.exponentialRampToValueAtTime(Math.max(.0002, volume), when + .008);
     gain.gain.exponentialRampToValueAtTime(.0001, when + duration);
     pan.pan.value = panPosition;
-    oscillator.connect(gain).connect(pan).connect(output);
+    oscillator.connect(gain).connect(pan).connect(bus);
     oscillator.start(when);
     oscillator.stop(when + duration + .02);
     scheduleCleanup(context, when + duration + .04, [oscillator, gain, pan]);
@@ -284,7 +309,7 @@ export function createChiptuneEngine(shell: EngineShell): ChiptuneEngine {
 
   const MIN_SAFE_HZ = 80;
 
-  function noiseClick(when: number, volume: number, panPosition: number) {
+  function noiseClick(when: number, volume: number, panPosition: number, bus: GainNode = gameplayTransientBus) {
     const source = context.createBufferSource();
     const filter = context.createBiquadFilter();
     const gain = context.createGain();
@@ -296,7 +321,7 @@ export function createChiptuneEngine(shell: EngineShell): ChiptuneEngine {
     gain.gain.setValueAtTime(volume, when);
     gain.gain.exponentialRampToValueAtTime(.0001, when + .014);
     pan.pan.value = panPosition;
-    source.connect(filter).connect(gain).connect(pan).connect(output);
+    source.connect(filter).connect(gain).connect(pan).connect(bus);
     source.start(when);
     source.stop(when + .03);
     scheduleCleanup(context, when + .05, [source, filter, gain, pan]);
@@ -334,6 +359,7 @@ export function createChiptuneEngine(shell: EngineShell): ChiptuneEngine {
       palette = next;
     },
     throwStart() {
+      setBusGain(gameplayTransientBus, 1);
       const used = palette ?? paletteFromLanding(-0.58, 0);
       const when = context.currentTime + .01;
       for (let index = 0; index < 3; index++) {
@@ -343,6 +369,7 @@ export function createChiptuneEngine(shell: EngineShell): ChiptuneEngine {
     },
     splash(skipIndex, glyph, panPosition) {
       if (!palette) return;
+      setBusGain(gameplayTransientBus, 1);
       const when = context.currentTime + .005;
       const pan = Math.max(-.9, Math.min(.9, panPosition));
       const peak = splashPeakHz(palette, skipIndex, glyph);
@@ -416,14 +443,8 @@ export function createChiptuneEngine(shell: EngineShell): ChiptuneEngine {
       }
     },
     silence() {
-      const now = context.currentTime;
-      for (const voice of chordVoices) voice.gain.gain.setTargetAtTime(.0001, now, .06);
-      for (const voice of arpVoices) {
-        voice.gain.gain.setTargetAtTime(.0001, now, .05);
-        voice.nextTime = 0;
-      }
-      bassGain.gain.setTargetAtTime(.0001, now, .18);
-      bassFifthGain.gain.setTargetAtTime(.0001, now, .18);
+      setBusGain(gameplayTransientBus, .0001, .01);
+      silenceVoices();
     },
     finish(scoreRatio) {
       const used = palette ?? paletteFromLanding(-0.58, 0);
@@ -431,34 +452,48 @@ export function createChiptuneEngine(shell: EngineShell): ChiptuneEngine {
       const melody = fanfareMelodyDegrees(plan.tier);
       const when = context.currentTime + .02;
       const phraseBreak = plan.tier >= 2 ? 6 : 0;
+      const finishId = ++finishGeneration;
+      setBusGain(gameplayTransientBus, .0001, .01);
+      setBusGain(victoryBus, 1, .005);
+      let fanfareEnd = when + plan.duration;
       for (let index = 0; index < melody.length; index++) {
         const gap = phraseBreak && index >= phraseBreak ? .1 : 0;
         const t = when + index * plan.stepSeconds + gap;
         const hz = degreeToFrequency(used, melody[index] + 5, MAX_TRANSIENT_HZ);
         const pan = (index / Math.max(1, melody.length - 1)) * 1.15 - .575;
         const length = .14 + plan.tier * .025 + (index === melody.length - 1 ? .08 : 0);
-        blip(hz, t, length, .14 + plan.tier * .02, "square", pan);
+        blip(hz, t, length, .14 + plan.tier * .02, "square", pan, undefined, victoryBus);
         if (plan.tier >= 2) {
-          blip(degreeToFrequency(used, melody[index] + 5, MAX_TRANSIENT_HZ), t, length, .05, "triangle", pan);
+          blip(degreeToFrequency(used, melody[index] + 5, MAX_TRANSIENT_HZ), t, length, .05, "triangle", pan, undefined, victoryBus);
         }
       }
       if (plan.withFinalChord) {
         const chordWhen = when + melody.length * plan.stepSeconds + (phraseBreak ? .1 : 0) + .04;
         const hold = .5 + plan.tier * .28;
+        fanfareEnd = Math.max(fanfareEnd, chordWhen + hold);
         for (const degree of fanfareChordDegrees(plan.tier)) {
-          blip(degreeToFrequency(used, degree + 5, MAX_TRANSIENT_HZ), chordWhen, hold, .11, "triangle", 0);
-          blip(degreeToFrequency(used, degree + 5, MAX_TRANSIENT_HZ), chordWhen, hold * .85, .06, "square", 0);
+          blip(degreeToFrequency(used, degree + 5, MAX_TRANSIENT_HZ), chordWhen, hold, .11, "triangle", 0, undefined, victoryBus);
+          blip(degreeToFrequency(used, degree + 5, MAX_TRANSIENT_HZ), chordWhen, hold * .85, .06, "square", 0, undefined, victoryBus);
         }
       }
+      scheduleCleanup(context, fanfareEnd + .5, [], () => {
+        if (finishId !== finishGeneration) return;
+        setBusGain(victoryBus, .0001, .04);
+        silenceVoices();
+      });
+      return Math.max(0, fanfareEnd - context.currentTime);
     },
     reset() {
+      finishGeneration += 1;
       palette = null;
       lastChordGlyph = 0;
       for (const voice of arpVoices) {
         voice.step = 0;
         voice.nextTime = 0;
       }
-      this.silence();
+      setBusGain(gameplayTransientBus, 1);
+      setBusGain(victoryBus, .0001, .01);
+      silenceVoices();
     },
   };
 }
