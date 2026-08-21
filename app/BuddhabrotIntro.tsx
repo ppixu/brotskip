@@ -66,7 +66,7 @@ export default function BuddhabrotIntro({
         </p>
       </article>
       <div className="introNameEntry">
-        <label className="introNameLabel" htmlFor="intro-name">Score name</label>
+        <label className="introNameLabel" htmlFor="intro-name">Your name</label>
         <input
           id="intro-name"
           className="introNameInput"

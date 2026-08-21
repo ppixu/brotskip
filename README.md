@@ -1,4 +1,4 @@
-# Mandelpond
+# Brotskipping
 
 A top-down rock-skipping arcade game powered by WebGPU Mandelbrot orbit trails.
 

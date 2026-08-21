@@ -792,16 +792,14 @@ button, input { font: inherit; }
   transition: opacity 280ms ease, border-color 180ms ease, background 180ms ease;
 }
 .introNameEntry {
-  position: absolute;
-  left: var(--throw-stone-x);
-  top: calc(var(--throw-stone-y) - 12px);
+  position: relative;
   z-index: 3;
   display: flex;
-  width: min(180px, calc(100vw - 36px));
+  width: min(180px, min(320px, 62vw));
   flex-direction: column;
   align-items: center;
   gap: 5px;
-  transform: translate(-50%, -100%);
+  margin-top: 18px;
   transition: opacity 280ms ease;
 }
 .introNameLabel {

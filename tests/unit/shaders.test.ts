@@ -279,8 +279,8 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(intro, /playerName/);
   assert.match(intro, /onPlayerNameChange/);
   const nameEntryRule = css.match(/(?:^|\n)\.introNameEntry \{([^}]+)\}/)?.[1] ?? "";
-  assert.match(nameEntryRule, /top:\s*calc\(var\(--throw-stone-y\)\s*-\s*12px\)/);
-  assert.match(nameEntryRule, /transform:\s*translate\(-50%,\s*-100%\)/);
+  assert.match(nameEntryRule, /position:\s*relative/);
+  assert.doesNotMatch(nameEntryRule, /var\(--throw-stone/);
   assert.match(rethrowActionsRule, /left:\s*var\(--throw-stone-x\)/);
   assert.match(rethrowActionsRule, /top:\s*var\(--throw-stone-y\)/);
   assert.match(game, /className="playfieldThrowActions"/);

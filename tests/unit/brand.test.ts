@@ -3,12 +3,12 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { GAME_TAGLINE, GAME_TITLE, GAME_VERSION } from "../../lib/brand.ts";
 
-test("the game is named Mandelpond with a z-squared-plus-sea tagline", () => {
-  assert.equal(GAME_TITLE, "Mandelpond");
-  assert.equal(GAME_TAGLINE, "z² + sea");
+test("the game is named Brotskipping with an on-mandelpond tagline", () => {
+  assert.equal(GAME_TITLE, "Brotskipping");
+  assert.equal(GAME_TAGLINE, "on mandelpond");
 });
 
-test("the header shows a large Mandelpond title with a small matching package version", () => {
+test("the header shows a large Brotskipping title with a small matching package version", () => {
   const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as { version: string };
   const game = readFileSync(new URL("../../app/MandelbrotSkipping.tsx", import.meta.url), "utf8");
   const css = readFileSync(new URL("../../app/globals.css", import.meta.url), "utf8");
