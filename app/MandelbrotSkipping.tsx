@@ -14,7 +14,7 @@ import {
   TINY_HOP_STREAK,
   updateOrbitEnd,
 } from "@/lib/orbit-end";
-import { MIN_SKIPS, sampleSkipCount } from "@/lib/skip-count";
+import { MIN_SKIPS, MAX_SKIPS, sampleSkipCount } from "@/lib/skip-count";
 import { allocateSources, allocateSourcesAppend } from "@/lib/orbit-sources";
 import { createBuddhabrotGenerator } from "@/lib/buddhabrot/generator";
 import {
@@ -79,6 +79,7 @@ import {
   type SharedThrow,
 } from "@/lib/throw-share";
 import { COVERAGE_GRID, COVERAGE_WORDS, orbitShape } from "@/lib/orbit-shape";
+import { GLYPH_COUNT, SACRED_SHAPE_COUNT, SACRED_PATH_COUNTS, sacredShapeOffset } from "@/lib/sacred-geometry";
 import { createGameAudio, finishComplexity, type GameAudio } from "@/lib/audio/index";
 import {
   projectSacredBall,
@@ -102,6 +103,30 @@ import {
   buddhabrotShadeFadeAlpha,
   buddhabrotSlingFadeAlpha,
 } from "@/lib/buddhabrot-fade";
+import { STONES, stoneById, clampTuningToStone, type StoneDef } from "@/lib/progression/stones";
+import { expectedSkips } from "@/lib/progression/pricing";
+import {
+  freshProgression,
+  loadProgression,
+  storeProgression,
+  buy as buyProgression,
+  equip as equipProgression,
+  earn as earnProgression,
+  completeChallenges as completeProgressionChallenges,
+  updateStreak as updateProgressionStreak,
+  type ProgressionState,
+} from "@/lib/progression/state";
+import { CHALLENGES, CHALLENGE_IDS, evaluateChallenges, type ThrowSummary } from "@/lib/progression/challenges";
+import {
+  COLLECTABLE_COLORS,
+  COLLECTABLE_EXTRA_SKIPS,
+  COLLECTABLE_RADIUS_PX,
+  COLLECTABLE_SCORE_MULTIPLIER,
+  collectableHit,
+  rollCollectable,
+  surgedDepth,
+  type Collectable,
+} from "@/lib/progression/collectables";
 
 type Phase = "ready" | "aiming" | "flying" | "resolving" | "result";
 
@@ -146,6 +171,7 @@ type OrbitScore = {
   sumXY: number;
   resolved: boolean;
   score: number;
+  boost: number;
   offscreenStreak: number;
   tinyHopStreak: number;
 };
@@ -168,6 +194,7 @@ type OrbitEngine = {
   spawnAppend: (points: Array<{ x: number; y: number }>, skipIndex: number, cap?: number) => number;
   setView: (view: ViewTransform) => void;
   setTuning: (tuning: Tuning) => void;
+  setRarity: (tint: readonly [number, number, number], strength: number) => void;
   setIterationBoost: (multiplier: number) => void;
   setAtmosphere: (atmosphere: OrbitAtmosphere) => void;
   setLayer: (layer: "pond" | "throw") => void;
@@ -204,8 +231,6 @@ type FlyingRock = {
   ripple: boolean;
 };
 
-const GLYPH_COUNT = 7;
-const SACRED_PATH_COUNTS = [2, 2, 2, 4, 2, 3, 7] as const;
 const MIN_SOURCE_DOTS = 6;
 const MAX_SOURCE_DOTS = 128;
 const MAX_SOURCES = 4096;
@@ -404,7 +429,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
 `;
 
 const pointShader = /* wgsl */ `
-struct Style { alpha: f32, pulse: f32, colorMode: f32, sliceEnabled: f32 }
+struct Style { alpha: f32, pulse: f32, colorMode: f32, sliceEnabled: f32, rarity: vec4f }
 struct Slice { zCamera: f32, sliceHalf: f32, zoom: f32, pad: f32 }
 struct Params {
   sourceCount: u32,
@@ -450,8 +475,9 @@ fn projectPoint(z: vec2f) -> vec2f {
   out.position = vec4f(projectPoint(position) / zoom, 0.0, 1.0);
   let depthColor = mix(vec3f(0.10, 0.78, 0.92), vec3f(0.92, 1.0, 0.82), t);
   let tinted = mix(depthColor, skipTint(skip), style.colorMode);
+  let rarityTinted = mix(tinted, style.rarity.rgb, style.rarity.a);
   let gray = vec3f(mix(0.22, 1.0, t));
-  out.color = mix(tinted, gray, style.pulse);
+  out.color = mix(rarityTinted, gray, style.pulse);
   out.weight = weight;
   return out;
 }
@@ -473,7 +499,7 @@ struct CurveSegment {
   depth: f32,
   pad: f32,
 }
-struct Style { alpha: f32, pulse: f32, colorMode: f32, pad: f32 }
+struct Style { alpha: f32, pulse: f32, colorMode: f32, pad: f32, rarity: vec4f }
 struct Params {
   sourceCount: u32,
   batch: u32,
@@ -530,7 +556,8 @@ fn bezier(curve: CurveSegment, t: f32) -> vec2f {
   let depth = clamp(curve.depth, 0.0, 1.0);
   var out: VSOut;
   out.position = vec4f(projectPoint(bezier(curve, t)), 0.0, 1.0);
-  out.color = mix(mix(vec3f(0.08, 0.66, 0.86), vec3f(0.78, 1.0, 0.70), depth), skipTint(curve.pad), style.colorMode);
+  let baseColor = mix(mix(vec3f(0.08, 0.66, 0.86), vec3f(0.78, 1.0, 0.70), depth), skipTint(curve.pad), style.colorMode);
+  out.color = mix(baseColor, style.rarity.rgb, style.rarity.a);
   let directionalFreshness = mix(curve.freshnessStart, curve.freshnessEnd, t);
   out.alpha = 0.28 * pow(directionalFreshness, 0.65);
   return out;
@@ -697,10 +724,19 @@ function makeRandom(seed: number) {
   };
 }
 
-function skipTintRgb(skipIndex: number, colored: boolean): [number, number, number] {
-  if (!colored) return [SKIP_TINTS[0][0], SKIP_TINTS[0][1], SKIP_TINTS[0][2]];
-  const tint = SKIP_TINTS[(Math.max(1, skipIndex) - 1) % SKIP_TINTS.length];
-  return [tint[0], tint[1], tint[2]];
+function skipTintRgb(
+  skipIndex: number,
+  colored: boolean,
+  rarity?: { tint: readonly [number, number, number]; strength: number },
+): [number, number, number] {
+  const source = colored ? SKIP_TINTS[(Math.max(1, skipIndex) - 1) % SKIP_TINTS.length] : SKIP_TINTS[0];
+  const base: [number, number, number] = [source[0], source[1], source[2]];
+  if (!rarity || rarity.strength <= 0) return base;
+  return [
+    Math.round(base[0] + (rarity.tint[0] - base[0]) * rarity.strength),
+    Math.round(base[1] + (rarity.tint[1] - base[1]) * rarity.strength),
+    Math.round(base[2] + (rarity.tint[2] - base[2]) * rarity.strength),
+  ];
 }
 
 function formatCompact(value: number) {
@@ -749,51 +785,6 @@ function loadTuning(): Tuning {
 
 function storeTuning(tuning: Tuning) {
   try { localStorage.setItem(TUNING_KEY, JSON.stringify(tuning)); } catch { /* tuning still works for this session */ }
-}
-
-function samplePolygon(vertices: Array<{ x: number; y: number }>, t: number) {
-  const position = ((t % 1) + 1) % 1 * vertices.length;
-  const edge = Math.floor(position) % vertices.length;
-  const local = position - Math.floor(position);
-  const a = vertices[edge];
-  const b = vertices[(edge + 1) % vertices.length];
-  return { x: a.x + (b.x - a.x) * local, y: a.y + (b.y - a.y) * local };
-}
-
-function regularVertices(sides: number, rotation = -Math.PI / 2) {
-  return Array.from({ length: sides }, (_, index) => ({
-    x: Math.cos(rotation + index * TAU / sides),
-    y: Math.sin(rotation + index * TAU / sides),
-  }));
-}
-
-function sacredShapeOffset(shape: number, path: number, t: number) {
-  const circle = (cx: number, cy: number, radius: number) => ({
-    x: cx + Math.cos(t * TAU - Math.PI / 2) * radius,
-    y: cy + Math.sin(t * TAU - Math.PI / 2) * radius,
-  });
-  switch (shape % GLYPH_COUNT) {
-    case 0: return circle(0, 0, path === 0 ? 1 : .46); // concentric halo
-    case 1: return path === 0 ? samplePolygon(regularVertices(3), t) : circle(0, 0, .48); // triangle mandala
-    case 2: return circle(path === 0 ? -.32 : .32, 0, .68); // vesica piscis
-    case 3: { // four-petal rose
-      const angle = path * Math.PI / 2;
-      return circle(Math.cos(angle) * .43, Math.sin(angle) * .43, .52);
-    }
-    case 4: { // pentagram and inner seal
-      if (path === 1) return circle(0, 0, .34);
-      const vertices = regularVertices(5);
-      return samplePolygon([vertices[0], vertices[2], vertices[4], vertices[1], vertices[3]], t);
-    }
-    case 5: return path < 2
-      ? samplePolygon(regularVertices(3, -Math.PI / 2 + path * Math.PI), t)
-      : circle(0, 0, .34); // hexagram and inner seal
-    default: { // flower of life
-      if (path === 0) return circle(0, 0, .42);
-      const angle = (path - 1) * TAU / 6 - Math.PI / 2;
-      return circle(Math.cos(angle) * .42, Math.sin(angle) * .42, .42);
-    }
-  }
 }
 
 function impactSources(x: number, y: number, width: number, height: number, view: ViewTransform, count: number, shape: number, rotateRight: boolean) {
@@ -855,7 +846,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
   const lineIndirectBuffer = device.createBuffer({ size: 16, usage: usage.STORAGE | usage.COPY_DST | usage.INDIRECT });
   const paramsBuffer = device.createBuffer({ size: 80, usage: usage.UNIFORM | usage.COPY_DST });
   const paramsAtlasBuffer = device.createBuffer({ size: 80, usage: usage.UNIFORM | usage.COPY_DST });
-  const styleBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
+  const styleBuffer = device.createBuffer({ size: 32, usage: usage.UNIFORM | usage.COPY_DST });
   const sliceBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
   const fadeBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
   const lineFadeBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
@@ -967,6 +958,8 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
   let cssHeight = 1;
   let view: ViewTransform = { centerX: INTRO_POND_CENTER.x, centerY: INTRO_POND_CENTER.y, halfY: INTRO_VIEW_HALF_Y };
   let maxDepth = DEFAULT_TUNING.maxDepth;
+  let rarityTint: [number, number, number] = [1, 1, 1];
+  let rarityStrength = 0;
   let accelerationMultiplier = DEFAULT_TUNING.acceleration;
   let iterationBoost = 1;
   let linePersist = DEFAULT_TUNING.linePersist;
@@ -1119,6 +1112,10 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
       mriEnabled ? 0 : grayscale ? 1 : 0,
       mriEnabled ? 0 : skipColors ? 1 : 0,
       0,
+      rarityTint[0],
+      rarityTint[1],
+      rarityTint[2],
+      mriEnabled ? 0 : rarityStrength,
     ]));
     device.queue.writeBuffer(sliceBuffer, 0, new Float32Array([slice.zCamera, slice.sliceHalf, slice.zoom, 0]));
     device.queue.writeBuffer(indirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
@@ -1300,6 +1297,10 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
         resize();
       }
     },
+    setRarity(tint, strength) {
+      rarityTint = [tint[0] / 255, tint[1] / 255, tint[2] / 255];
+      rarityStrength = Math.max(0, Math.min(1, strength));
+    },
     setIterationBoost(multiplier) {
       iterationBoost = Math.max(1, Number.isFinite(multiplier) ? multiplier : 1);
     },
@@ -1408,6 +1409,10 @@ export default function MandelbrotSkipping() {
   const restartRef = useRef<() => void>(() => {});
   const applyViewRef = useRef<(nextView: ViewTransform) => void>(() => {});
   const playerNameRef = useRef("YOU");
+  const [progression, setProgression] = useState<ProgressionState>(freshProgression);
+  const progressionRef = useRef<ProgressionState>(progression);
+  const [challengeToast, setChallengeToast] = useState<string | null>(null);
+  const stoneRef = useRef<StoneDef>(stoneById(progression.equippedId));
   const tuningRef = useRef<Tuning>({ ...DEFAULT_TUNING });
   const invalidateFlashlightRef = useRef<() => void>(() => {});
   const invalidateGridRef = useRef<() => void>(() => {});
@@ -1453,11 +1458,24 @@ export default function MandelbrotSkipping() {
   }, []);
 
   useEffect(() => {
+    if (!challengeToast) return;
+    const timer = window.setTimeout(() => setChallengeToast(null), 4500);
+    return () => window.clearTimeout(timer);
+  }, [challengeToast]);
+
+  useEffect(() => {
     const frame = requestAnimationFrame(() => {
       const saved = loadTuning();
       tuningRef.current = saved;
       setTuning(saved);
       engineRef.current?.setTuning(saved);
+      const savedProgression = loadProgression(CHALLENGE_IDS);
+      progressionRef.current = savedProgression;
+      setProgression(savedProgression);
+      const stone = stoneById(savedProgression.equippedId);
+      stoneRef.current = stone;
+      engineRef.current?.setTuning(clampTuningToStone(saved, stone));
+      engineRef.current?.setRarity(stone.tint, stone.tintStrength);
     });
     return () => cancelAnimationFrame(frame);
   }, []);
@@ -1485,11 +1503,13 @@ export default function MandelbrotSkipping() {
       engine?.setView(viewRef.current);
       if (introActiveRef.current) {
         engine?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH, doublePixels: true });
+        engine?.setRarity([255, 255, 255], 0);
         engine?.setAtmosphere(INTRO_ATMOSPHERE);
         engine?.setLayer("pond");
         engine?.setDisplay({ ...displayLayerGains("intro"), cone: null, cssWidth: 1, cssHeight: 1 });
       } else {
-        engine?.setTuning(tuningRef.current);
+        engine?.setTuning(clampTuningToStone(tuningRef.current, stoneRef.current));
+        engine?.setRarity(stoneRef.current.tint, stoneRef.current.tintStrength);
         engine?.setAtmosphere(PLAY_ATMOSPHERE);
         engine?.setLayer("throw");
         engine?.setDisplay({ ...displayLayerGains("play"), cone: null, cssWidth: 1, cssHeight: 1 });
@@ -1533,7 +1553,8 @@ export default function MandelbrotSkipping() {
       engineRef.current?.setAtmosphere(PLAY_ATMOSPHERE);
       engineRef.current?.setLayer("throw");
       engineRef.current?.setDisplay({ ...displayLayerGains("play"), cone: null, cssWidth: 1, cssHeight: 1 });
-      engineRef.current?.setTuning(tuningRef.current);
+      engineRef.current?.setTuning(clampTuningToStone(tuningRef.current, stoneRef.current));
+      engineRef.current?.setRarity(stoneRef.current.tint, stoneRef.current.tintStrength);
       applyViewRef.current({ centerX: POND_CENTER.x, centerY: POND_CENTER.y, halfY: VIEW_HALF_Y });
       restartRef.current();
       setIntro(false);
@@ -1582,10 +1603,30 @@ export default function MandelbrotSkipping() {
     tuningRef.current = next;
     setTuning(next);
     storeTuning(next);
-    engineRef.current?.setTuning(next);
+    engineRef.current?.setTuning(clampTuningToStone(next, stoneRef.current));
     invalidateGridRef.current();
     invalidateFlashlightRef.current();
   }, []);
+
+  const applyProgression = useCallback((next: ProgressionState) => {
+    progressionRef.current = next;
+    setProgression(next);
+    storeProgression(next);
+    const stone = stoneById(next.equippedId);
+    stoneRef.current = stone;
+    engineRef.current?.setTuning(clampTuningToStone(tuningRef.current, stone));
+    engineRef.current?.setRarity(stone.tint, stone.tintStrength);
+  }, []);
+
+  const buyStone = useCallback((stoneId: string) => {
+    const bought = buyProgression(progressionRef.current, stoneId);
+    if (bought === progressionRef.current) return;
+    applyProgression(equipProgression(bought, stoneId));
+  }, [applyProgression]);
+
+  const equipStone = useCallback((stoneId: string) => {
+    applyProgression(equipProgression(progressionRef.current, stoneId));
+  }, [applyProgression]);
 
   const toggleTheme = () => {
     setLightMode((previous) => {
@@ -1618,6 +1659,11 @@ export default function MandelbrotSkipping() {
     let lastHud = 0;
     let rock = { x: 0, y: 0, vx: 0, vy: 0, z: 0, vz: 0, spin: 0, skips: 0, bounceAge: 10 };
     let plannedSkips = MIN_SKIPS;
+    let spectatorFixedGlyph: number | null = null;
+    let collectable: Collectable | null = null;
+    let collectableHitCount = 0;
+    let boostMultiplier = 1;
+    let depthSurge = false;
     let impacts: Array<{ cr: number; ci: number; born: number; index: number; glyph: number }> = [];
     let ripples: Array<{ cr: number; ci: number; born: number; index: number; lifetime?: number; maxRadius?: number }> = [];
     let orbitScores: OrbitScore[] = [];
@@ -1751,13 +1797,13 @@ export default function MandelbrotSkipping() {
       const now = performance.now();
       if (!force && now - lastHud < 33) return;
       const deepest = orbitScores.reduce((best, orbit) => Math.max(best, orbit.shownDepth), 0);
-      const score = orbitScores.reduce((sum, orbit) => sum + scoreForOrbit(orbit, orbit.shownDepth), 0);
+      const score = orbitScores.reduce((sum, orbit) => sum + scoreForOrbit(orbit, orbit.shownDepth) * orbit.boost, 0);
       const coverage = orbitScores.reduce((sum, orbit) => sum + orbit.distinct, 0);
       const spread = orbitScores.length
         ? orbitScores.reduce((sum, orbit) => sum + orbitShape(orbit).spread, 0) / orbitScores.length
         : 0;
       const resolvedRatio = orbitScores.length ? orbitScores.filter((orbit) => orbit.resolved).length / orbitScores.length : 0;
-      const depthRatio = orbitScores.length ? orbitScores.reduce((sum, orbit) => sum + Math.min(1, orbit.shownDepth / tuningRef.current.maxDepth), 0) / orbitScores.length : 0;
+      const depthRatio = orbitScores.length ? orbitScores.reduce((sum, orbit) => sum + Math.min(1, orbit.shownDepth / stoneTuning().maxDepth), 0) / orbitScores.length : 0;
       const progress = resolvedRatio * 0.8 + depthRatio * 0.2;
       setHud({ phase, score, skips: rock.skips, deepest, progress, coverage, spread });
       lastHud = now;
@@ -1783,6 +1829,13 @@ export default function MandelbrotSkipping() {
       orbit.sumXY += gx * gy;
     }
 
+    function stoneTuning(): Tuning {
+      if (spectatorRef.current) return tuningRef.current;
+      const clamped = clampTuningToStone(tuningRef.current, stoneRef.current);
+      if (!depthSurge) return clamped;
+      return { ...clamped, maxDepth: surgedDepth(clamped.maxDepth) };
+    }
+
     function resetRound() {
       shotId += 1;
       phase = "ready";
@@ -1795,14 +1848,21 @@ export default function MandelbrotSkipping() {
       lastIntroLaunch = 0;
       lastIntroBackground = 0;
       shapeOffset = Math.floor(Math.random() * GLYPH_COUNT);
+      spectatorFixedGlyph = null;
       gameAudio.reset();
       const a = anchor();
       pull = { ...a };
       rock = { x: a.x, y: a.y, vx: 0, vy: 0, z: 0, vz: 0, spin: 0, skips: 0, bounceAge: 10 };
+      collectable = spectatorRef.current || introActiveRef.current
+        ? null
+        : rollCollectable(Math.random, width, height);
+      collectableHitCount = 0;
+      boostMultiplier = 1;
+      depthSurge = false;
       setCurrentResultId(null);
       engineRef.current?.clear();
       engineRef.current?.setIterationBoost(1);
-      engineRef.current?.setTuning(tuningRef.current);
+      engineRef.current?.setTuning(stoneTuning());
       flashlightDirty = true;
       updateHud(true);
     }
@@ -1811,7 +1871,7 @@ export default function MandelbrotSkipping() {
     function launchRock(angle: number, rawPower: number) {
       if (!introActiveRef.current) {
         engineRef.current?.beginThrow(viewRef.current, width, height, tuningRef.current.rotateRight);
-        engineRef.current?.setTuning(tuningRef.current);
+        engineRef.current?.setTuning(stoneTuning());
         engineRef.current?.setAtmosphere(PLAY_ATMOSPHERE);
         engineRef.current?.setLayer("throw");
       }
@@ -1865,6 +1925,7 @@ export default function MandelbrotSkipping() {
       shapeOffset = shot.glyph;
       shotId = shot.seed;
       plannedSkips = shot.skips;
+      spectatorFixedGlyph = typeof shot.fixedGlyph === "number" ? shot.fixedGlyph : null;
       launchRock(shot.angle, shot.power);
     }
     playThrowRef.current = playSharedThrow;
@@ -1873,8 +1934,10 @@ export default function MandelbrotSkipping() {
     function spawnImpact(x: number, y: number, index: number, glyphOffset: number, now: number, extras?: { gpu?: boolean; ripple?: boolean }) {
       const mapped = screenToComplex(x, y, width, height, viewRef.current, tuningRef.current.rotateRight);
       const source = { x: Math.fround(mapped.x), y: Math.fround(mapped.y) };
-      const glyph = (glyphOffset + index - 1) % GLYPH_COUNT;
-      const dots = introActiveRef.current ? INTRO_SOURCE_DOTS : tuningRef.current.sourceDots;
+      const glyph = spectatorRef.current || introActiveRef.current
+        ? (spectatorFixedGlyph ?? (glyphOffset + index - 1) % GLYPH_COUNT)
+        : stoneRef.current.shapeIndex;
+      const dots = introActiveRef.current ? INTRO_SOURCE_DOTS : stoneTuning().sourceDots;
       const sources = impactSources(
         x, y, width, height, viewRef.current, dots, glyph, tuningRef.current.rotateRight,
       );
@@ -1888,6 +1951,7 @@ export default function MandelbrotSkipping() {
             zr: 0, zi: 0,
             cr: orbitSource.x, ci: orbitSource.y, depth: 0, shownDepth: 0,
             skip: index, glyph, stepDistance: 0, distanceContraction: 0, resolved: false, score: 0,
+            boost: boostMultiplier,
             offscreenStreak: 0, tinyHopStreak: 0,
             cells: new Uint32Array(COVERAGE_WORDS), distinct: 0,
             sumX: 0, sumY: 0, sumXX: 0, sumYY: 0, sumXY: 0,
@@ -1896,7 +1960,7 @@ export default function MandelbrotSkipping() {
       }
       if (gpu) engineRef.current?.spawnAppend(sources, index);
       if (!introActiveRef.current) {
-        gameAudio.splash(index, glyph, width > 0 ? x / width * 2 - 1 : 0);
+        gameAudio.splash(index, glyph % GLYPH_COUNT, width > 0 ? x / width * 2 - 1 : 0);
         if ("vibrate" in navigator) navigator.vibrate?.(12);
       }
       updateHud(true);
@@ -1916,7 +1980,7 @@ export default function MandelbrotSkipping() {
       orbitScores.forEach((orbit) => {
         if (!orbit.resolved) {
           orbit.resolved = true;
-          orbit.score = scoreForOrbit(orbit, orbit.depth);
+          orbit.score = scoreForOrbit(orbit, orbit.depth) * orbit.boost;
         }
         orbit.shownDepth = orbit.depth;
       });
@@ -1947,6 +2011,24 @@ export default function MandelbrotSkipping() {
       if (currentShareRef.current) {
         history.replaceState(null, "", throwShareUrl(window.location.href, currentShareRef.current));
       }
+      if (!spectatorRef.current && !introActiveRef.current) {
+        const summary: ThrowSummary = {
+          score: total, skips: rock.skips, deepest, coverage,
+          collectablesHit: collectableHitCount,
+        };
+        let nextProgression = updateProgressionStreak(progressionRef.current, collectableHitCount > 0);
+        nextProgression = earnProgression(nextProgression, total);
+        const earnedChallenges = evaluateChallenges(summary, nextProgression);
+        nextProgression = completeProgressionChallenges(nextProgression, earnedChallenges);
+        progressionRef.current = nextProgression;
+        setProgression(nextProgression);
+        storeProgression(nextProgression);
+        if (earnedChallenges.length) {
+          setChallengeToast(earnedChallenges
+            .map((challenge) => `${challenge.label} +${formatCompact(challenge.bounty)}`)
+            .join(" · "));
+        }
+      }
       setHud({ phase, score: total, skips: rock.skips, deepest, progress: 1, coverage, spread });
       const victoryDuration = gameAudio.finish(finishComplexity({
         score: total, deepest, coverage, skips: rock.skips,
@@ -1955,6 +2037,7 @@ export default function MandelbrotSkipping() {
     }
 
     function advanceOrbits(now: number, elapsed: number) {
+      const depthCap = stoneTuning().maxDepth;
       const ease = 1 - Math.exp(-elapsed / 0.055);
       const easeShownDepths = () => {
         for (const orbit of orbitScores) {
@@ -1976,8 +2059,8 @@ export default function MandelbrotSkipping() {
       const maxHopPx = Math.hypot(width, height) * MAX_HOP_SCREEN_MULTIPLIER;
       for (const orbit of orbitScores) {
         if (orbit.resolved) continue;
-        const perOrbit = acceleratedSteps(orbit.depth, tuningRef.current.maxDepth, maxPerOrbit, tuningRef.current.acceleration);
-        for (let step = 0; step < perOrbit && orbit.depth < tuningRef.current.maxDepth; step++) {
+        const perOrbit = acceleratedSteps(orbit.depth, depthCap, maxPerOrbit, tuningRef.current.acceleration);
+        for (let step = 0; step < perOrbit && orbit.depth < depthCap; step++) {
           const previousR = orbit.zr;
           const previousI = orbit.zi;
           const nextR = Math.fround(Math.fround(previousR * previousR - previousI * previousI) + orbit.cr);
@@ -2016,10 +2099,10 @@ export default function MandelbrotSkipping() {
             break;
           }
         }
-        if (orbit.depth >= tuningRef.current.maxDepth) orbit.resolved = true;
+        if (orbit.depth >= depthCap) orbit.resolved = true;
         if (orbit.resolved) {
           orbit.shownDepth = orbit.depth;
-          orbit.score = scoreForOrbit(orbit, orbit.depth);
+          orbit.score = scoreForOrbit(orbit, orbit.depth) * orbit.boost;
         }
       }
       easeShownDepths();
@@ -2050,6 +2133,18 @@ export default function MandelbrotSkipping() {
         rock.skips += 1;
         rock.bounceAge = 0;
         spawnImpact(rock.x, rock.y, rock.skips, shapeOffset, now);
+        if (collectable && collectableHit(collectable, rock.x, rock.y)) {
+          const type = collectable.type;
+          collectable = null;
+          collectableHitCount += 1;
+          if (type === "multiplier") boostMultiplier = COLLECTABLE_SCORE_MULTIPLIER;
+          if (type === "extraSkips") plannedSkips = Math.min(MAX_SKIPS, plannedSkips + COLLECTABLE_EXTRA_SKIPS);
+          if (type === "depthSurge") {
+            depthSurge = true;
+            engineRef.current?.setTuning(stoneTuning());
+          }
+          if ("vibrate" in navigator) navigator.vibrate?.(30);
+        }
         const remaining = plannedSkips - rock.skips;
         rock.vz = Math.max(Math.abs(rock.vz) * 0.56, pondScale() * (0.05 + remaining * 0.008));
         rock.vx *= 0.79;
@@ -2486,7 +2581,7 @@ export default function MandelbrotSkipping() {
       radius = SOURCE_RADIUS_PX,
       { pixelDots = false } = {},
     ) {
-      const shape = ((glyph % GLYPH_COUNT) + GLYPH_COUNT) % GLYPH_COUNT;
+      const shape = ((glyph % SACRED_SHAPE_COUNT) + SACRED_SHAPE_COUNT) % SACRED_SHAPE_COUNT;
       const shapePaths = SACRED_PATH_COUNTS[shape];
       if (!pixelDots) {
         ctx.strokeStyle = stroke;
@@ -2658,7 +2753,7 @@ export default function MandelbrotSkipping() {
         const pop = age < 450 ? 1.0 + Math.sin((age / 450) * Math.PI) * 0.18 : 1.0;
         const fontSize = Math.max(8, Math.round(11 * pop));
         ctx.font = `600 ${fontSize}px ui-monospace, monospace`;
-        const [r, g, b] = skipTintRgb(impact.index, colored);
+        const [r, g, b] = skipTintRgb(impact.index, colored, spectatorRef.current || introActiveRef.current ? undefined : { tint: stoneRef.current.tint, strength: stoneRef.current.tintStrength });
         const mute = 0.28;
         const nr = Math.round(r * mute + 186 * (1 - mute));
         const ng = Math.round(g * mute + 210 * (1 - mute));
@@ -2890,6 +2985,23 @@ export default function MandelbrotSkipping() {
       drawPrediction(a);
       drawAimOrbitPreview(a);
       drawEffects(now);
+      if (collectable && !introActiveRef.current && (phase === "ready" || phase === "aiming" || phase === "flying")) {
+        const pulse = 1 + Math.sin(now / 240) * 0.18;
+        const sigilColor = COLLECTABLE_COLORS[collectable.type];
+        ctx.save();
+        ctx.globalAlpha = 0.9;
+        ctx.strokeStyle = sigilColor;
+        ctx.shadowColor = sigilColor;
+        ctx.shadowBlur = 18;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(collectable.x, collectable.y, COLLECTABLE_RADIUS_PX * 0.55 * pulse, 0, TAU);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(collectable.x, collectable.y, COLLECTABLE_RADIUS_PX * 0.22 * pulse, 0, TAU);
+        ctx.stroke();
+        ctx.restore();
+      }
       drawRock(now);
       drawTutorialArrow(now);
     }
@@ -3021,7 +3133,7 @@ export default function MandelbrotSkipping() {
         pointerMode = "aim";
         phase = "aiming";
         if (buddhabrotSlingFadeStarted === 0) buddhabrotSlingFadeStarted = performance.now();
-        plannedSkips = sampleSkipCount(Math.random);
+        plannedSkips = sampleSkipCount(Math.random, stoneRef.current.skipDecay);
         previewKey = "";
         flashlightDirty = true;
         engineRef.current?.setLayer("pond");
@@ -3111,7 +3223,8 @@ export default function MandelbrotSkipping() {
         skips: plannedSkips,
         glyph: shapeOffset,
         seed: shotId,
-        sourceDots: tuningRef.current.sourceDots,
+        sourceDots: stoneTuning().sourceDots,
+        fixedGlyph: stoneRef.current.shapeIndex,
         name: playerNameRef.current || "YOU",
       };
       setHasShare(true);
@@ -3180,13 +3293,15 @@ export default function MandelbrotSkipping() {
     };
   }, []);
 
+  const equippedStone = stoneById(progression.equippedId);
   const instruction = hud.phase === "ready" ? "Grab the white orb. Pull back and release."
     : hud.phase === "aiming" ? "Aim for deep water · farther pull = faster throw"
-    : hud.phase === "flying" ? `Each splash launches a new ${tuning.sourceDots}-point glyph`
+    : hud.phase === "flying" ? `Each splash launches a new ${Math.min(tuning.sourceDots, equippedStone.dots)}-point glyph`
     : hud.phase === "resolving" ? `Resolving the pond · ${Math.round(hud.progress * 100)}%`
     : "Press Space or throw again";
 
   const depthIndex = Math.max(0, DEPTH_OPTIONS.indexOf(tuning.maxDepth as typeof DEPTH_OPTIONS[number]));
+  const stoneDepthIndex = Math.max(0, DEPTH_OPTIONS.indexOf(equippedStone.depthCap as typeof DEPTH_OPTIONS[number]));
 
   const resetAndFocusCanvas = () => {
     spectatorRef.current = false;
@@ -3283,6 +3398,7 @@ export default function MandelbrotSkipping() {
             onPlay={finishOpening}
           />
         )}
+        {challengeToast && <div className="challengeToast" role="status">{challengeToast}</div>}
         {(hud.phase === "flying" || hud.phase === "resolving" || hud.phase === "result") && !intro && (
           <div className="playfieldThrowActions">
             {hud.phase === "result" && (
@@ -3361,6 +3477,7 @@ export default function MandelbrotSkipping() {
           <span className="liveLabel">{hud.phase === "result" ? "Final score" : "Score"}</span>
           <strong className="liveNumber">{formatNumber(hud.score)}</strong>
           <span className="liveMeta">{hud.skips} skips · {hud.deepest ? formatNumber(hud.deepest) : "0"} deep · {hud.coverage} cells · {Math.round(hud.spread * 100)}% spread</span>
+          <span className="walletRow">Wallet <strong>{formatNumber(progression.wallet)}</strong> pts</span>
           <span className="liveProgress"><i style={{ width: `${Math.max(2, hud.progress * 100)}%` }} /></span>
           <div className="throwShareRow">
             <button
@@ -3384,19 +3501,41 @@ export default function MandelbrotSkipping() {
           </div>
         </section>
 
+        <section className="stonePanel" aria-label="Stone collection">
+          <div className="tuningHeading"><span>Stones</span><span>{progression.ownedIds.length}/{STONES.length}</span></div>
+          <div className="stoneList">
+            {STONES.map((stone) => {
+              const owned = progression.ownedIds.includes(stone.id);
+              const isEquipped = progression.equippedId === stone.id;
+              const affordable = progression.wallet >= stone.price;
+              return (
+                <div key={stone.id} className={`stoneCard rarity-${stone.rarity} ${isEquipped ? "equipped" : owned ? "owned" : "locked"}`}>
+                  <span className="stoneName">{stone.name}</span>
+                  <span className="stoneMeta">{stone.dots} dots · {formatCompact(stone.depthCap)} deep · {expectedSkips(stone.skipDecay).toFixed(1)} avg skips</span>
+                  {isEquipped
+                    ? <span className="stoneAction stoneEquipped">Equipped</span>
+                    : owned
+                      ? <button type="button" className="rethrowButton stoneAction" onClick={() => equipStone(stone.id)}>Equip</button>
+                      : <button type="button" className="rethrowButton stoneAction" disabled={!affordable} onClick={() => buyStone(stone.id)}>{formatCompact(stone.price)} pts</button>}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
         <section className="tuningPanel" aria-label="Orbit tuning">
           <div className="tuningHeading"><span>Orbit tuning</span><span>Live</span></div>
           <div className="tuningControl">
-            <span><span>Glyph dots</span><output>{tuning.sourceDots}</output></span>
-            <input type="range" min={MIN_SOURCE_DOTS} max={MAX_SOURCE_DOTS} step="1" value={tuning.sourceDots}
+            <span><span>Glyph dots</span><output>{Math.min(tuning.sourceDots, equippedStone.dots)}</output></span>
+            <input type="range" min={MIN_SOURCE_DOTS} max={Math.min(MAX_SOURCE_DOTS, equippedStone.dots)} step="1" value={Math.min(tuning.sourceDots, equippedStone.dots)}
               aria-label="Dots per sacred geometry glyph"
               onChange={(event) => updateTuning({ sourceDots: Number(event.target.value) })} />
           </div>
           <div className="tuningControl">
-            <span><span>Orbit limit</span><output>{formatCompact(tuning.maxDepth)}</output></span>
-            <input type="range" min="0" max={DEPTH_OPTIONS.length - 1} step="1" value={depthIndex}
+            <span><span>Orbit limit</span><output>{formatCompact(Math.min(tuning.maxDepth, equippedStone.depthCap))}</output></span>
+            <input type="range" min="0" max={stoneDepthIndex} step="1" value={Math.min(depthIndex, stoneDepthIndex)}
               aria-label="Orbit iteration limit"
-              aria-valuetext={`${formatNumber(tuning.maxDepth)} iterations`}
+              aria-valuetext={`${formatNumber(Math.min(tuning.maxDepth, equippedStone.depthCap))} iterations`}
               onChange={(event) => updateTuning({ maxDepth: DEPTH_OPTIONS[Number(event.target.value)] })} />
           </div>
           <div className="tuningControl">
@@ -3469,6 +3608,21 @@ export default function MandelbrotSkipping() {
             </div>
           </section>
         )}
+
+        <section className="challengePanel" aria-label="Challenges">
+          <div className="tuningHeading"><span>Challenges</span><span>{progression.completedChallengeIds.length}/{CHALLENGES.length}</span></div>
+          <ul className="challengeList">
+            {CHALLENGES.map((challenge) => {
+              const done = progression.completedChallengeIds.includes(challenge.id);
+              return (
+                <li key={challenge.id} className={done ? "challengeDone" : ""}>
+                  <span>{challenge.label}</span>
+                  <span>{done ? "✓" : `${formatCompact(challenge.bounty)} pts`}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
 
         <h2 className="railTitle">Local legends</h2>
         <p className="railSub">Depth, distinct points, and spatial spread all score. Later skips multiply the result.</p>

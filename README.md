@@ -18,3 +18,11 @@ Open the local URL printed by the development server.
 - Drag and release the stone to throw.
 - Press Escape to cancel aiming.
 - Press Space or Enter after a result to throw again.
+
+## Progression
+
+Throw scores double as spendable points. Buy better stones to unlock more orbit
+dots, deeper iteration caps, better skip odds, new sacred glyph shapes, and
+rarity-tinted trails. Glowing sigils sometimes float in the pond — skip the stone
+through one for a boost that round. Challenges pay one-time point bounties.
+Progress is stored locally on the device.

@@ -8,6 +8,7 @@ import {
   sharePlayerLabel,
   throwShareUrl,
   SHARE_MAX_SOURCE_DOTS,
+  SHARE_FIXED_GLYPH_MAX,
   type SharedThrow,
 } from "../../lib/throw-share.ts";
 
@@ -94,4 +95,27 @@ test("shared throws accept up to 128 glyph dots", () => {
   assert.equal(dense?.sourceDots, 64);
   assert.equal(maxed?.sourceDots, 128);
   assert.equal(decodeSharedThrow(encodeSharedThrow({ ...shot, sourceDots: 129 })), null);
+});
+
+test("a fixed glyph round-trips through the wire payload when present", () => {
+  assert.equal(SHARE_FIXED_GLYPH_MAX, 7);
+  const withFixedGlyph = decodeSharedThrow(encodeSharedThrow({ ...shot, fixedGlyph: 7 }));
+  assert.equal(withFixedGlyph?.fixedGlyph, 7);
+  const zero = decodeSharedThrow(encodeSharedThrow({ ...shot, fixedGlyph: 0 }));
+  assert.equal(zero?.fixedGlyph, 0);
+});
+
+test("a shared throw without a fixed glyph stays absent (old links keep cycling)", () => {
+  const decoded = decodeSharedThrow(encodeSharedThrow(shot));
+  assert.equal(decoded?.fixedGlyph, undefined);
+  const legacy = decodeSharedThrow("1_-0.58_0.12_0.8_1_-1.25_0.72_7_3_42_18");
+  assert.equal(legacy?.fixedGlyph, undefined);
+});
+
+test("an out-of-range fixed glyph is dropped rather than rejecting the whole share", () => {
+  const encoded = encodeSharedThrow({ ...shot, fixedGlyph: 8 });
+  // Out-of-range values are never written to the wire in the first place.
+  const decoded = decodeSharedThrow(encoded);
+  assert.ok(decoded);
+  assert.equal(decoded?.fixedGlyph, undefined);
 });
