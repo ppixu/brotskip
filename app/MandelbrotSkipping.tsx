@@ -3409,7 +3409,7 @@ export default function MandelbrotSkipping() {
         <section className="tuningPanel" aria-label="Orbit tuning">
           <div className="tuningHeading"><span>Orbit tuning</span><span>Live</span></div>
           <div className="tuningControl">
-            <span><span>Glyph dots</span><output>{tuning.sourceDots}</output></span>
+            <span><span>Glyph dots</span><output>{Math.min(tuning.sourceDots, equippedStone.dots)}</output></span>
             <input type="range" min={MIN_SOURCE_DOTS} max={Math.min(MAX_SOURCE_DOTS, equippedStone.dots)} step="1" value={Math.min(tuning.sourceDots, equippedStone.dots)}
               aria-label="Dots per sacred geometry glyph"
               onChange={(event) => updateTuning({ sourceDots: Number(event.target.value) })} />
