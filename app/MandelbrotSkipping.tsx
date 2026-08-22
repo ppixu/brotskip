@@ -84,6 +84,8 @@ import { createGameAudio, finishComplexity, type GameAudio } from "@/lib/audio/i
 import {
   projectSacredBall,
   SACRED_BALL_RADIUS,
+  SACRED_BALL_ARRANGEMENTS,
+  sacredBallArrangement,
   sacredBallGlyphPose,
   sacredBallHopScale,
   sacredBallHopT,
@@ -844,11 +846,63 @@ function storeScores(entries: ScoreEntry[]) {
   try { localStorage.setItem(SCORE_KEY, JSON.stringify({ version: 2, entries })); } catch { /* local play still works */ }
 }
 
-function stonePreviewColor(stone: StoneDef, near: number, alpha: number) {
-  const tint = stone.tintStrength;
-  const r = Math.round(238 + (stone.tint[0] - 238) * tint);
-  const g = Math.round(244 + (stone.tint[1] - 244) * tint);
-  const b = Math.round(248 + (stone.tint[2] - 248) * tint);
+const STONE_RARITY_PALETTES: Record<StoneDef["rarity"], { primary: readonly [number, number, number]; secondary: readonly [number, number, number] }> = {
+  common: { primary: [214, 224, 235], secondary: [132, 151, 171] },
+  uncommon: { primary: [105, 246, 174], secondary: [28, 156, 119] },
+  rare: { primary: [112, 197, 255], secondary: [45, 91, 220] },
+  epic: { primary: [236, 169, 255], secondary: [121, 65, 220] },
+  legendary: { primary: [255, 228, 93], secondary: [255, 82, 176] },
+};
+
+function stoneNameSeed(name: string) {
+  let hash = 2166136261;
+  for (const character of name) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function stoneIsShifting(stone: StoneDef) {
+  return stone.price >= 240_000_000;
+}
+
+function stoneVisualRgb(stone: StoneDef, now: number) {
+  const palette = STONE_RARITY_PALETTES[stone.rarity];
+  const seed = stoneNameSeed(stone.name);
+  const shifting = stoneIsShifting(stone);
+  const cycle = stone.price >= 1_200_000_000 ? 1450 : 2200;
+  const phase = shifting ? (0.5 + 0.5 * Math.sin(now / cycle + (seed % 31) * 0.18)) : 0;
+  const amount = stone.rarity === "legendary" ? phase : stone.rarity === "epic" ? phase * 0.72 : phase * 0.38;
+  return palette.primary.map((channel, index) => Math.round(channel + (palette.secondary[index] - channel) * amount)) as [number, number, number];
+}
+
+function stoneVisualPose(stone: StoneDef, now: number, reduceMotion = false) {
+  const seed = stoneNameSeed(stone.name);
+  const base = (seed + stone.shapeIndex * 11) % SACRED_BALL_ARRANGEMENTS;
+  const shifting = stoneIsShifting(stone) && !reduceMotion;
+  let pose = sacredBallArrangement(base);
+  if (shifting) {
+    const cycle = stone.price >= 1_200_000_000 ? 1450 : 2200;
+    const slot = Math.floor(now / cycle);
+    const local = (now - slot * cycle) / cycle;
+    const hold = 0.22;
+    const blend = local <= hold ? 0 : (local - hold) / (1 - hold);
+    const from = (base + slot) % SACRED_BALL_ARRANGEMENTS;
+    const to = (from + 1 + (seed % 2)) % SACRED_BALL_ARRANGEMENTS;
+    pose = sacredBallGlyphPose(from, to, blend);
+  }
+  const warp = 0.035 + (seed % 5) * 0.012;
+  const wave = 1.1 + (seed % 4) * 0.17;
+  return pose.map((point, index) => {
+    const ripple = 1 + Math.sin(index * wave + seed * 0.001) * warp;
+    const tilt = 1 + Math.cos(index * 0.73 + seed * 0.002) * warp * 0.65;
+    return { x: point.x * ripple, y: point.y * tilt, z: point.z * (2 - ripple) };
+  });
+}
+
+function stonePreviewColor(stone: StoneDef, near: number, alpha: number, now: number) {
+  const [r, g, b] = stoneVisualRgb(stone, now);
   return `rgba(${r}, ${g}, ${b}, ${(alpha * (0.42 + near * 0.58)).toFixed(3)})`;
 }
 
@@ -866,24 +920,26 @@ function StonePreview({ stone, size = 42 }: { stone: StoneDef; size?: number }) 
 
   const radius = size * 0.36;
   const ball = projectSacredBall(
-    Math.PI / 4 + now * 0.00042 + stone.shapeIndex * 0.22,
+    Math.PI / 4 + now * 0.00042 + stoneNameSeed(stone.name) % 17 * 0.18,
     Math.asin(1 / Math.sqrt(3)) + now * 0.00026,
     radius,
-    sacredBallPose(now),
+    stoneVisualPose(stone, now),
   );
+  const shifting = stoneIsShifting(stone);
   return (
     <svg className="stonePreview" width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
       <circle cx={size / 2} cy={size / 2} r={radius * 1.12} fill="rgba(255,255,255,.035)" />
       <g transform={`translate(${size / 2} ${size / 2})`}>
         {[...ball.edges].sort((a, b) => a.depth - b.depth).map((edge, index) => {
           const near = (edge.depth + 1) / 2;
-          return <line key={`edge-${index}`} x1={edge.ax} y1={edge.ay} x2={edge.bx} y2={edge.by} stroke={stonePreviewColor(stone, near, 0.82)} strokeWidth={Math.max(0.5, size / 34)} />;
+          return <line key={`edge-${index}`} x1={edge.ax} y1={edge.ay} x2={edge.bx} y2={edge.by} stroke={stonePreviewColor(stone, near, 0.82, now)} strokeWidth={Math.max(0.5, size / 34)} />;
         })}
         {[...ball.points].sort((a, b) => a.depth - b.depth).map((point, index) => {
           const near = (point.depth + 1) / 2;
-          return <circle key={`point-${index}`} cx={point.x} cy={point.y} r={Math.max(0.7, size / 33 * (0.76 + near * 0.34))} fill={stonePreviewColor(stone, near, 1)} />;
+          return <circle key={`point-${index}`} cx={point.x} cy={point.y} r={Math.max(0.7, size / 33 * (0.76 + near * 0.34))} fill={stonePreviewColor(stone, near, 1, now)} />;
         })}
       </g>
+      {shifting && <circle className="stonePreviewAura" cx={size / 2} cy={size / 2} r={radius * 1.28} fill="none" stroke={stonePreviewColor(stone, 1, 0.34, now)} strokeWidth={Math.max(0.7, size / 28)} />}
     </svg>
   );
 }
@@ -2753,7 +2809,7 @@ export default function MandelbrotSkipping() {
       }
     }
 
-    function drawFlyingRock(body: { x: number; y: number; z: number; vz?: number; spin: number; skips: number; bounceAge: number; plannedSkips?: number }, glyphOffset: number, now: number) {
+    function drawFlyingRock(body: { x: number; y: number; z: number; vz?: number; spin: number; skips: number; bounceAge: number; plannedSkips?: number }, glyphOffset: number, now: number, stone: StoneDef | null = null) {
       const lift = body.z * 0.30;
       const nextShape = (glyphOffset + body.skips) % GLYPH_COUNT;
       const lastShape = body.skips === 0 ? nextShape : (glyphOffset + body.skips - 1) % GLYPH_COUNT;
@@ -2786,16 +2842,23 @@ export default function MandelbrotSkipping() {
       ctx.translate(drawX, drawY);
       ctx.scale(scaleX, scaleY);
       const idle = reduceMotion ? 0 : now * 0.00042;
-      const yaw = Math.PI / 4 + idle + body.spin * 0.4 + nextShape * 0.22;
+      const yaw = Math.PI / 4 + idle + body.spin * 0.4 + (stone ? stoneNameSeed(stone.name) % 17 * 0.18 : nextShape * 0.22);
       const pitch = Math.asin(1 / Math.sqrt(3)) + idle * 0.62 + (reduceMotion ? 0 : body.spin * 0.22);
-      const pose = flying
-        ? sacredBallGlyphPose(lastShape, nextShape, reduceMotion ? 1 : hopT)
-        : sacredBallPose(now);
+      const pose = stone
+        ? stoneVisualPose(stone, now, reduceMotion)
+        : flying
+          ? sacredBallGlyphPose(lastShape, nextShape, reduceMotion ? 1 : hopT)
+          : sacredBallPose(now);
       const ball = projectSacredBall(yaw, pitch, radius, pose);
       const size = radius / SACRED_BALL_RADIUS;
+      const [r, g, b] = stone ? stoneVisualRgb(stone, now) : [255, 255, 255];
+      if (stone && stoneIsShifting(stone)) {
+        ctx.shadowColor = `rgba(${r}, ${g}, ${b}, .72)`;
+        ctx.shadowBlur = 8 + size * 5;
+      }
       for (const edge of [...ball.edges].sort((a, b) => a.depth - b.depth)) {
         const near = (edge.depth + 1) / 2;
-        ctx.strokeStyle = `rgba(255, 255, 255, ${(0.12 + 0.32 * near).toFixed(3)})`;
+        ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${(0.18 + 0.52 * near).toFixed(3)})`;
         ctx.lineWidth = Math.max(0.4, 0.7 * size);
         ctx.beginPath();
         ctx.moveTo(edge.ax, edge.ay);
@@ -2805,7 +2868,7 @@ export default function MandelbrotSkipping() {
       for (const point of [...ball.points].sort((a, b) => a.depth - b.depth)) {
         const near = (point.depth + 1) / 2;
         const dot = Math.max(0.45, (1.05 + 0.55 * near) * size);
-        ctx.fillStyle = `rgba(255, 255, 255, ${(0.34 + 0.66 * near).toFixed(3)})`;
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${(0.42 + 0.58 * near).toFixed(3)})`;
         ctx.beginPath();
         ctx.arc(point.x, point.y, dot, 0, TAU);
         ctx.fill();
@@ -2851,7 +2914,7 @@ export default function MandelbrotSkipping() {
     function drawRock(now: number) {
       if (introActiveRef.current) return;
       if (phase === "resolving" || phase === "result") return;
-      drawFlyingRock({ ...rock, plannedSkips }, shapeOffset, now);
+      drawFlyingRock({ ...rock, plannedSkips }, shapeOffset, now, spectatorRef.current ? null : stoneRef.current);
     }
 
     function drawEffects(now: number) {
