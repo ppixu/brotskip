@@ -16,6 +16,11 @@ test("both loading choices use the same draggable SPZ renderer", () => {
   assert.match(cloud, /!dragging/);
   assert.doesNotMatch(cloud, /webgpu/);
   assert.ok(existsSync(new URL("../../public/true-buddhabrot-4096.spz", import.meta.url)));
+  assert.match(cloud, /true-buddhabrot-450k\.bbp\.gz/);
+  assert.match(cloud, /DecompressionStream\("gzip"\)/);
+  assert.match(cloud, /pushSplat/);
+  assert.match(cloud, /legacySplat/);
+  assert.match(cloud, /decodeCompactCloud/);
 });
 
 test("the second SPZ is generated from standard escaping z squared plus c paths", () => {

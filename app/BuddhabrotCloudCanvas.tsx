@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { SparkRenderer, SplatMesh, dyno } from "@sparkjsdev/spark";
+import { PackedSplats, SparkRenderer, SplatMesh, dyno } from "@sparkjsdev/spark";
 import {
   INTRO_PLAY_FOV,
   INTRO_START_DISTANCE,
@@ -11,6 +11,7 @@ import {
   resolveIntroPlayTune,
   type IntroPlayTune,
 } from "@/lib/intro-play";
+import { compactSplatAt, decodeCompactCloud, type CompactCloud, type CompactSplat } from "@/lib/splat-cloud";
 
 const RIPPLE_LIFETIME_MS = 2_800;
 const RIPPLE_DELAYS = [0] as const;
@@ -89,15 +90,61 @@ function makeBeaconTexture() {
 
 type CloudVariant = "henon" | "classic";
 
+/** Fetch + gunzip + decode the compact cloud, reporting download progress. */
+async function loadCompactCloud(url: string, onProgress?: (progress: number) => void): Promise<CompactCloud> {
+  const response = await fetch(url);
+  if (!response.ok || !response.body) throw new Error(`compact cloud fetch failed: ${response.status}`);
+  const total = Number(response.headers.get("content-length")) || 0;
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+    if (total > 0) onProgress?.(Math.min(1, received / total));
+  }
+  const raw = new Uint8Array(await new Blob(chunks).arrayBuffer());
+  // A proxy may already have transparently gunzipped the response.
+  const isRaw = raw.length >= 4 && raw[0] === 0x42 && raw[1] === 0x42 && raw[2] === 0x50 && raw[3] === 0x31;
+  if (isRaw) return decodeCompactCloud(raw);
+  const inflated = await new Response(
+    new Blob([raw]).stream().pipeThrough(new DecompressionStream("gzip")),
+  ).arrayBuffer();
+  return decodeCompactCloud(new Uint8Array(inflated));
+}
+
+function packCompactCloud(cloud: CompactCloud): PackedSplats {
+  return new PackedSplats({
+    maxSplats: cloud.count,
+    construct: (splats) => {
+      const center = new THREE.Vector3();
+      const scales = new THREE.Vector3(cloud.sigma, cloud.sigma, cloud.sigma);
+      const quaternion = new THREE.Quaternion();
+      const color = new THREE.Color();
+      const out: CompactSplat = { x: 0, y: 0, z: 0, r: 0, g: 0, b: 0, alpha: 0 };
+      for (let index = 0; index < cloud.count; index++) {
+        compactSplatAt(cloud, index, out);
+        center.set(out.x, out.y, out.z);
+        color.setRGB(out.r, out.g, out.b);
+        splats.pushSplat(center, scales, quaternion, out.alpha, color);
+      }
+    },
+  });
+}
+
 export default function BuddhabrotCloudCanvas({
   fading, onLoadProgress, onReady,
   variant = "henon",
+  legacySplat = false,
   tune,
 }: {
   fading: boolean;
   onLoadProgress?: (progress: number) => void;
   onReady?: () => void;
   variant?: CloudVariant;
+  legacySplat?: boolean;
   tune?: Partial<IntroPlayTune>;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -160,8 +207,11 @@ export default function BuddhabrotCloudCanvas({
     });
     scene.add(spark);
 
+    const useCompact = classic && !legacySplat;
     const assetName = classic ? "true-buddhabrot-4096.spz" : "henon-buddhabrot-4096.spz";
-    const assetUrl = new URL(assetName, window.location.href).href;
+    const compactName = "true-buddhabrot-450k.bbp.gz";
+    let splat: SplatMesh | null = null;
+
     const splatSize = dyno.dynoFloat(tuneRef.current.splatSize);
     const splatSizeModifier = dyno.dynoBlock(
       { gsplat: dyno.Gsplat },
@@ -177,18 +227,46 @@ export default function BuddhabrotCloudCanvas({
         };
       },
     );
-    const splat = new SplatMesh({
-      url: assetUrl,
-      lod: false,
-      objectModifier: splatSizeModifier,
-      onProgress: (event) => {
-        if (event.lengthComputable && event.total > 0) {
-          onLoadProgress?.(THREE.MathUtils.clamp(event.loaded / event.total, 0, 1));
-        }
-      },
+
+    async function createSplatMesh(): Promise<SplatMesh> {
+      if (useCompact) {
+        const url = new URL(compactName, window.location.href).href;
+        const cloud = await loadCompactCloud(url, onLoadProgress);
+        return new SplatMesh({ packedSplats: packCompactCloud(cloud), objectModifier: splatSizeModifier });
+      }
+      const url = new URL(assetName, window.location.href).href;
+      return new SplatMesh({
+        url,
+        lod: false,
+        objectModifier: splatSizeModifier,
+        onProgress: (event) => {
+          if (event.lengthComputable && event.total > 0) {
+            onLoadProgress?.(THREE.MathUtils.clamp(event.loaded / event.total, 0, 1));
+          }
+        },
+      });
+    }
+
+    createSplatMesh().then((mesh) => {
+      if (disposed) {
+        mesh.dispose();
+        return;
+      }
+      mesh.opacity = 0.82;
+      splat = mesh;
+      scene.add(mesh);
+      return mesh.initialized;
+    }).then((mesh) => {
+      if (!mesh || disposed) return;
+      splatReady = true;
+      nextRippleAt = performance.now() + 420;
+      nextCometAt = performance.now() + 900;
+      onLoadProgress?.(1);
+      onReady?.();
+      setReady(true);
+    }).catch(() => {
+      if (!disposed) setReady(false);
     });
-    splat.opacity = 0.82;
-    scene.add(splat);
 
     const onPointerDown = (event: PointerEvent) => {
       if (event.button !== 0 || fadingRef.current) return;
@@ -316,7 +394,7 @@ export default function BuddhabrotCloudCanvas({
     }
 
     function pickVisibleSplat() {
-      const packed = splat.packedSplats;
+      const packed = splat?.packedSplats;
       if (!packed) return null;
       const count = packed.getNumSplats();
       let fallback: ReturnType<typeof packed.getSplat> | null = null;
@@ -442,12 +520,12 @@ export default function BuddhabrotCloudCanvas({
         pitch = pose.pitch;
         distance = pose.distance;
         target.set(pose.target.x, pose.target.y, pose.target.z);
-        splat.scale.z = introPlayFlatten(elapsed, reduceMotion);
+        if (splat) splat.scale.z = introPlayFlatten(elapsed, reduceMotion);
         scene.background = null;
         renderer.setClearColor(0x000000, 0);
       } else {
         alignFrom = null;
-        splat.scale.z = 1;
+        if (splat) splat.scale.z = 1;
         camera.fov = INTRO_PLAY_FOV;
         scene.background = new THREE.Color(0x030408);
         renderer.setClearColor(0x030408, 1);
@@ -483,19 +561,6 @@ export default function BuddhabrotCloudCanvas({
     document.addEventListener("visibilitychange", onVisibilityChange);
     frame = requestAnimationFrame(render);
 
-    splat.initialized.then(() => {
-      if (!disposed) {
-        splatReady = true;
-        nextRippleAt = performance.now() + 420;
-        nextCometAt = performance.now() + 900;
-        onLoadProgress?.(1);
-        onReady?.();
-        setReady(true);
-      }
-    }).catch(() => {
-      if (!disposed) setReady(false);
-    });
-
     return () => {
       disposed = true;
       cancelAnimationFrame(frame);
@@ -510,7 +575,7 @@ export default function BuddhabrotCloudCanvas({
       ripples.length = 0;
       rippleGeometry.dispose();
       beaconTexture.dispose();
-      scene.remove(splat);
+      if (splat) scene.remove(splat);
       scene.remove(spark);
       renderer.domElement.remove();
 
@@ -521,13 +586,13 @@ export default function BuddhabrotCloudCanvas({
           window.setTimeout(disposeCloud, 16);
           return;
         }
-        splat.dispose();
+        splat?.dispose();
         spark.dispose();
         renderer.dispose();
       };
       disposeCloud();
     };
-  }, [variant, onLoadProgress, onReady]);
+  }, [variant, legacySplat, onLoadProgress, onReady]);
 
   return (
     <div

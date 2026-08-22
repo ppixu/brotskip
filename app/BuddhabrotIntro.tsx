@@ -31,6 +31,7 @@ export default function BuddhabrotIntro({
       <BuddhabrotCloudCanvas
         fading={fading}
         variant="classic"
+        legacySplat={legacySplat}
         onLoadProgress={handleLoadProgress}
         onReady={handleReady}
       />
