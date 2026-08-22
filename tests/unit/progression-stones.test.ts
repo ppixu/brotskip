@@ -24,7 +24,7 @@ test("every stat is monotonically non-decreasing and prices strictly increase", 
 test("stone stats stay within engine ranges", () => {
   for (const stone of STONES) {
     assert.ok(DEPTH_OPTIONS.includes(stone.depthCap as typeof DEPTH_OPTIONS[number]), `${stone.id} depthCap in DEPTH_OPTIONS`);
-    assert.ok(stone.dots >= 6 && stone.dots <= 128, `${stone.id} dots range`);
+    assert.ok(stone.dots >= 6 && stone.dots <= 256, `${stone.id} dots range`);
     assert.ok(stone.skipDecay > 0 && stone.skipDecay < 1, `${stone.id} decay range`);
     assert.ok(stone.shapeIndex >= 0 && stone.shapeIndex <= 7, `${stone.id} shapeIndex`);
     assert.ok(stone.tint.every((channel) => channel >= 0 && channel <= 255), `${stone.id} tint`);

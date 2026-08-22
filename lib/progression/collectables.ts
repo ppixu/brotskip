@@ -6,6 +6,7 @@ export type Collectable = { type: CollectableType; x: number; y: number };
 
 export const COLLECTABLE_SPAWN_CHANCE = 0.25;
 export const COLLECTABLE_RADIUS_PX = 26;
+export const COLLECTABLE_DIRECT_HIT_RADIUS_PX = 14;
 export const COLLECTABLE_EXTRA_SKIPS = 2;
 export const COLLECTABLE_SCORE_MULTIPLIER = 2;
 export const COLLECTABLE_TYPES = ["multiplier", "extraSkips", "depthSurge"] as const;

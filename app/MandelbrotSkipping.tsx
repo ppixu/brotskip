@@ -120,6 +120,7 @@ import { CHALLENGES, CHALLENGE_IDS, evaluateChallenges, type ThrowSummary } from
 import {
   COLLECTABLE_COLORS,
   COLLECTABLE_EXTRA_SKIPS,
+  COLLECTABLE_DIRECT_HIT_RADIUS_PX,
   COLLECTABLE_RADIUS_PX,
   COLLECTABLE_SCORE_MULTIPLIER,
   collectableHit,
@@ -149,6 +150,17 @@ type ScoreEntry = {
   coverage: number;
   spread: number;
   createdAt: string;
+};
+
+type AchievementNotice = {
+  id: number;
+  awards: Array<{ label: string; bounty: number }>;
+};
+
+type WalletTransfer = {
+  id: number;
+  score: number;
+  bonus: number;
 };
 
 type OrbitScore = {
@@ -232,7 +244,7 @@ type FlyingRock = {
 };
 
 const MIN_SOURCE_DOTS = 6;
-const MAX_SOURCE_DOTS = 128;
+const MAX_SOURCE_DOTS = 256;
 const MAX_SOURCES = 4096;
 const INTRO_SOURCE_CAP = 4096;
 const SCORE_DEPTH_CAP = DEPTH_OPTIONS[DEPTH_OPTIONS.length - 1];
@@ -832,6 +844,50 @@ function storeScores(entries: ScoreEntry[]) {
   try { localStorage.setItem(SCORE_KEY, JSON.stringify({ version: 2, entries })); } catch { /* local play still works */ }
 }
 
+function stonePreviewColor(stone: StoneDef, near: number, alpha: number) {
+  const tint = stone.tintStrength;
+  const r = Math.round(238 + (stone.tint[0] - 238) * tint);
+  const g = Math.round(244 + (stone.tint[1] - 244) * tint);
+  const b = Math.round(248 + (stone.tint[2] - 248) * tint);
+  return `rgba(${r}, ${g}, ${b}, ${(alpha * (0.42 + near * 0.58)).toFixed(3)})`;
+}
+
+function StonePreview({ stone, size = 42 }: { stone: StoneDef; size?: number }) {
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    let frame = 0;
+    const tick = (time: number) => {
+      setNow(time);
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  const radius = size * 0.36;
+  const ball = projectSacredBall(
+    Math.PI / 4 + now * 0.00042 + stone.shapeIndex * 0.22,
+    Math.asin(1 / Math.sqrt(3)) + now * 0.00026,
+    radius,
+    sacredBallPose(now),
+  );
+  return (
+    <svg className="stonePreview" width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
+      <circle cx={size / 2} cy={size / 2} r={radius * 1.12} fill="rgba(255,255,255,.035)" />
+      <g transform={`translate(${size / 2} ${size / 2})`}>
+        {[...ball.edges].sort((a, b) => a.depth - b.depth).map((edge, index) => {
+          const near = (edge.depth + 1) / 2;
+          return <line key={`edge-${index}`} x1={edge.ax} y1={edge.ay} x2={edge.bx} y2={edge.by} stroke={stonePreviewColor(stone, near, 0.82)} strokeWidth={Math.max(0.5, size / 34)} />;
+        })}
+        {[...ball.points].sort((a, b) => a.depth - b.depth).map((point, index) => {
+          const near = (point.depth + 1) / 2;
+          return <circle key={`point-${index}`} cx={point.x} cy={point.y} r={Math.max(0.7, size / 33 * (0.76 + near * 0.34))} fill={stonePreviewColor(stone, near, 1)} />;
+        })}
+      </g>
+    </svg>
+  );
+}
+
 async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, introLowRes = false): Promise<OrbitEngine | null> {
   const device = gpu.device;
   const context = canvas.getContext("webgpu") as any;
@@ -982,7 +1038,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
   let mriWarmupStartedAt = 0;
   let mriLoopStartedAt = 0;
   let layer: "pond" | "throw" = "pond";
-  let pondBounds = { ...TRAIL_BOUNDS };
+  const pondBounds = { ...TRAIL_BOUNDS };
   let throwBounds = { ...TRAIL_BOUNDS };
   let lastDrawTime = 0;
 
@@ -1411,7 +1467,7 @@ export default function MandelbrotSkipping() {
   const playerNameRef = useRef("YOU");
   const [progression, setProgression] = useState<ProgressionState>(freshProgression);
   const progressionRef = useRef<ProgressionState>(progression);
-  const [challengeToast, setChallengeToast] = useState<string | null>(null);
+  const [achievementNotice, setAchievementNotice] = useState<AchievementNotice | null>(null);
   const stoneRef = useRef<StoneDef>(stoneById(progression.equippedId));
   const tuningRef = useRef<Tuning>({ ...DEFAULT_TUNING });
   const invalidateFlashlightRef = useRef<() => void>(() => {});
@@ -1438,12 +1494,19 @@ export default function MandelbrotSkipping() {
   const [shareStatus, setShareStatus] = useState("");
   const [gpuError, setGpuError] = useState<string | null>(null);
   const [hud, setHud] = useState<Hud>({ phase: "ready", score: 0, skips: 0, deepest: 0, progress: 0, coverage: 0, spread: 0 });
+  const [displayedScore, setDisplayedScore] = useState(0);
+  const [walletDisplay, setWalletDisplay] = useState(0);
+  const [walletTransfer, setWalletTransfer] = useState<WalletTransfer | null>(null);
+  const [stoneShopOpen, setStoneShopOpen] = useState(false);
   const [scores, setScores] = useState<ScoreEntry[]>([]);
   const [playerName, setPlayerName] = useState("YOU");
   const [currentResultId, setCurrentResultId] = useState<string | null>(null);
   const [tuning, setTuning] = useState<Tuning>({ ...DEFAULT_TUNING });
   const [railOpen, setRailOpen] = useState(false);
   const [lightMode, setLightMode] = useState(false);
+  const scoreAnimationRef = useRef(0);
+  const walletAnimationRef = useRef(0);
+  const walletAwardTimerRef = useRef(0);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => setScores(loadScores()));
@@ -1457,11 +1520,66 @@ export default function MandelbrotSkipping() {
     return () => cancelAnimationFrame(frame);
   }, []);
 
+  const animateScore = useCallback((target: number) => {
+    cancelAnimationFrame(scoreAnimationRef.current);
+    const started = performance.now();
+    setDisplayedScore(0);
+    const tick = (now: number) => {
+      const progress = Math.min(1, (now - started) / 1250);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplayedScore(Math.round(target * eased));
+      if (progress < 1) scoreAnimationRef.current = requestAnimationFrame(tick);
+    };
+    scoreAnimationRef.current = requestAnimationFrame(tick);
+  }, []);
+
+  const animateWallet = useCallback((from: number, to: number) => {
+    cancelAnimationFrame(walletAnimationRef.current);
+    const started = performance.now();
+    const span = Math.max(1, to - from);
+    setWalletDisplay(from);
+    const tick = (now: number) => {
+      const progress = Math.min(1, (now - started) / 1150);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setWalletDisplay(Math.round(from + span * eased));
+      if (progress < 1) walletAnimationRef.current = requestAnimationFrame(tick);
+    };
+    walletAnimationRef.current = requestAnimationFrame(tick);
+  }, []);
+
+  const queueWalletAward = useCallback((from: number, to: number, score: number, bonus: number) => {
+    window.clearTimeout(walletAwardTimerRef.current);
+    setWalletDisplay(from);
+    setWalletTransfer({ id: Date.now(), score, bonus });
+    walletAwardTimerRef.current = window.setTimeout(() => animateWallet(from, to), 360);
+  }, [animateWallet]);
+
   useEffect(() => {
-    if (!challengeToast) return;
-    const timer = window.setTimeout(() => setChallengeToast(null), 4500);
+    if (!achievementNotice) return;
+    const timer = window.setTimeout(() => setAchievementNotice(null), 5600);
     return () => window.clearTimeout(timer);
-  }, [challengeToast]);
+  }, [achievementNotice]);
+
+  useEffect(() => {
+    if (!walletTransfer) return;
+    const timer = window.setTimeout(() => setWalletTransfer(null), 1900);
+    return () => window.clearTimeout(timer);
+  }, [walletTransfer]);
+
+  useEffect(() => {
+    if (!stoneShopOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setStoneShopOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [stoneShopOpen]);
+
+  useEffect(() => () => {
+    cancelAnimationFrame(scoreAnimationRef.current);
+    cancelAnimationFrame(walletAnimationRef.current);
+    window.clearTimeout(walletAwardTimerRef.current);
+  }, []);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -1472,6 +1590,7 @@ export default function MandelbrotSkipping() {
       const savedProgression = loadProgression(CHALLENGE_IDS);
       progressionRef.current = savedProgression;
       setProgression(savedProgression);
+      setWalletDisplay(savedProgression.wallet);
       const stone = stoneById(savedProgression.equippedId);
       stoneRef.current = stone;
       engineRef.current?.setTuning(clampTuningToStone(saved, stone));
@@ -1529,13 +1648,19 @@ export default function MandelbrotSkipping() {
     const share = initialThrowShare(window.location, navigation?.type);
     pendingShareRef.current = share;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    setPondReady(true);
-    if (share || reduceMotion) return;
-    introActiveRef.current = true;
-    spectatorRef.current = true;
-    introThrowsRef.current = 0;
-    introFadingRef.current = false;
-    setIntro(true);
+    const readyFrame = requestAnimationFrame(() => setPondReady(true));
+    let introFrame = 0;
+    if (!share && !reduceMotion) {
+      introActiveRef.current = true;
+      spectatorRef.current = true;
+      introThrowsRef.current = 0;
+      introFadingRef.current = false;
+      introFrame = requestAnimationFrame(() => setIntro(true));
+    }
+    return () => {
+      cancelAnimationFrame(readyFrame);
+      if (introFrame) cancelAnimationFrame(introFrame);
+    };
   }, []);
 
   const finishOpening = useCallback(() => {
@@ -1609,6 +1734,10 @@ export default function MandelbrotSkipping() {
   }, []);
 
   const applyProgression = useCallback((next: ProgressionState) => {
+    cancelAnimationFrame(walletAnimationRef.current);
+    window.clearTimeout(walletAwardTimerRef.current);
+    setWalletDisplay(next.wallet);
+    setWalletTransfer(null);
     progressionRef.current = next;
     setProgression(next);
     storeProgression(next);
@@ -1806,6 +1935,7 @@ export default function MandelbrotSkipping() {
       const depthRatio = orbitScores.length ? orbitScores.reduce((sum, orbit) => sum + Math.min(1, orbit.shownDepth / stoneTuning().maxDepth), 0) / orbitScores.length : 0;
       const progress = resolvedRatio * 0.8 + depthRatio * 0.2;
       setHud({ phase, score, skips: rock.skips, deepest, progress, coverage, spread });
+      if (phase !== "result") setDisplayedScore(score);
       lastHud = now;
     }
 
@@ -1859,6 +1989,10 @@ export default function MandelbrotSkipping() {
       collectableHitCount = 0;
       boostMultiplier = 1;
       depthSurge = false;
+      cancelAnimationFrame(scoreAnimationRef.current);
+      setDisplayedScore(0);
+      setWalletTransfer(null);
+      setAchievementNotice(null);
       setCurrentResultId(null);
       engineRef.current?.clear();
       engineRef.current?.setIterationBoost(1);
@@ -2012,6 +2146,7 @@ export default function MandelbrotSkipping() {
         history.replaceState(null, "", throwShareUrl(window.location.href, currentShareRef.current));
       }
       if (!spectatorRef.current && !introActiveRef.current) {
+        const walletBefore = progressionRef.current.wallet;
         const summary: ThrowSummary = {
           score: total, skips: rock.skips, deepest, coverage,
           collectablesHit: collectableHitCount,
@@ -2024,11 +2159,19 @@ export default function MandelbrotSkipping() {
         setProgression(nextProgression);
         storeProgression(nextProgression);
         if (earnedChallenges.length) {
-          setChallengeToast(earnedChallenges
-            .map((challenge) => `${challenge.label} +${formatCompact(challenge.bounty)}`)
-            .join(" · "));
+          setAchievementNotice({
+            id: Date.now(),
+            awards: earnedChallenges.map((challenge) => ({ label: challenge.label, bounty: challenge.bounty })),
+          });
         }
+        queueWalletAward(
+          walletBefore,
+          nextProgression.wallet,
+          total,
+          Math.max(0, nextProgression.wallet - walletBefore - total),
+        );
       }
+      animateScore(total);
       setHud({ phase, score: total, skips: rock.skips, deepest, progress: 1, coverage, spread });
       const victoryDuration = gameAudio.finish(finishComplexity({
         score: total, deepest, coverage, skips: rock.skips,
@@ -2133,7 +2276,7 @@ export default function MandelbrotSkipping() {
         rock.skips += 1;
         rock.bounceAge = 0;
         spawnImpact(rock.x, rock.y, rock.skips, shapeOffset, now);
-        if (collectable && collectableHit(collectable, rock.x, rock.y)) {
+        if (collectable && collectableHit(collectable, rock.x, rock.y, COLLECTABLE_DIRECT_HIT_RADIUS_PX)) {
           const type = collectable.type;
           collectable = null;
           collectableHitCount += 1;
@@ -2566,11 +2709,6 @@ export default function MandelbrotSkipping() {
         gridContext.fillText("Im(c)", Math.min(width - 34, Math.max(6, imLabel.x + 6)), Math.max(6, imLabel.y + 4));
       }
       gridDirty = false;
-    }
-
-    function drawScientificGrid() {
-      if (gridDirty) rebuildScientificGrid();
-      ctx.drawImage(gridCanvas, 0, 0, width, height);
     }
 
     function drawSacredGlyph(
@@ -3117,6 +3255,7 @@ export default function MandelbrotSkipping() {
         }
       }
       viewRef.current = nextView;
+      // Boosters are screen-stationary pickups. Only the throw stone and aim pull follow map movement.
       gridDirty = true;
       flashlightDirty = true;
       engineRef.current?.setView(nextView);
@@ -3291,9 +3430,12 @@ export default function MandelbrotSkipping() {
       playThrowRef.current = null;
       resetBuddhabrotFadeRef.current = () => {};
     };
-  }, []);
+  }, [animateScore, queueWalletAward]);
 
   const equippedStone = stoneById(progression.equippedId);
+  const nextUpgrade = STONES.find((stone) => !progression.ownedIds.includes(stone.id) && stone.price > 0) ?? null;
+  const upgradeAvailable = Boolean(nextUpgrade && progression.wallet >= nextUpgrade.price);
+  const visibleScore = hud.phase === "result" ? displayedScore : hud.score;
   const instruction = hud.phase === "ready" ? "Grab the white orb. Pull back and release."
     : hud.phase === "aiming" ? "Aim for deep water · farther pull = faster throw"
     : hud.phase === "flying" ? `Each splash launches a new ${Math.min(tuning.sourceDots, equippedStone.dots)}-point glyph`
@@ -3386,6 +3528,12 @@ export default function MandelbrotSkipping() {
           <span className="themeToggleIcon" aria-hidden="true">{lightMode ? "☼" : "☾"}</span>
           <span className="themeToggleTrack" aria-hidden="true"><i className="themeToggleThumb" /></span>
         </button>
+        {!intro && (
+          <div className={`walletHud ${walletTransfer ? "walletHudReceiving" : ""}`} aria-live="polite">
+            <span className="walletHudLabel">Cash</span>
+            <strong className="walletHudValue">$ {formatNumber(walletDisplay)}</strong>
+          </div>
+        )}
         {replayMode && (
           <p className="replayBanner" aria-live="polite">
             <span className="replayBannerName">{sharePlayerLabel(replayName)}</span>
@@ -3398,7 +3546,44 @@ export default function MandelbrotSkipping() {
             onPlay={finishOpening}
           />
         )}
-        {challengeToast && <div className="challengeToast" role="status">{challengeToast}</div>}
+        {achievementNotice && (
+          <div className="challengeToast achievementToast" role="status" aria-live="polite" key={achievementNotice.id}>
+            <span className="achievementToastKicker">Achievement unlocked</span>
+            {achievementNotice.awards.map((award) => (
+              <span className="achievementToastAward" key={award.label}>
+                <strong>{award.label}</strong>
+                <small>+{formatCompact(award.bounty)} cash</small>
+              </span>
+            ))}
+          </div>
+        )}
+        {walletTransfer && !intro && (
+          <div className="walletTransfer" aria-hidden="true" key={walletTransfer.id}>
+            <strong>+{formatNumber(walletTransfer.score)}</strong>
+            <span>score to cash</span>
+            {walletTransfer.bonus > 0 && <small>+{formatCompact(walletTransfer.bonus)} achievement bonus</small>}
+            <div className="walletTransferParticles">
+              {Array.from({ length: 14 }, (_, index) => <i className="scoreParticle" key={index} />)}
+            </div>
+          </div>
+        )}
+        {!intro && (
+          <button
+            type="button"
+            className={`stoneWidget ${upgradeAvailable ? "upgradeReady" : ""}`}
+            onClick={() => setStoneShopOpen(true)}
+            aria-haspopup="dialog"
+            aria-expanded={stoneShopOpen}
+            aria-label={`Open stone shop. Equipped ${equippedStone.name}${upgradeAvailable ? `. ${nextUpgrade?.name} upgrade available` : ""}`}
+          >
+            <span className="stoneWidgetPreview"><StonePreview stone={equippedStone} size={40} /></span>
+            <span className="stoneWidgetCopy">
+              <strong>{equippedStone.name}</strong>
+              <small>{Math.min(tuning.sourceDots, equippedStone.dots)} dots · tap to shop</small>
+              {upgradeAvailable && <em>Upgrade ready</em>}
+            </span>
+          </button>
+        )}
         {(hud.phase === "flying" || hud.phase === "resolving" || hud.phase === "result") && !intro && (
           <div className="playfieldThrowActions">
             {hud.phase === "result" && (
@@ -3441,7 +3626,7 @@ export default function MandelbrotSkipping() {
               </div>
             )}
             <span className="compactScoreLabel">{hud.phase === "result" ? "Final score" : "Score"}</span>
-            <strong className="compactScoreNumber">{formatNumber(hud.score)}</strong>
+            <strong className="compactScoreNumber">{formatNumber(visibleScore)}</strong>
             {currentIsHighscore && <span className="compactScoreAnnouncement" role="status" aria-live="assertive">New highscore!</span>}
             {currentIsHighscore && (
               <div className="highscoreNameEntry">
@@ -3475,9 +3660,9 @@ export default function MandelbrotSkipping() {
       <aside className={`scoreRail ${hud.phase === "result" ? "hasResult" : ""}`} aria-label="Score and local high scores">
         <section className="liveScore" aria-live="polite">
           <span className="liveLabel">{hud.phase === "result" ? "Final score" : "Score"}</span>
-          <strong className="liveNumber">{formatNumber(hud.score)}</strong>
+          <strong className="liveNumber">{formatNumber(visibleScore)}</strong>
           <span className="liveMeta">{hud.skips} skips · {hud.deepest ? formatNumber(hud.deepest) : "0"} deep · {hud.coverage} cells · {Math.round(hud.spread * 100)}% spread</span>
-          <span className="walletRow">Wallet <strong>{formatNumber(progression.wallet)}</strong> pts</span>
+          <span className="walletRow">Cash <strong>$ {formatNumber(walletDisplay)}</strong></span>
           <span className="liveProgress"><i style={{ width: `${Math.max(2, hud.progress * 100)}%` }} /></span>
           <div className="throwShareRow">
             <button
@@ -3609,8 +3794,8 @@ export default function MandelbrotSkipping() {
           </section>
         )}
 
-        <section className="challengePanel" aria-label="Challenges">
-          <div className="tuningHeading"><span>Challenges</span><span>{progression.completedChallengeIds.length}/{CHALLENGES.length}</span></div>
+        <section className="challengePanel" aria-label="Achievements">
+          <div className="tuningHeading"><span>Achievements</span><span>{progression.completedChallengeIds.length}/{CHALLENGES.length}</span></div>
           <ul className="challengeList">
             {CHALLENGES.map((challenge) => {
               const done = progression.completedChallengeIds.includes(challenge.id);
@@ -3640,6 +3825,51 @@ export default function MandelbrotSkipping() {
         <div className="railHint">{instruction}<br />Drag empty water to move · wheel or +/- to zoom.</div>
         <div className="railFooter">Saved on this device · score model v2 · {formatCompact(tuning.maxDepth)} orbit cap</div>
       </aside>
+      {stoneShopOpen && (
+        <div className="stoneShopBackdrop" role="presentation">
+          <section
+            className="stoneShop"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="stone-shop-title"
+          >
+            <header className="stoneShopHeader">
+              <div>
+                <span className="stoneShopKicker">Stone vault</span>
+                <h2 id="stone-shop-title">Choose your throw</h2>
+                <p>Buy a new stone with cash from your scores. Every stone doubles the dots it can carry.</p>
+              </div>
+              <button type="button" className="stoneShopClose" onClick={() => setStoneShopOpen(false)} aria-label="Close stone shop">×</button>
+            </header>
+            <div className="stoneShopWallet">Cash <strong>$ {formatNumber(walletDisplay)}</strong></div>
+            <div className="stoneShopGrid">
+              {STONES.map((stone) => {
+                const owned = progression.ownedIds.includes(stone.id);
+                const isEquipped = progression.equippedId === stone.id;
+                const affordable = progression.wallet >= stone.price;
+                return (
+                  <article key={stone.id} className={`stoneShopCard rarity-${stone.rarity} ${isEquipped ? "equipped" : owned ? "owned" : "locked"}`}>
+                    <StonePreview stone={stone} size={64} />
+                    <div className="stoneShopCardBody">
+                      <div className="stoneShopCardTitle"><strong>{stone.name}</strong><span>{stone.rarity}</span></div>
+                      <p>{stone.dots} dots · {formatCompact(stone.depthCap)} depth · {expectedSkips(stone.skipDecay).toFixed(1)} avg skips</p>
+                      {isEquipped ? (
+                        <span className="stoneShopState">Equipped</span>
+                      ) : owned ? (
+                        <button type="button" className="stoneShopAction" onClick={() => equipStone(stone.id)}>Equip</button>
+                      ) : (
+                        <button type="button" className="stoneShopAction" disabled={!affordable} onClick={() => buyStone(stone.id)}>
+                          {stone.price === 0 ? "Free" : `$ ${formatCompact(stone.price)}`}
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
 }

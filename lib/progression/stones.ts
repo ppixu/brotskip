@@ -18,14 +18,14 @@ export type StoneDef = {
 export const STARTER_STONE_ID = "pebble";
 
 export const STONES: readonly StoneDef[] = [
-  { id: "pebble", name: "Pebble", rarity: "common", tint: [158, 163, 176], tintStrength: 0, dots: 8, depthCap: 100_000, skipDecay: 0.70, shapeIndex: 0, price: 0 },
-  { id: "river-stone", name: "River Stone", rarity: "common", tint: [158, 163, 176], tintStrength: 0.06, dots: 12, depthCap: 250_000, skipDecay: 0.72, shapeIndex: 1, price: 2_700_000 },
-  { id: "slate", name: "Slate", rarity: "uncommon", tint: [110, 231, 160], tintStrength: 0.12, dots: 20, depthCap: 1_000_000, skipDecay: 0.74, shapeIndex: 2, price: 6_300_000 },
-  { id: "jade", name: "Jade", rarity: "uncommon", tint: [52, 211, 153], tintStrength: 0.18, dots: 28, depthCap: 2_000_000, skipDecay: 0.76, shapeIndex: 3, price: 23_000_000 },
-  { id: "azurite", name: "Azurite", rarity: "rare", tint: [96, 165, 250], tintStrength: 0.24, dots: 40, depthCap: 10_000_000, skipDecay: 0.78, shapeIndex: 4, price: 52_000_000 },
-  { id: "meteorite", name: "Meteorite", rarity: "rare", tint: [59, 130, 246], tintStrength: 0.30, dots: 56, depthCap: 50_000_000, skipDecay: 0.80, shapeIndex: 5, price: 240_000_000 },
-  { id: "amethyst", name: "Amethyst", rarity: "epic", tint: [192, 132, 252], tintStrength: 0.38, dots: 80, depthCap: 200_000_000, skipDecay: 0.83, shapeIndex: 6, price: 1_200_000_000 },
-  { id: "philosopher", name: "Philosopher's Stone", rarity: "legendary", tint: [250, 204, 21], tintStrength: 0.46, dots: 128, depthCap: 2_000_000_000, skipDecay: 0.86, shapeIndex: 7, price: 6_400_000_000 },
+  { id: "pebble", name: "Pebble", rarity: "common", tint: [158, 163, 176], tintStrength: 0, dots: 16, depthCap: 100_000, skipDecay: 0.70, shapeIndex: 0, price: 0 },
+  { id: "river-stone", name: "River Stone", rarity: "common", tint: [158, 163, 176], tintStrength: 0.06, dots: 24, depthCap: 250_000, skipDecay: 0.72, shapeIndex: 1, price: 5_400_000 },
+  { id: "slate", name: "Slate", rarity: "uncommon", tint: [110, 231, 160], tintStrength: 0.12, dots: 40, depthCap: 1_000_000, skipDecay: 0.74, shapeIndex: 2, price: 12_600_000 },
+  { id: "jade", name: "Jade", rarity: "uncommon", tint: [52, 211, 153], tintStrength: 0.18, dots: 56, depthCap: 2_000_000, skipDecay: 0.76, shapeIndex: 3, price: 46_000_000 },
+  { id: "azurite", name: "Azurite", rarity: "rare", tint: [96, 165, 250], tintStrength: 0.24, dots: 80, depthCap: 10_000_000, skipDecay: 0.78, shapeIndex: 4, price: 104_000_000 },
+  { id: "meteorite", name: "Meteorite", rarity: "rare", tint: [59, 130, 246], tintStrength: 0.30, dots: 112, depthCap: 50_000_000, skipDecay: 0.80, shapeIndex: 5, price: 480_000_000 },
+  { id: "amethyst", name: "Amethyst", rarity: "epic", tint: [192, 132, 252], tintStrength: 0.38, dots: 160, depthCap: 200_000_000, skipDecay: 0.83, shapeIndex: 6, price: 2_400_000_000 },
+  { id: "philosopher", name: "Philosopher's Stone", rarity: "legendary", tint: [250, 204, 21], tintStrength: 0.46, dots: 256, depthCap: 2_000_000_000, skipDecay: 0.86, shapeIndex: 7, price: 12_800_000_000 },
 ];
 
 export function stoneById(id: string): StoneDef {
