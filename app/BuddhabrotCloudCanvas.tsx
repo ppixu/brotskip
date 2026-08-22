@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import * as THREE from "three";
-import { SparkRenderer, SplatMesh, dyno } from "@sparkjsdev/spark";
+import { PackedSplats, SparkRenderer, SplatMesh, dyno } from "@sparkjsdev/spark";
 import {
   INTRO_PLAY_FOV,
   INTRO_START_DISTANCE,
@@ -11,6 +11,8 @@ import {
   resolveIntroPlayTune,
   type IntroPlayTune,
 } from "@/lib/intro-play";
+import { compactSplatAt, decodeCompactCloud, type CompactCloud, type CompactSplat } from "@/lib/splat-cloud";
+import { pickRegion, SPLAT_REGIONS, type SplatRegion } from "@/lib/splat-regions";
 
 const RIPPLE_LIFETIME_MS = 2_800;
 const RIPPLE_DELAYS = [0] as const;
@@ -39,18 +41,69 @@ function makeBeaconTexture() {
 
 type CloudVariant = "henon" | "classic";
 
+/** Fetch + gunzip + decode the compact cloud, reporting download progress. */
+async function loadCompactCloud(url: string, onProgress?: (progress: number) => void): Promise<CompactCloud> {
+  const response = await fetch(url);
+  if (!response.ok || !response.body) throw new Error(`compact cloud fetch failed: ${response.status}`);
+  const total = Number(response.headers.get("content-length")) || 0;
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+    if (total > 0) onProgress?.(Math.min(1, received / total));
+  }
+  const raw = new Uint8Array(await new Blob(chunks).arrayBuffer());
+  // A proxy may already have transparently gunzipped the response.
+  const isRaw = raw.length >= 4 && raw[0] === 0x42 && raw[1] === 0x42 && raw[2] === 0x50 && raw[3] === 0x31;
+  if (isRaw) return decodeCompactCloud(raw);
+  const inflated = await new Response(
+    new Blob([raw]).stream().pipeThrough(new DecompressionStream("gzip")),
+  ).arrayBuffer();
+  return decodeCompactCloud(new Uint8Array(inflated));
+}
+
+function packCompactCloud(cloud: CompactCloud): PackedSplats {
+  return new PackedSplats({
+    maxSplats: cloud.count,
+    construct: (splats) => {
+      const center = new THREE.Vector3();
+      const scales = new THREE.Vector3(cloud.sigma, cloud.sigma, cloud.sigma);
+      const quaternion = new THREE.Quaternion();
+      const color = new THREE.Color();
+      const out: CompactSplat = { x: 0, y: 0, z: 0, r: 0, g: 0, b: 0, alpha: 0 };
+      for (let index = 0; index < cloud.count; index++) {
+        compactSplatAt(cloud, index, out);
+        center.set(out.x, out.y, out.z);
+        color.setRGB(out.r, out.g, out.b);
+        splats.pushSplat(center, scales, quaternion, out.alpha, color);
+      }
+    },
+  });
+}
+
 export default function BuddhabrotCloudCanvas({
   fading, onLoadProgress, onReady,
   variant = "henon",
+  legacySplat = false,
+  onRegionChange,
   tune,
+  children,
 }: {
   fading: boolean;
   onLoadProgress?: (progress: number) => void;
   onReady?: () => void;
   variant?: CloudVariant;
+  legacySplat?: boolean;
+  onRegionChange?: (region: SplatRegion | null) => void;
   tune?: Partial<IntroPlayTune>;
+  children?: ReactNode;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
   const fadingRef = useRef(fading);
   const tuneRef = useRef(resolveIntroPlayTune(tune));
   const [ready, setReady] = useState(false);
@@ -72,6 +125,7 @@ export default function BuddhabrotCloudCanvas({
     let previousTime = performance.now();
     let pageVisible = !document.hidden;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const calibrateRegions = new URLSearchParams(window.location.search).has("regions");
 
     const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -99,6 +153,9 @@ export default function BuddhabrotCloudCanvas({
     let dragging = false;
     let lastPointerX = 0;
     let lastPointerY = 0;
+    let cssWidth = 0;
+    let cssHeight = 0;
+    const anchorPoint = new THREE.Vector3();
 
     const spark = new SparkRenderer({
       renderer,
@@ -110,59 +167,256 @@ export default function BuddhabrotCloudCanvas({
     });
     scene.add(spark);
 
+    const useCompact = classic && !legacySplat;
     const assetName = classic ? "true-buddhabrot-4096.spz" : "henon-buddhabrot-4096.spz";
-    const assetUrl = new URL(assetName, window.location.href).href;
+    // Name must not end in .gz: production asset servers hide .gz files as
+    // precompressed variants of a base file, so direct requests 404.
+    const compactName = "true-buddhabrot-450k.bbpz";
+    let splat: SplatMesh | null = null;
+
     const splatSize = dyno.dynoFloat(tuneRef.current.splatSize);
+    const regionCenter = dyno.dynoVec3(new THREE.Vector3(0, 0, 0));
+    const regionInvRadii = dyno.dynoVec3(new THREE.Vector3(1, 1, 1));
+    const regionStrength = dyno.dynoFloat(0);
     const splatSizeModifier = dyno.dynoBlock(
       { gsplat: dyno.Gsplat },
       { gsplat: dyno.Gsplat },
       ({ gsplat }) => {
         if (!gsplat) throw new Error("No gsplat input");
-        const { scales } = dyno.splitGsplat(gsplat).outputs;
+        const { scales, center, rgb } = dyno.splitGsplat(gsplat).outputs;
+        const offset = dyno.mul(dyno.sub(center, regionCenter), regionInvRadii);
+        const inside = dyno.sub(
+          dyno.dynoLiteral("float", "1.0"),
+          dyno.smoothstep(
+            dyno.dynoLiteral("float", "0.75"),
+            dyno.dynoLiteral("float", "1.1"),
+            dyno.length(offset),
+          ),
+        );
+        const gain = dyno.add(
+          dyno.sub(dyno.dynoLiteral("float", "1.0"), dyno.mul(regionStrength, dyno.dynoLiteral("float", "0.18"))),
+          dyno.mul(dyno.mul(regionStrength, inside), dyno.dynoLiteral("float", "1.38")),
+        );
         return {
           gsplat: dyno.combineGsplat({
             gsplat,
             scales: dyno.mul(scales, splatSize),
+            rgb: dyno.mul(rgb, gain),
           }),
         };
       },
     );
-    const splat = new SplatMesh({
-      url: assetUrl,
-      lod: false,
-      objectModifier: splatSizeModifier,
-      onProgress: (event) => {
-        if (event.lengthComputable && event.total > 0) {
-          onLoadProgress?.(THREE.MathUtils.clamp(event.loaded / event.total, 0, 1));
+
+    function createLegacySplatMesh(): SplatMesh {
+      const url = new URL(assetName, window.location.href).href;
+      return new SplatMesh({
+        url,
+        lod: false,
+        objectModifier: splatSizeModifier,
+        onProgress: (event) => {
+          if (event.lengthComputable && event.total > 0) {
+            onLoadProgress?.(THREE.MathUtils.clamp(event.loaded / event.total, 0, 1));
+          }
+        },
+      });
+    }
+
+    async function createSplatMesh(): Promise<SplatMesh> {
+      if (useCompact) {
+        const url = new URL(compactName, window.location.href).href;
+        const cloud = await loadCompactCloud(url, onLoadProgress);
+        return new SplatMesh({ packedSplats: packCompactCloud(cloud), objectModifier: splatSizeModifier });
+      }
+      return createLegacySplatMesh();
+    }
+
+    // Adds `mesh` to the scene and waits for it to finish initializing.
+    // Shared by the primary load and the legacy-fallback retry below so
+    // neither path duplicates the ripple/ready bookkeeping.
+    async function adoptMesh(mesh: SplatMesh): Promise<void> {
+      if (disposed) {
+        mesh.dispose();
+        return;
+      }
+      mesh.opacity = 0.82;
+      splat = mesh;
+      scene.add(mesh);
+      if (calibrateRegions) {
+        for (const region of SPLAT_REGIONS) {
+          const wire = new THREE.Mesh(
+            new THREE.SphereGeometry(1, 16, 12),
+            new THREE.MeshBasicMaterial({ color: 0x65b9ff, wireframe: true, transparent: true, opacity: 0.22 }),
+          );
+          wire.position.set(region.center[0], region.center[1], region.center[2]);
+          wire.scale.set(region.radii[0], region.radii[1], region.radii[2]);
+          scene.add(wire);
         }
-      },
-    });
-    splat.opacity = 0.82;
-    scene.add(splat);
+      }
+      await mesh.initialized;
+      if (disposed) return;
+      splatReady = true;
+      nextRippleAt = performance.now() + 420;
+      onLoadProgress?.(1);
+      onReady?.();
+      setReady(true);
+    }
+
+    createSplatMesh()
+      .then(adoptMesh)
+      .catch(async (error) => {
+        if (disposed) return;
+        if (!useCompact) {
+          // Already the legacy path failing; no further fallback to try.
+          setReady(false);
+          return;
+        }
+        console.warn("compact splat cloud failed, falling back to legacy SPZ", error);
+        try {
+          await adoptMesh(createLegacySplatMesh());
+        } catch {
+          if (!disposed) setReady(false);
+        }
+      });
+
+    const pointerNdc = new THREE.Vector2();
+    const raycaster = new THREE.Raycaster();
+    let hoveredRegion: SplatRegion | null = null;
+    // Stamped on every pointer event; read by the idle tour below.
+    let lastInteraction = performance.now();
+
+    const IDLE_TOUR_AFTER_MS = 9_000;
+    const TOUR_DWELL_MS = 6_000;
+    let tourIndex = -1;
+    let tourActive = false;
+    let tourOwnsHover = false;
+    let nextTourStepAt = 0;
+    const tourPosition = new THREE.Vector3();
+    const tourQuaternion = new THREE.Quaternion();
+
+    function stopTour() {
+      if (!tourActive) return;
+      tourActive = false;
+      if (tourOwnsHover) setHoveredRegion(null);
+    }
+
+    function updateTour(now: number) {
+      if (reduceMotion || fadingRef.current || !splatReady || dragging) {
+        stopTour();
+        return;
+      }
+      if (now - lastInteraction < IDLE_TOUR_AFTER_MS) {
+        stopTour();
+        return;
+      }
+      if (tourActive && now < nextTourStepAt) return;
+      tourActive = true;
+      nextTourStepAt = now + TOUR_DWELL_MS;
+      tourIndex = (tourIndex + 1) % SPLAT_REGIONS.length;
+      const region = SPLAT_REGIONS[tourIndex];
+      setHoveredRegion(region, true);
+      tourPosition.set(region.center[0], region.center[1], region.center[2]);
+      spawnRippleAt(now, tourPosition, tourQuaternion.identity());
+    }
+
+    function setHoveredRegion(region: SplatRegion | null, fromTour = false) {
+      tourOwnsHover = fromTour && region !== null;
+      if (region === hoveredRegion) return;
+      hoveredRegion = region;
+      if (region) {
+        regionCenter.value.set(region.center[0], region.center[1], region.center[2]);
+        regionInvRadii.value.set(1 / region.radii[0], 1 / region.radii[1], 1 / region.radii[2]);
+      }
+      renderer.domElement.classList.toggle("regionHover", region !== null);
+      onRegionChange?.(region);
+    }
+
+    function pickAtPointer(event: PointerEvent): SplatRegion | null {
+      const rect = renderer.domElement.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return null;
+      pointerNdc.set(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      raycaster.setFromCamera(pointerNdc, camera);
+      const picked = pickRegion(raycaster.ray.origin, raycaster.ray.direction, SPLAT_REGIONS);
+      return picked ? picked.region : null;
+    }
+
+    let pressX = 0;
+    let pressY = 0;
 
     const onPointerDown = (event: PointerEvent) => {
       if (event.button !== 0 || fadingRef.current) return;
       dragging = true;
       lastPointerX = event.clientX;
       lastPointerY = event.clientY;
+      pressX = event.clientX;
+      pressY = event.clientY;
+      lastInteraction = performance.now();
+      setHoveredRegion(null);
       renderer.domElement.setPointerCapture(event.pointerId);
       renderer.domElement.classList.add("dragging");
     };
     const onPointerMove = (event: PointerEvent) => {
-      if (!dragging) return;
-      yaw -= (event.clientX - lastPointerX) * 0.006;
-      pitch = THREE.MathUtils.clamp(pitch + (event.clientY - lastPointerY) * 0.005, -1.25, 1.25);
-      lastPointerX = event.clientX;
-      lastPointerY = event.clientY;
+      lastInteraction = performance.now();
+      if (dragging) {
+        yaw -= (event.clientX - lastPointerX) * 0.006;
+        pitch = THREE.MathUtils.clamp(pitch + (event.clientY - lastPointerY) * 0.005, -1.25, 1.25);
+        lastPointerX = event.clientX;
+        lastPointerY = event.clientY;
+        return;
+      }
+      if (fadingRef.current || !splatReady || event.pointerType === "touch") return;
+      setHoveredRegion(pickAtPointer(event));
     };
-    const onPointerUp = () => {
+    const onPointerUp = (event: PointerEvent) => {
       dragging = false;
       renderer.domElement.classList.remove("dragging");
+      lastInteraction = performance.now();
+      if (calibrateRegions && Math.hypot(event.clientX - pressX, event.clientY - pressY) <= 5) {
+        const packed = splat?.packedSplats;
+        if (packed) {
+          const rect = renderer.domElement.getBoundingClientRect();
+          pointerNdc.set(
+            ((event.clientX - rect.left) / rect.width) * 2 - 1,
+            -((event.clientY - rect.top) / rect.height) * 2 + 1,
+          );
+          raycaster.setFromCamera(pointerNdc, camera);
+          const { origin, direction } = raycaster.ray;
+          const count = packed.getNumSplats();
+          let best: { point: THREE.Vector3; score: number } | null = null;
+          const toSplat = new THREE.Vector3();
+          for (let index = 0; index < count; index += 7) {
+            const sample = packed.getSplat(index);
+            if (sample.opacity < 0.12) continue;
+            toSplat.copy(sample.center).sub(origin);
+            const along = toSplat.dot(direction);
+            if (along <= 0) continue;
+            const offAxis = toSplat.addScaledVector(direction, -along).length();
+            const score = offAxis + along * 0.01;
+            if (offAxis < 0.06 && (!best || score < best.score)) {
+              best = { point: sample.center.clone(), score };
+            }
+          }
+          if (best) {
+            console.log(`[regions] splat-space hit: [${best.point.x.toFixed(3)}, ${best.point.y.toFixed(3)}, ${best.point.z.toFixed(3)}]`);
+          }
+        }
+      }
+      if (fadingRef.current || !splatReady || event.pointerType !== "touch") return;
+      if (Math.hypot(event.clientX - pressX, event.clientY - pressY) > 5) return;
+      const tapped = pickAtPointer(event);
+      setHoveredRegion(tapped === hoveredRegion ? null : tapped);
+    };
+    const onPointerLeave = (event: PointerEvent) => {
+      // Touch fires pointerleave right after pointerup, which would undo tap-to-toggle.
+      if (event.pointerType !== "touch") setHoveredRegion(null);
     };
     renderer.domElement.addEventListener("pointerdown", onPointerDown);
     renderer.domElement.addEventListener("pointermove", onPointerMove);
     renderer.domElement.addEventListener("pointerup", onPointerUp);
     renderer.domElement.addEventListener("pointercancel", onPointerUp);
+    renderer.domElement.addEventListener("pointerleave", onPointerLeave);
 
     const rippleGeometry = new THREE.RingGeometry(0.972, 1, 96);
     const beaconTexture = makeBeaconTexture();
@@ -177,7 +431,7 @@ export default function BuddhabrotCloudCanvas({
     }
 
     function pickVisibleSplat() {
-      const packed = splat.packedSplats;
+      const packed = splat?.packedSplats;
       if (!packed) return null;
       const count = packed.getNumSplats();
       let fallback: ReturnType<typeof packed.getSplat> | null = null;
@@ -193,12 +447,10 @@ export default function BuddhabrotCloudCanvas({
       return fallback;
     }
 
-    function spawnRipple(now: number) {
-      const sample = pickVisibleSplat();
-      if (!sample) return;
+    function spawnRippleAt(now: number, position: THREE.Vector3, quaternion: THREE.Quaternion) {
       const group = new THREE.Group();
-      group.position.copy(sample.center);
-      group.quaternion.copy(sample.quaternion);
+      group.position.copy(position);
+      group.quaternion.copy(quaternion);
       group.quaternion.multiply(new THREE.Quaternion().random());
 
       const rings = RIPPLE_DELAYS.map((_, index) => {
@@ -235,6 +487,12 @@ export default function BuddhabrotCloudCanvas({
       ripples.push({ born: now, group, beacon, rings });
     }
 
+    function spawnRipple(now: number) {
+      const sample = pickVisibleSplat();
+      if (!sample) return;
+      spawnRippleAt(now, sample.center, sample.quaternion);
+    }
+
     function updateRipples(now: number) {
       if (splatReady && !reduceMotion && !fadingRef.current && now >= nextRippleAt && ripples.length < 4) {
         spawnRipple(now);
@@ -265,9 +523,36 @@ export default function BuddhabrotCloudCanvas({
       const rect = host!.getBoundingClientRect();
       const width = Math.max(1, Math.round(rect.width));
       const height = Math.max(1, Math.round(rect.height));
+      cssWidth = width;
+      cssHeight = height;
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height, false);
+    }
+
+    // Projects the hovered region's top edge to screen space and moves the
+    // caption-card anchor there imperatively, so the card tracks the region
+    // as the cloud rotates without triggering React re-renders every frame.
+    function updateRegionAnchor() {
+      const anchor = anchorRef.current;
+      if (!anchor || !hoveredRegion) return;
+      anchorPoint.set(
+        hoveredRegion.center[0],
+        hoveredRegion.center[1] + hoveredRegion.radii[1],
+        hoveredRegion.center[2],
+      );
+      anchorPoint.project(camera);
+      const x = THREE.MathUtils.clamp(
+        ((anchorPoint.x + 1) / 2) * cssWidth,
+        90,
+        Math.max(90, cssWidth - 90),
+      );
+      const y = THREE.MathUtils.clamp(
+        (1 - (anchorPoint.y + 1) / 2) * cssHeight,
+        70,
+        Math.max(70, cssHeight - 24),
+      );
+      anchor.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
     }
 
     function render(now: number) {
@@ -287,12 +572,13 @@ export default function BuddhabrotCloudCanvas({
         pitch = pose.pitch;
         distance = pose.distance;
         target.set(pose.target.x, pose.target.y, pose.target.z);
-        splat.scale.z = introPlayFlatten(elapsed, reduceMotion);
+        if (splat) splat.scale.z = introPlayFlatten(elapsed, reduceMotion);
         scene.background = null;
         renderer.setClearColor(0x000000, 0);
+        setHoveredRegion(null);
       } else {
         alignFrom = null;
-        splat.scale.z = 1;
+        if (splat) splat.scale.z = 1;
         camera.fov = INTRO_PLAY_FOV;
         scene.background = new THREE.Color(0x030408);
         renderer.setClearColor(0x030408, 1);
@@ -306,6 +592,11 @@ export default function BuddhabrotCloudCanvas({
         target.z + Math.cos(yaw) * cosPitch * distance,
       );
       camera.lookAt(target);
+      camera.updateMatrixWorld();
+      updateTour(now);
+      updateRegionAnchor();
+      const strengthTarget = hoveredRegion && !dragging && !fadingRef.current ? 1 : 0;
+      regionStrength.value += (strengthTarget - regionStrength.value) * Math.min(1, delta / 140);
       updateRipples(now);
       renderer.render(scene, camera);
       frame = requestAnimationFrame(render);
@@ -328,18 +619,6 @@ export default function BuddhabrotCloudCanvas({
     document.addEventListener("visibilitychange", onVisibilityChange);
     frame = requestAnimationFrame(render);
 
-    splat.initialized.then(() => {
-      if (!disposed) {
-        splatReady = true;
-        nextRippleAt = performance.now() + 420;
-        onLoadProgress?.(1);
-        onReady?.();
-        setReady(true);
-      }
-    }).catch(() => {
-      if (!disposed) setReady(false);
-    });
-
     return () => {
       disposed = true;
       cancelAnimationFrame(frame);
@@ -349,11 +628,13 @@ export default function BuddhabrotCloudCanvas({
       renderer.domElement.removeEventListener("pointermove", onPointerMove);
       renderer.domElement.removeEventListener("pointerup", onPointerUp);
       renderer.domElement.removeEventListener("pointercancel", onPointerUp);
+      renderer.domElement.removeEventListener("pointerleave", onPointerLeave);
+      onRegionChange?.(null);
       for (const ripple of ripples) removeRipple(ripple);
       ripples.length = 0;
       rippleGeometry.dispose();
       beaconTexture.dispose();
-      scene.remove(splat);
+      if (splat) scene.remove(splat);
       scene.remove(spark);
       renderer.domElement.remove();
 
@@ -364,13 +645,13 @@ export default function BuddhabrotCloudCanvas({
           window.setTimeout(disposeCloud, 16);
           return;
         }
-        splat.dispose();
+        splat?.dispose();
         spark.dispose();
         renderer.dispose();
       };
       disposeCloud();
     };
-  }, [variant, onLoadProgress, onReady]);
+  }, [variant, legacySplat, onLoadProgress, onReady, onRegionChange]);
 
   return (
     <div
@@ -378,6 +659,8 @@ export default function BuddhabrotCloudCanvas({
       className={`introCloudHost ${ready ? "ready" : ""} ${fading ? "fading" : ""}`}
       role="img"
       aria-label={`${variant === "classic" ? "True z squared plus c" : "Complex Henon"} precomputed 3D Buddhabrot Gaussian cloud. Drag to orbit.`}
-    />
+    >
+      <div ref={anchorRef} className="introRegionAnchor">{children}</div>
+    </div>
   );
 }

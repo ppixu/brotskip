@@ -1086,6 +1086,7 @@ button, input { font: inherit; }
   touch-action: none;
 }
 .introCloudHost canvas.dragging { cursor: grabbing; }
+.introCloudHost canvas.regionHover { cursor: pointer; }
 .introCloudHost.ready { opacity: 1; }
 .introCloudHost.fading {
   opacity: 0;
@@ -1219,6 +1220,23 @@ button, input { font: inherit; }
   background: rgba(8, 14, 16, .72);
   outline: none;
 }
+.introDebugToggle {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(223, 251, 255, 0.5);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  user-select: none;
+}
+.introDebugToggle input {
+  accent-color: #65b9ff;
+}
 .playfieldThrowActions {
   position: absolute;
   left: var(--throw-stone-x);
@@ -1312,6 +1330,49 @@ button, input { font: inherit; }
   transition: width 80ms linear;
 }
 .introLoadProgress.complete { opacity: 0; }
+.introRegionAnchor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  pointer-events: none;
+  will-change: transform;
+}
+.introRegionCard {
+  position: absolute;
+  left: 0;
+  bottom: 14px;
+  /* The anchor has zero width; without max-content the absolute card
+     shrink-wraps to min-content and wraps every word. */
+  width: max-content;
+  max-width: 240px;
+  padding: 10px 12px;
+  border: 1px solid rgba(140, 220, 255, 0.18);
+  border-radius: 6px;
+  background: rgba(4, 10, 18, 0.78);
+  color: #dffbff;
+  opacity: 0;
+  transform: translateX(-50%) translateY(4px);
+  transition: opacity 200ms ease, transform 200ms ease;
+  pointer-events: none;
+}
+.introRegionCard.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
+.introRegionName {
+  margin: 0 0 4px;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.introRegionBlurb {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(223, 251, 255, 0.82);
+}
 
 @media (max-width: 760px) {
   .gameShell { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr); }

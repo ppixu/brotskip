@@ -42,6 +42,7 @@ struct Options {
   uint32_t max_splats = 1'000'000;
   uint32_t threads = std::max(1u, std::thread::hardware_concurrency());
   std::filesystem::path output = "outputs/true-buddhabrot/splat.ply";
+  std::filesystem::path compact_output;
 };
 
 struct VoxelCount {
@@ -198,6 +199,43 @@ void write_ply(const Options& options, const std::vector<Candidate>& splats) {
   }
 }
 
+void append_varint(std::ofstream& output, uint32_t value) {
+  while (value >= 0x80) {
+    output.put(static_cast<char>(static_cast<uint8_t>(value) | 0x80u));
+    value >>= 7;
+  }
+  output.put(static_cast<char>(static_cast<uint8_t>(value)));
+}
+
+// Compact "BBP1" cloud: header, varint voxel-index deltas, u8 densities.
+// Decoded by lib/splat-cloud.ts, which derives color/alpha/position/scale.
+void write_compact(const Options& options, const std::vector<Candidate>& splats) {
+  std::filesystem::create_directories(options.compact_output.parent_path());
+  std::ofstream output(options.compact_output, std::ios::binary);
+  if (!output) throw std::runtime_error("could not open compact output");
+  const uint32_t magic = 0x31504242u;  // "BBP1"
+  const uint32_t resolution = options.resolution;
+  const uint32_t count = static_cast<uint32_t>(splats.size());
+  const float field_min = static_cast<float>(FIELD_MIN);
+  const float field_max = static_cast<float>(FIELD_MAX);
+  const float sigma = static_cast<float>((FIELD_MAX - FIELD_MIN) / options.resolution * 0.22);
+  output.write(reinterpret_cast<const char*>(&magic), 4);
+  output.write(reinterpret_cast<const char*>(&resolution), 4);
+  output.write(reinterpret_cast<const char*>(&count), 4);
+  output.write(reinterpret_cast<const char*>(&field_min), 4);
+  output.write(reinterpret_cast<const char*>(&field_max), 4);
+  output.write(reinterpret_cast<const char*>(&sigma), 4);
+  uint32_t previous = 0;
+  for (size_t index = 0; index < splats.size(); ++index) {
+    append_varint(output, index == 0 ? splats[index].voxel : splats[index].voxel - previous);
+    previous = splats[index].voxel;
+  }
+  for (const Candidate& splat : splats) {
+    const float density = std::clamp(splat.density, 0.0f, 1.0f);
+    output.put(static_cast<char>(static_cast<uint8_t>(std::lround(density * 255.0f))));
+  }
+}
+
 Options parse_options(int argc, char** argv) {
   Options options;
   for (int i = 1; i < argc; ++i) {
@@ -213,6 +251,7 @@ Options parse_options(int argc, char** argv) {
     else if (argument == "--max-splats") options.max_splats = std::stoul(next());
     else if (argument == "--threads") options.threads = std::max(1ul, std::stoul(next()));
     else if (argument == "--output") options.output = next();
+    else if (argument == "--compact-output") options.compact_output = next();
     else throw std::runtime_error("unknown argument: " + argument);
   }
   const uint64_t voxels = static_cast<uint64_t>(options.resolution) *
@@ -314,6 +353,7 @@ int main(int argc, char** argv) {
       return left.voxel < right.voxel;
     });
     write_ply(options, candidates);
+    if (!options.compact_output.empty()) write_compact(options, candidates);
     std::cerr << "qualified paths " << escaped.load() << "; " << density.size()
               << " occupied voxels; wrote " << candidates.size() << " true Buddhabrot splats\n";
     return 0;

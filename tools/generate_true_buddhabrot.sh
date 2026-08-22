@@ -14,14 +14,21 @@ clang++ -O3 -std=c++20 -pthread \
   --iterations "${BUDDHABROT_ITERATIONS:-4096}" \
   --resolution "${BUDDHABROT_RESOLUTION:-896}" \
   --min-escape "${BUDDHABROT_MIN_ESCAPE:-8}" \
-  --max-splats "${BUDDHABROT_MAX_SPLATS:-1000000}" \
-  --output "$build_dir/splat.ply"
+  --max-splats "${BUDDHABROT_MAX_SPLATS:-450000}" \
+  --output "$build_dir/splat.ply" \
+  --compact-output "$build_dir/splat.bbp"
 
-npx --yes @playcanvas/splat-transform \
-  "$build_dir/splat.ply" \
-  --filter-nan \
-  "$repo_dir/public/true-buddhabrot-4096.spz" \
-  --spz-version 3 \
-  -w
+gzip -9 -c "$build_dir/splat.bbp" > "$repo_dir/public/true-buddhabrot-450k.bbpz"
 
-du -h "$build_dir/splat.ply" "$repo_dir/public/true-buddhabrot-4096.spz"
+# The legacy SPZ in public/ must stay byte-identical for the debug A/B switch.
+# Regenerate it only on explicit request.
+if [ "${BUDDHABROT_WRITE_SPZ:-0}" = "1" ]; then
+  npx --yes @playcanvas/splat-transform \
+    "$build_dir/splat.ply" \
+    --filter-nan \
+    "$repo_dir/public/true-buddhabrot-4096.spz" \
+    --spz-version 3 \
+    -w
+fi
+
+du -h "$build_dir/splat.ply" "$build_dir/splat.bbp" "$repo_dir/public/true-buddhabrot-450k.bbpz"

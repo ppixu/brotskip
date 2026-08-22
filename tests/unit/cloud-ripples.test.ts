@@ -9,8 +9,9 @@ test("the intro cloud is doubled and emits fading 3D rings from real splats", ()
   assert.match(source, /INTRO_START_DISTANCE/);
   assert.match(source, /classic \? INTRO_START_DISTANCE\.classic : INTRO_START_DISTANCE\.henon/);
   assert.match(source, /packed\.getSplat\(Math\.floor\(Math\.random\(\) \* count\)\)/);
-  assert.match(source, /group\.position\.copy\(sample\.center\)/);
-  assert.match(source, /group\.quaternion\.copy\(sample\.quaternion\)/);
+  assert.match(source, /spawnRippleAt\(now, sample\.center, sample\.quaternion\)/);
+  assert.match(source, /group\.position\.copy\(position\)/);
+  assert.match(source, /group\.quaternion\.copy\(quaternion\)/);
   assert.match(source, /new THREE\.Quaternion\(\)\.random\(\)/);
   assert.match(source, /quaternion\.multiply/);
   assert.match(source, /new THREE\.RingGeometry/);
