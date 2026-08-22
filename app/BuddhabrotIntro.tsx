@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import type { SplatRegion } from "@/lib/splat-regions";
 import { BUDDHABROT_EXPLAIN, MANDELBROT_EXPLAIN } from "@/lib/buddhabrot/explain";
 import BuddhabrotCloudCanvas from "./BuddhabrotCloudCanvas";
 
@@ -24,8 +25,18 @@ export default function BuddhabrotIntro({
   const mandelbrot = MANDELBROT_EXPLAIN;
   const [loadProgress, setLoadProgress] = useState(0);
   const [splatReady, setSplatReady] = useState(false);
+  const [region, setRegion] = useState<SplatRegion | null>(null);
+  const [regionVisible, setRegionVisible] = useState(false);
   const handleLoadProgress = useCallback((progress: number) => setLoadProgress(progress), []);
   const handleReady = useCallback(() => setSplatReady(true), []);
+  const handleRegionChange = useCallback((next: SplatRegion | null) => {
+    if (next) {
+      setRegion(next);
+      setRegionVisible(true);
+    } else {
+      setRegionVisible(false);
+    }
+  }, []);
   return (
     <div className={`introOverlay ${fading ? "fading" : ""}`} role="status" aria-label="Charting the pond">
       <BuddhabrotCloudCanvas
@@ -34,6 +45,7 @@ export default function BuddhabrotIntro({
         legacySplat={legacySplat}
         onLoadProgress={handleLoadProgress}
         onReady={handleReady}
+        onRegionChange={handleRegionChange}
       />
       <div className="introChrome">
         <span
@@ -47,6 +59,23 @@ export default function BuddhabrotIntro({
           <i style={{ width: `${loadProgress * 100}%` }} />
         </span>
       </div>
+      {region && (
+        <aside className={`introRegionCard ${regionVisible ? "visible" : ""}`} aria-live="polite">
+          <h3 className="introRegionName">{region.name}</h3>
+          <p className="introRegionBlurb">
+            {region.blurb}
+            {region.link && (
+              <>
+                {" "}
+                <a className="introPaperWiki" href={region.link} target="_blank" rel="noreferrer">
+                  Wikipedia
+                </a>
+                <span className="introPaperWikiBox">↗</span>
+              </>
+            )}
+          </p>
+        </aside>
+      )}
       <article className="introPaper introPaperRight" aria-label="Buddhabrot, from Wikipedia">
         <p className="introPaperJournal">{wikipedia.journal}</p>
         <h1 className="introPaperTitle">{wikipedia.title}</h1>

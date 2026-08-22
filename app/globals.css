@@ -959,6 +959,39 @@ button, input { font: inherit; }
   transition: width 80ms linear;
 }
 .introLoadProgress.complete { opacity: 0; }
+.introRegionCard {
+  position: absolute;
+  left: 18px;
+  bottom: 52px;
+  z-index: 3;
+  max-width: 240px;
+  padding: 10px 12px;
+  border: 1px solid rgba(140, 220, 255, 0.18);
+  border-radius: 6px;
+  background: rgba(4, 10, 18, 0.78);
+  color: #dffbff;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 200ms ease, transform 200ms ease;
+  pointer-events: none;
+}
+.introRegionCard.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.introRegionName {
+  margin: 0 0 4px;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.introRegionBlurb {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(223, 251, 255, 0.82);
+}
 
 @media (max-width: 760px) {
   .gameShell { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr); }
@@ -1003,6 +1036,7 @@ button, input { font: inherit; }
   .introPaperLede { font-size: 12px; }
   .introPaperLede::first-letter { font-size: 3.2em; }
   .introPlay { min-height: 44px; }
+  .introRegionCard { bottom: 84px; }
 }
 
 @media (max-width: 430px) {
