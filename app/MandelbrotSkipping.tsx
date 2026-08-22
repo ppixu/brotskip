@@ -169,6 +169,7 @@ type OrbitEngine = {
   spawnAppend: (points: Array<{ x: number; y: number }>, skipIndex: number, cap?: number) => number;
   setView: (view: ViewTransform) => void;
   setTuning: (tuning: Tuning) => void;
+  setRarity: (tint: readonly [number, number, number], strength: number) => void;
   setIterationBoost: (multiplier: number) => void;
   setAtmosphere: (atmosphere: OrbitAtmosphere) => void;
   setLayer: (layer: "pond" | "throw") => void;
@@ -403,7 +404,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
 `;
 
 const pointShader = /* wgsl */ `
-struct Style { alpha: f32, pulse: f32, colorMode: f32, sliceEnabled: f32 }
+struct Style { alpha: f32, pulse: f32, colorMode: f32, sliceEnabled: f32, rarity: vec4f }
 struct Slice { zCamera: f32, sliceHalf: f32, zoom: f32, pad: f32 }
 struct Params {
   sourceCount: u32,
@@ -449,8 +450,9 @@ fn projectPoint(z: vec2f) -> vec2f {
   out.position = vec4f(projectPoint(position) / zoom, 0.0, 1.0);
   let depthColor = mix(vec3f(0.10, 0.78, 0.92), vec3f(0.92, 1.0, 0.82), t);
   let tinted = mix(depthColor, skipTint(skip), style.colorMode);
+  let rarityTinted = mix(tinted, style.rarity.rgb, style.rarity.a);
   let gray = vec3f(mix(0.22, 1.0, t));
-  out.color = mix(tinted, gray, style.pulse);
+  out.color = mix(rarityTinted, gray, style.pulse);
   out.weight = weight;
   return out;
 }
@@ -472,7 +474,7 @@ struct CurveSegment {
   depth: f32,
   pad: f32,
 }
-struct Style { alpha: f32, pulse: f32, colorMode: f32, pad: f32 }
+struct Style { alpha: f32, pulse: f32, colorMode: f32, pad: f32, rarity: vec4f }
 struct Params {
   sourceCount: u32,
   batch: u32,
@@ -529,7 +531,8 @@ fn bezier(curve: CurveSegment, t: f32) -> vec2f {
   let depth = clamp(curve.depth, 0.0, 1.0);
   var out: VSOut;
   out.position = vec4f(projectPoint(bezier(curve, t)), 0.0, 1.0);
-  out.color = mix(mix(vec3f(0.08, 0.66, 0.86), vec3f(0.78, 1.0, 0.70), depth), skipTint(curve.pad), style.colorMode);
+  let baseColor = mix(mix(vec3f(0.08, 0.66, 0.86), vec3f(0.78, 1.0, 0.70), depth), skipTint(curve.pad), style.colorMode);
+  out.color = mix(baseColor, style.rarity.rgb, style.rarity.a);
   let directionalFreshness = mix(curve.freshnessStart, curve.freshnessEnd, t);
   out.alpha = 0.28 * pow(directionalFreshness, 0.65);
   return out;
@@ -696,10 +699,19 @@ function makeRandom(seed: number) {
   };
 }
 
-function skipTintRgb(skipIndex: number, colored: boolean): [number, number, number] {
-  if (!colored) return [SKIP_TINTS[0][0], SKIP_TINTS[0][1], SKIP_TINTS[0][2]];
-  const tint = SKIP_TINTS[(Math.max(1, skipIndex) - 1) % SKIP_TINTS.length];
-  return [tint[0], tint[1], tint[2]];
+function skipTintRgb(
+  skipIndex: number,
+  colored: boolean,
+  rarity?: { tint: readonly [number, number, number]; strength: number },
+): [number, number, number] {
+  const source = colored ? SKIP_TINTS[(Math.max(1, skipIndex) - 1) % SKIP_TINTS.length] : SKIP_TINTS[0];
+  const base: [number, number, number] = [source[0], source[1], source[2]];
+  if (!rarity || rarity.strength <= 0) return base;
+  return [
+    Math.round(base[0] + (rarity.tint[0] - base[0]) * rarity.strength),
+    Math.round(base[1] + (rarity.tint[1] - base[1]) * rarity.strength),
+    Math.round(base[2] + (rarity.tint[2] - base[2]) * rarity.strength),
+  ];
 }
 
 function formatCompact(value: number) {
@@ -809,7 +821,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
   const lineIndirectBuffer = device.createBuffer({ size: 16, usage: usage.STORAGE | usage.COPY_DST | usage.INDIRECT });
   const paramsBuffer = device.createBuffer({ size: 80, usage: usage.UNIFORM | usage.COPY_DST });
   const paramsAtlasBuffer = device.createBuffer({ size: 80, usage: usage.UNIFORM | usage.COPY_DST });
-  const styleBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
+  const styleBuffer = device.createBuffer({ size: 32, usage: usage.UNIFORM | usage.COPY_DST });
   const sliceBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
   const fadeBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
   const lineFadeBuffer = device.createBuffer({ size: 16, usage: usage.UNIFORM | usage.COPY_DST });
@@ -921,6 +933,8 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
   let cssHeight = 1;
   let view: ViewTransform = { centerX: INTRO_POND_CENTER.x, centerY: INTRO_POND_CENTER.y, halfY: INTRO_VIEW_HALF_Y };
   let maxDepth = DEFAULT_TUNING.maxDepth;
+  let rarityTint: [number, number, number] = [1, 1, 1];
+  let rarityStrength = 0;
   let accelerationMultiplier = DEFAULT_TUNING.acceleration;
   let iterationBoost = 1;
   let linePersist = DEFAULT_TUNING.linePersist;
@@ -1073,6 +1087,10 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
       mriEnabled ? 0 : grayscale ? 1 : 0,
       mriEnabled ? 0 : skipColors ? 1 : 0,
       0,
+      rarityTint[0],
+      rarityTint[1],
+      rarityTint[2],
+      mriEnabled ? 0 : rarityStrength,
     ]));
     device.queue.writeBuffer(sliceBuffer, 0, new Float32Array([slice.zCamera, slice.sliceHalf, slice.zoom, 0]));
     device.queue.writeBuffer(indirectBuffer, 0, new Uint32Array([0, 1, 0, 0]));
@@ -1253,6 +1271,10 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
         doublePixels = nextDoublePixels;
         resize();
       }
+    },
+    setRarity(tint, strength) {
+      rarityTint = [tint[0] / 255, tint[1] / 255, tint[2] / 255];
+      rarityStrength = Math.max(0, Math.min(1, strength));
     },
     setIterationBoost(multiplier) {
       iterationBoost = Math.max(1, Number.isFinite(multiplier) ? multiplier : 1);

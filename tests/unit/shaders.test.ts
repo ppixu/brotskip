@@ -181,7 +181,7 @@ test("opening and flashlight hide orbit lines, go grayscale, and throw overlappi
   assert.match(source, /introLaunchOrigin/);
   assert.doesNotMatch(source, /function throwIntroRock\(\) \{\s*const a = anchor\(\);/);
   assert.doesNotMatch(source, /if \(phase === "flying" \|\| phase === "resolving" \|\| phase === "aiming"\) return;/);
-  assert.match(source, /mix\(tinted, gray, style\.pulse\)/);
+  assert.match(source, /mix\(rarityTinted, gray, style\.pulse\)/);
   assert.match(source, /let lineGain = display.pad;/);
   assert.doesNotMatch(source, /INTRO_SETTLE_MS/);
   assert.match(source, /spawnIntroBackgroundOrbits/);
