@@ -91,3 +91,5 @@ Verdict: real quality loss at feasible resolutions, highest complexity, and it d
 ## Outcome
 
 **Shipped asset:** `public/true-buddhabrot-450k.bbp.gz` contains **450,000 splats** at **896³ voxel resolution**. The gzipped file is **720 KB** (996 KB raw `.bbp`), a **84% reduction** from the legacy 4,583,350-byte SPZ. The legacy `public/true-buddhabrot-4096.spz` remains byte-identical in the repo, accessible behind the intro's persisted "Legacy splat" debug checkbox for live A/B comparison. Both `public/true-buddhabrot-4096.spz` and `public/henon-buddhabrot-4096.spz` are unmodified.
+
+Decode runs on the main thread: the 450k-splat decode is fast enough that the spec's worker idea was dropped. Compact load failure falls back to the legacy SPZ once (implemented in `BuddhabrotCloudCanvas`).

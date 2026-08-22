@@ -27,6 +27,7 @@ export default function BuddhabrotIntro({
   const [splatReady, setSplatReady] = useState(false);
   const [region, setRegion] = useState<SplatRegion | null>(null);
   const [regionVisible, setRegionVisible] = useState(false);
+  const [cardHovered, setCardHovered] = useState(false);
   const handleLoadProgress = useCallback((progress: number) => setLoadProgress(progress), []);
   const handleReady = useCallback(() => setSplatReady(true), []);
   const handleRegionChange = useCallback((next: SplatRegion | null) => {
@@ -60,7 +61,12 @@ export default function BuddhabrotIntro({
         </span>
       </div>
       {region && (
-        <aside className={`introRegionCard ${regionVisible ? "visible" : ""}`} aria-live="polite">
+        <aside
+          className={`introRegionCard ${regionVisible || cardHovered ? "visible" : ""}`}
+          aria-live="polite"
+          onPointerEnter={() => setCardHovered(true)}
+          onPointerLeave={() => setCardHovered(false)}
+        >
           <h3 className="introRegionName">{region.name}</h3>
           <p className="introRegionBlurb">
             {region.blurb}

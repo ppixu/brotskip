@@ -227,10 +227,13 @@ export default function BuddhabrotCloudCanvas({
         if (!gsplat) throw new Error("No gsplat input");
         const { scales, center, rgb } = dyno.splitGsplat(gsplat).outputs;
         const offset = dyno.mul(dyno.sub(center, regionCenter), regionInvRadii);
-        const inside = dyno.smoothstep(
-          dyno.dynoLiteral("float", "1.1"),
-          dyno.dynoLiteral("float", "0.75"),
-          dyno.length(offset),
+        const inside = dyno.sub(
+          dyno.dynoLiteral("float", "1.0"),
+          dyno.smoothstep(
+            dyno.dynoLiteral("float", "0.75"),
+            dyno.dynoLiteral("float", "1.1"),
+            dyno.length(offset),
+          ),
         );
         const gain = dyno.add(
           dyno.sub(dyno.dynoLiteral("float", "1.0"), dyno.mul(regionStrength, dyno.dynoLiteral("float", "0.18"))),
@@ -246,12 +249,7 @@ export default function BuddhabrotCloudCanvas({
       },
     );
 
-    async function createSplatMesh(): Promise<SplatMesh> {
-      if (useCompact) {
-        const url = new URL(compactName, window.location.href).href;
-        const cloud = await loadCompactCloud(url, onLoadProgress);
-        return new SplatMesh({ packedSplats: packCompactCloud(cloud), objectModifier: splatSizeModifier });
-      }
+    function createLegacySplatMesh(): SplatMesh {
       const url = new URL(assetName, window.location.href).href;
       return new SplatMesh({
         url,
@@ -265,7 +263,19 @@ export default function BuddhabrotCloudCanvas({
       });
     }
 
-    createSplatMesh().then((mesh) => {
+    async function createSplatMesh(): Promise<SplatMesh> {
+      if (useCompact) {
+        const url = new URL(compactName, window.location.href).href;
+        const cloud = await loadCompactCloud(url, onLoadProgress);
+        return new SplatMesh({ packedSplats: packCompactCloud(cloud), objectModifier: splatSizeModifier });
+      }
+      return createLegacySplatMesh();
+    }
+
+    // Adds `mesh` to the scene and waits for it to finish initializing.
+    // Shared by the primary load and the legacy-fallback retry below so
+    // neither path duplicates the ripple/comet/ready bookkeeping.
+    async function adoptMesh(mesh: SplatMesh): Promise<void> {
       if (disposed) {
         mesh.dispose();
         return;
@@ -284,18 +294,32 @@ export default function BuddhabrotCloudCanvas({
           scene.add(wire);
         }
       }
-      return mesh.initialized;
-    }).then((mesh) => {
-      if (!mesh || disposed) return;
+      await mesh.initialized;
+      if (disposed) return;
       splatReady = true;
       nextRippleAt = performance.now() + 420;
       nextCometAt = performance.now() + 900;
       onLoadProgress?.(1);
       onReady?.();
       setReady(true);
-    }).catch(() => {
-      if (!disposed) setReady(false);
-    });
+    }
+
+    createSplatMesh()
+      .then(adoptMesh)
+      .catch(async (error) => {
+        if (disposed) return;
+        if (!useCompact) {
+          // Already the legacy path failing; no further fallback to try.
+          setReady(false);
+          return;
+        }
+        console.warn("compact splat cloud failed, falling back to legacy SPZ", error);
+        try {
+          await adoptMesh(createLegacySplatMesh());
+        } catch {
+          if (!disposed) setReady(false);
+        }
+      });
 
     const pointerNdc = new THREE.Vector2();
     const raycaster = new THREE.Raycaster();
@@ -427,7 +451,10 @@ export default function BuddhabrotCloudCanvas({
       const tapped = pickAtPointer(event);
       setHoveredRegion(tapped === hoveredRegion ? null : tapped);
     };
-    const onPointerLeave = () => setHoveredRegion(null);
+    const onPointerLeave = (event: PointerEvent) => {
+      // Touch fires pointerleave right after pointerup, which would undo tap-to-toggle.
+      if (event.pointerType !== "touch") setHoveredRegion(null);
+    };
     renderer.domElement.addEventListener("pointerdown", onPointerDown);
     renderer.domElement.addEventListener("pointermove", onPointerMove);
     renderer.domElement.addEventListener("pointerup", onPointerUp);
@@ -721,6 +748,7 @@ export default function BuddhabrotCloudCanvas({
       renderer.domElement.removeEventListener("pointerup", onPointerUp);
       renderer.domElement.removeEventListener("pointercancel", onPointerUp);
       renderer.domElement.removeEventListener("pointerleave", onPointerLeave);
+      onRegionChange?.(null);
       for (const ripple of ripples) removeRipple(ripple);
       for (const comet of comets) removeComet(comet);
       ripples.length = 0;
