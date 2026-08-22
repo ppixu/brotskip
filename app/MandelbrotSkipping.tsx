@@ -14,7 +14,7 @@ import {
   TINY_HOP_STREAK,
   updateOrbitEnd,
 } from "@/lib/orbit-end";
-import { MIN_SKIPS, sampleSkipCount } from "@/lib/skip-count";
+import { MIN_SKIPS, MAX_SKIPS, sampleSkipCount } from "@/lib/skip-count";
 import { allocateSources, allocateSourcesAppend } from "@/lib/orbit-sources";
 import { createBuddhabrotGenerator } from "@/lib/buddhabrot/generator";
 import {
@@ -103,6 +103,30 @@ import {
   buddhabrotShadeFadeAlpha,
   buddhabrotSlingFadeAlpha,
 } from "@/lib/buddhabrot-fade";
+import { STONES, stoneById, clampTuningToStone, type StoneDef } from "@/lib/progression/stones";
+import { expectedSkips } from "@/lib/progression/pricing";
+import {
+  freshProgression,
+  loadProgression,
+  storeProgression,
+  buy as buyProgression,
+  equip as equipProgression,
+  earn as earnProgression,
+  completeChallenges as completeProgressionChallenges,
+  updateStreak as updateProgressionStreak,
+  type ProgressionState,
+} from "@/lib/progression/state";
+import { CHALLENGES, CHALLENGE_IDS, evaluateChallenges, type ThrowSummary } from "@/lib/progression/challenges";
+import {
+  COLLECTABLE_COLORS,
+  COLLECTABLE_EXTRA_SKIPS,
+  COLLECTABLE_RADIUS_PX,
+  COLLECTABLE_SCORE_MULTIPLIER,
+  collectableHit,
+  rollCollectable,
+  surgedDepth,
+  type Collectable,
+} from "@/lib/progression/collectables";
 
 type Phase = "ready" | "aiming" | "flying" | "resolving" | "result";
 
@@ -1384,6 +1408,9 @@ export default function MandelbrotSkipping() {
   const restartRef = useRef<() => void>(() => {});
   const applyViewRef = useRef<(nextView: ViewTransform) => void>(() => {});
   const playerNameRef = useRef("YOU");
+  const [progression, setProgression] = useState<ProgressionState>(freshProgression);
+  const progressionRef = useRef<ProgressionState>(progression);
+  const stoneRef = useRef<StoneDef>(stoneById(progression.equippedId));
   const tuningRef = useRef<Tuning>({ ...DEFAULT_TUNING });
   const invalidateFlashlightRef = useRef<() => void>(() => {});
   const invalidateGridRef = useRef<() => void>(() => {});
@@ -1434,6 +1461,13 @@ export default function MandelbrotSkipping() {
       tuningRef.current = saved;
       setTuning(saved);
       engineRef.current?.setTuning(saved);
+      const savedProgression = loadProgression(CHALLENGE_IDS);
+      progressionRef.current = savedProgression;
+      setProgression(savedProgression);
+      const stone = stoneById(savedProgression.equippedId);
+      stoneRef.current = stone;
+      engineRef.current?.setTuning(clampTuningToStone(saved, stone));
+      engineRef.current?.setRarity(stone.tint, stone.tintStrength);
     });
     return () => cancelAnimationFrame(frame);
   }, []);
@@ -1461,11 +1495,13 @@ export default function MandelbrotSkipping() {
       engine?.setView(viewRef.current);
       if (introActiveRef.current) {
         engine?.setTuning({ ...tuningRef.current, maxDepth: INTRO_MAX_DEPTH, doublePixels: true });
+        engine?.setRarity([255, 255, 255], 0);
         engine?.setAtmosphere(INTRO_ATMOSPHERE);
         engine?.setLayer("pond");
         engine?.setDisplay({ ...displayLayerGains("intro"), cone: null, cssWidth: 1, cssHeight: 1 });
       } else {
-        engine?.setTuning(tuningRef.current);
+        engine?.setTuning(clampTuningToStone(tuningRef.current, stoneRef.current));
+        engine?.setRarity(stoneRef.current.tint, stoneRef.current.tintStrength);
         engine?.setAtmosphere(PLAY_ATMOSPHERE);
         engine?.setLayer("throw");
         engine?.setDisplay({ ...displayLayerGains("play"), cone: null, cssWidth: 1, cssHeight: 1 });
@@ -1558,7 +1594,7 @@ export default function MandelbrotSkipping() {
     tuningRef.current = next;
     setTuning(next);
     storeTuning(next);
-    engineRef.current?.setTuning(next);
+    engineRef.current?.setTuning(clampTuningToStone(next, stoneRef.current));
     invalidateGridRef.current();
     invalidateFlashlightRef.current();
   }, []);
@@ -1733,7 +1769,7 @@ export default function MandelbrotSkipping() {
         ? orbitScores.reduce((sum, orbit) => sum + orbitShape(orbit).spread, 0) / orbitScores.length
         : 0;
       const resolvedRatio = orbitScores.length ? orbitScores.filter((orbit) => orbit.resolved).length / orbitScores.length : 0;
-      const depthRatio = orbitScores.length ? orbitScores.reduce((sum, orbit) => sum + Math.min(1, orbit.shownDepth / tuningRef.current.maxDepth), 0) / orbitScores.length : 0;
+      const depthRatio = orbitScores.length ? orbitScores.reduce((sum, orbit) => sum + Math.min(1, orbit.shownDepth / stoneTuning().maxDepth), 0) / orbitScores.length : 0;
       const progress = resolvedRatio * 0.8 + depthRatio * 0.2;
       setHud({ phase, score, skips: rock.skips, deepest, progress, coverage, spread });
       lastHud = now;
@@ -1759,6 +1795,11 @@ export default function MandelbrotSkipping() {
       orbit.sumXY += gx * gy;
     }
 
+    function stoneTuning(): Tuning {
+      if (spectatorRef.current) return tuningRef.current;
+      return clampTuningToStone(tuningRef.current, stoneRef.current);
+    }
+
     function resetRound() {
       shotId += 1;
       phase = "ready";
@@ -1778,7 +1819,7 @@ export default function MandelbrotSkipping() {
       setCurrentResultId(null);
       engineRef.current?.clear();
       engineRef.current?.setIterationBoost(1);
-      engineRef.current?.setTuning(tuningRef.current);
+      engineRef.current?.setTuning(stoneTuning());
       flashlightDirty = true;
       updateHud(true);
     }
@@ -1787,7 +1828,7 @@ export default function MandelbrotSkipping() {
     function launchRock(angle: number, rawPower: number) {
       if (!introActiveRef.current) {
         engineRef.current?.beginThrow(viewRef.current, width, height, tuningRef.current.rotateRight);
-        engineRef.current?.setTuning(tuningRef.current);
+        engineRef.current?.setTuning(stoneTuning());
         engineRef.current?.setAtmosphere(PLAY_ATMOSPHERE);
         engineRef.current?.setLayer("throw");
       }
@@ -1849,8 +1890,10 @@ export default function MandelbrotSkipping() {
     function spawnImpact(x: number, y: number, index: number, glyphOffset: number, now: number, extras?: { gpu?: boolean; ripple?: boolean }) {
       const mapped = screenToComplex(x, y, width, height, viewRef.current, tuningRef.current.rotateRight);
       const source = { x: Math.fround(mapped.x), y: Math.fround(mapped.y) };
-      const glyph = (glyphOffset + index - 1) % GLYPH_COUNT;
-      const dots = introActiveRef.current ? INTRO_SOURCE_DOTS : tuningRef.current.sourceDots;
+      const glyph = spectatorRef.current || introActiveRef.current
+        ? (glyphOffset + index - 1) % GLYPH_COUNT
+        : stoneRef.current.shapeIndex;
+      const dots = introActiveRef.current ? INTRO_SOURCE_DOTS : stoneTuning().sourceDots;
       const sources = impactSources(
         x, y, width, height, viewRef.current, dots, glyph, tuningRef.current.rotateRight,
       );
@@ -1872,7 +1915,7 @@ export default function MandelbrotSkipping() {
       }
       if (gpu) engineRef.current?.spawnAppend(sources, index);
       if (!introActiveRef.current) {
-        gameAudio.splash(index, glyph, width > 0 ? x / width * 2 - 1 : 0);
+        gameAudio.splash(index, glyph % GLYPH_COUNT, width > 0 ? x / width * 2 - 1 : 0);
         if ("vibrate" in navigator) navigator.vibrate?.(12);
       }
       updateHud(true);
@@ -1931,6 +1974,7 @@ export default function MandelbrotSkipping() {
     }
 
     function advanceOrbits(now: number, elapsed: number) {
+      const depthCap = stoneTuning().maxDepth;
       const ease = 1 - Math.exp(-elapsed / 0.055);
       const easeShownDepths = () => {
         for (const orbit of orbitScores) {
@@ -1952,8 +1996,8 @@ export default function MandelbrotSkipping() {
       const maxHopPx = Math.hypot(width, height) * MAX_HOP_SCREEN_MULTIPLIER;
       for (const orbit of orbitScores) {
         if (orbit.resolved) continue;
-        const perOrbit = acceleratedSteps(orbit.depth, tuningRef.current.maxDepth, maxPerOrbit, tuningRef.current.acceleration);
-        for (let step = 0; step < perOrbit && orbit.depth < tuningRef.current.maxDepth; step++) {
+        const perOrbit = acceleratedSteps(orbit.depth, depthCap, maxPerOrbit, tuningRef.current.acceleration);
+        for (let step = 0; step < perOrbit && orbit.depth < depthCap; step++) {
           const previousR = orbit.zr;
           const previousI = orbit.zi;
           const nextR = Math.fround(Math.fround(previousR * previousR - previousI * previousI) + orbit.cr);
@@ -1992,7 +2036,7 @@ export default function MandelbrotSkipping() {
             break;
           }
         }
-        if (orbit.depth >= tuningRef.current.maxDepth) orbit.resolved = true;
+        if (orbit.depth >= depthCap) orbit.resolved = true;
         if (orbit.resolved) {
           orbit.shownDepth = orbit.depth;
           orbit.score = scoreForOrbit(orbit, orbit.depth);
@@ -2634,7 +2678,7 @@ export default function MandelbrotSkipping() {
         const pop = age < 450 ? 1.0 + Math.sin((age / 450) * Math.PI) * 0.18 : 1.0;
         const fontSize = Math.max(8, Math.round(11 * pop));
         ctx.font = `600 ${fontSize}px ui-monospace, monospace`;
-        const [r, g, b] = skipTintRgb(impact.index, colored);
+        const [r, g, b] = skipTintRgb(impact.index, colored, spectatorRef.current || introActiveRef.current ? undefined : { tint: stoneRef.current.tint, strength: stoneRef.current.tintStrength });
         const mute = 0.28;
         const nr = Math.round(r * mute + 186 * (1 - mute));
         const ng = Math.round(g * mute + 210 * (1 - mute));
@@ -2997,7 +3041,7 @@ export default function MandelbrotSkipping() {
         pointerMode = "aim";
         phase = "aiming";
         if (buddhabrotSlingFadeStarted === 0) buddhabrotSlingFadeStarted = performance.now();
-        plannedSkips = sampleSkipCount(Math.random);
+        plannedSkips = sampleSkipCount(Math.random, stoneRef.current.skipDecay);
         previewKey = "";
         flashlightDirty = true;
         engineRef.current?.setLayer("pond");
@@ -3163,6 +3207,8 @@ export default function MandelbrotSkipping() {
     : "Press Space or throw again";
 
   const depthIndex = Math.max(0, DEPTH_OPTIONS.indexOf(tuning.maxDepth as typeof DEPTH_OPTIONS[number]));
+  const equippedStone = stoneById(progression.equippedId);
+  const stoneDepthIndex = Math.max(0, DEPTH_OPTIONS.indexOf(equippedStone.depthCap as typeof DEPTH_OPTIONS[number]));
 
   const resetAndFocusCanvas = () => {
     spectatorRef.current = false;
@@ -3364,13 +3410,13 @@ export default function MandelbrotSkipping() {
           <div className="tuningHeading"><span>Orbit tuning</span><span>Live</span></div>
           <div className="tuningControl">
             <span><span>Glyph dots</span><output>{tuning.sourceDots}</output></span>
-            <input type="range" min={MIN_SOURCE_DOTS} max={MAX_SOURCE_DOTS} step="1" value={tuning.sourceDots}
+            <input type="range" min={MIN_SOURCE_DOTS} max={Math.min(MAX_SOURCE_DOTS, equippedStone.dots)} step="1" value={Math.min(tuning.sourceDots, equippedStone.dots)}
               aria-label="Dots per sacred geometry glyph"
               onChange={(event) => updateTuning({ sourceDots: Number(event.target.value) })} />
           </div>
           <div className="tuningControl">
-            <span><span>Orbit limit</span><output>{formatCompact(tuning.maxDepth)}</output></span>
-            <input type="range" min="0" max={DEPTH_OPTIONS.length - 1} step="1" value={depthIndex}
+            <span><span>Orbit limit</span><output>{formatCompact(Math.min(tuning.maxDepth, equippedStone.depthCap))}</output></span>
+            <input type="range" min="0" max={stoneDepthIndex} step="1" value={Math.min(depthIndex, stoneDepthIndex)}
               aria-label="Orbit iteration limit"
               aria-valuetext={`${formatNumber(tuning.maxDepth)} iterations`}
               onChange={(event) => updateTuning({ maxDepth: DEPTH_OPTIONS[Number(event.target.value)] })} />
