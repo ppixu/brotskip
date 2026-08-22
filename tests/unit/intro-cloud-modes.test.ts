@@ -24,6 +24,9 @@ test("both loading choices use the same draggable SPZ renderer", () => {
   assert.match(cloud, /pushSplat/);
   assert.match(cloud, /legacySplat/);
   assert.match(cloud, /decodeCompactCloud/);
+  assert.match(cloud, /pickRegion/);
+  assert.match(cloud, /regionStrength/);
+  assert.match(cloud, /onRegionChange/);
 });
 
 test("the second SPZ is generated from standard escaping z squared plus c paths", () => {

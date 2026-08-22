@@ -12,6 +12,7 @@ import {
   type IntroPlayTune,
 } from "@/lib/intro-play";
 import { compactSplatAt, decodeCompactCloud, type CompactCloud, type CompactSplat } from "@/lib/splat-cloud";
+import { pickRegion, SPLAT_REGIONS, type SplatRegion } from "@/lib/splat-regions";
 
 const RIPPLE_LIFETIME_MS = 2_800;
 const RIPPLE_DELAYS = [0] as const;
@@ -138,6 +139,7 @@ export default function BuddhabrotCloudCanvas({
   fading, onLoadProgress, onReady,
   variant = "henon",
   legacySplat = false,
+  onRegionChange,
   tune,
 }: {
   fading: boolean;
@@ -145,6 +147,7 @@ export default function BuddhabrotCloudCanvas({
   onReady?: () => void;
   variant?: CloudVariant;
   legacySplat?: boolean;
+  onRegionChange?: (region: SplatRegion | null) => void;
   tune?: Partial<IntroPlayTune>;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -213,16 +216,30 @@ export default function BuddhabrotCloudCanvas({
     let splat: SplatMesh | null = null;
 
     const splatSize = dyno.dynoFloat(tuneRef.current.splatSize);
+    const regionCenter = dyno.dynoVec3(new THREE.Vector3(0, 0, 0));
+    const regionInvRadii = dyno.dynoVec3(new THREE.Vector3(1, 1, 1));
+    const regionStrength = dyno.dynoFloat(0);
     const splatSizeModifier = dyno.dynoBlock(
       { gsplat: dyno.Gsplat },
       { gsplat: dyno.Gsplat },
       ({ gsplat }) => {
         if (!gsplat) throw new Error("No gsplat input");
-        const { scales } = dyno.splitGsplat(gsplat).outputs;
+        const { scales, center, rgb } = dyno.splitGsplat(gsplat).outputs;
+        const offset = dyno.mul(dyno.sub(center, regionCenter), regionInvRadii);
+        const inside = dyno.smoothstep(
+          dyno.dynoLiteral("float", "1.1"),
+          dyno.dynoLiteral("float", "0.75"),
+          dyno.length(offset),
+        );
+        const gain = dyno.add(
+          dyno.sub(dyno.dynoLiteral("float", "1.0"), dyno.mul(regionStrength, dyno.dynoLiteral("float", "0.18"))),
+          dyno.mul(dyno.mul(regionStrength, inside), dyno.dynoLiteral("float", "1.38")),
+        );
         return {
           gsplat: dyno.combineGsplat({
             gsplat,
             scales: dyno.mul(scales, splatSize),
+            rgb: dyno.mul(rgb, gain),
           }),
         };
       },
@@ -268,29 +285,77 @@ export default function BuddhabrotCloudCanvas({
       if (!disposed) setReady(false);
     });
 
+    const pointerNdc = new THREE.Vector2();
+    const raycaster = new THREE.Raycaster();
+    let hoveredRegion: SplatRegion | null = null;
+    // Stamped on every pointer event; read by Task 4's idle tour, not yet wired up here.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    let lastInteraction = performance.now();
+
+    function setHoveredRegion(region: SplatRegion | null) {
+      if (region === hoveredRegion) return;
+      hoveredRegion = region;
+      if (region) {
+        regionCenter.value.set(region.center[0], region.center[1], region.center[2]);
+        regionInvRadii.value.set(1 / region.radii[0], 1 / region.radii[1], 1 / region.radii[2]);
+      }
+      renderer.domElement.classList.toggle("regionHover", region !== null);
+      onRegionChange?.(region);
+    }
+
+    function pickAtPointer(event: PointerEvent): SplatRegion | null {
+      const rect = renderer.domElement.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return null;
+      pointerNdc.set(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      raycaster.setFromCamera(pointerNdc, camera);
+      const picked = pickRegion(raycaster.ray.origin, raycaster.ray.direction, SPLAT_REGIONS);
+      return picked ? picked.region : null;
+    }
+
+    let pressX = 0;
+    let pressY = 0;
+
     const onPointerDown = (event: PointerEvent) => {
       if (event.button !== 0 || fadingRef.current) return;
       dragging = true;
       lastPointerX = event.clientX;
       lastPointerY = event.clientY;
+      pressX = event.clientX;
+      pressY = event.clientY;
+      lastInteraction = performance.now();
       renderer.domElement.setPointerCapture(event.pointerId);
       renderer.domElement.classList.add("dragging");
     };
     const onPointerMove = (event: PointerEvent) => {
-      if (!dragging) return;
-      yaw -= (event.clientX - lastPointerX) * 0.006;
-      pitch = THREE.MathUtils.clamp(pitch + (event.clientY - lastPointerY) * 0.005, -1.25, 1.25);
-      lastPointerX = event.clientX;
-      lastPointerY = event.clientY;
+      lastInteraction = performance.now();
+      if (dragging) {
+        yaw -= (event.clientX - lastPointerX) * 0.006;
+        pitch = THREE.MathUtils.clamp(pitch + (event.clientY - lastPointerY) * 0.005, -1.25, 1.25);
+        lastPointerX = event.clientX;
+        lastPointerY = event.clientY;
+        return;
+      }
+      if (fadingRef.current || !splatReady || event.pointerType === "touch") return;
+      setHoveredRegion(pickAtPointer(event));
     };
-    const onPointerUp = () => {
+    const onPointerUp = (event: PointerEvent) => {
       dragging = false;
       renderer.domElement.classList.remove("dragging");
+      lastInteraction = performance.now();
+      if (fadingRef.current || !splatReady || event.pointerType !== "touch") return;
+      if (Math.hypot(event.clientX - pressX, event.clientY - pressY) > 5) return;
+      const tapped = pickAtPointer(event);
+      setHoveredRegion(tapped === hoveredRegion ? null : tapped);
     };
+    const onPointerLeave = () => setHoveredRegion(null);
     renderer.domElement.addEventListener("pointerdown", onPointerDown);
     renderer.domElement.addEventListener("pointermove", onPointerMove);
     renderer.domElement.addEventListener("pointerup", onPointerUp);
     renderer.domElement.addEventListener("pointercancel", onPointerUp);
+    renderer.domElement.addEventListener("pointerleave", onPointerLeave);
 
     const rippleGeometry = new THREE.RingGeometry(0.972, 1, 96);
     const beaconTexture = makeBeaconTexture();
@@ -523,6 +588,7 @@ export default function BuddhabrotCloudCanvas({
         if (splat) splat.scale.z = introPlayFlatten(elapsed, reduceMotion);
         scene.background = null;
         renderer.setClearColor(0x000000, 0);
+        setHoveredRegion(null);
       } else {
         alignFrom = null;
         if (splat) splat.scale.z = 1;
@@ -539,6 +605,8 @@ export default function BuddhabrotCloudCanvas({
         target.z + Math.cos(yaw) * cosPitch * distance,
       );
       camera.lookAt(target);
+      const strengthTarget = hoveredRegion && !fadingRef.current ? 1 : 0;
+      regionStrength.value += (strengthTarget - regionStrength.value) * Math.min(1, delta / 140);
       updateRipples(now);
       renderer.render(scene, camera);
       frame = requestAnimationFrame(render);
@@ -570,6 +638,7 @@ export default function BuddhabrotCloudCanvas({
       renderer.domElement.removeEventListener("pointermove", onPointerMove);
       renderer.domElement.removeEventListener("pointerup", onPointerUp);
       renderer.domElement.removeEventListener("pointercancel", onPointerUp);
+      renderer.domElement.removeEventListener("pointerleave", onPointerLeave);
       for (const ripple of ripples) removeRipple(ripple);
       for (const comet of comets) removeComet(comet);
       ripples.length = 0;
@@ -592,7 +661,7 @@ export default function BuddhabrotCloudCanvas({
       };
       disposeCloud();
     };
-  }, [variant, legacySplat, onLoadProgress, onReady]);
+  }, [variant, legacySplat, onLoadProgress, onReady, onRegionChange]);
 
   return (
     <div

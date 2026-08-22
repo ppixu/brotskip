@@ -690,6 +690,7 @@ button, input { font: inherit; }
   touch-action: none;
 }
 .introCloudHost canvas.dragging { cursor: grabbing; }
+.introCloudHost canvas.regionHover { cursor: pointer; }
 .introCloudHost.ready { opacity: 1; }
 .introCloudHost.fading {
   opacity: 0;
