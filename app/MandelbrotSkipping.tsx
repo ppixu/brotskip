@@ -3630,7 +3630,7 @@ export default function MandelbrotSkipping() {
             </div>
           </div>
         )}
-        {!intro && (
+        {!intro && hud.phase !== "result" && (
           <button
             type="button"
             className={`stoneWidget ${upgradeAvailable ? "upgradeReady" : ""}`}
@@ -3647,7 +3647,7 @@ export default function MandelbrotSkipping() {
             </span>
           </button>
         )}
-        {(hud.phase === "flying" || hud.phase === "resolving" || hud.phase === "result") && !intro && (
+        {hud.phase === "result" && !intro && (
           <div className="playfieldThrowActions">
             {hud.phase === "result" && (
               <button type="button" className="playfieldThrowControl" onClick={resetAndFocusCanvas} aria-label="Rethrow">

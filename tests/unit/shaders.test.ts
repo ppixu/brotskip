@@ -295,6 +295,8 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(nameEntryRule, /align-items:\s*flex-end/);
   assert.match(rethrowActionsRule, /left:\s*var\(--throw-stone-x\)/);
   assert.match(rethrowActionsRule, /top:\s*var\(--throw-stone-y\)/);
+  assert.match(game, /hud\.phase === "result" && !intro/);
+  assert.match(game, /!intro && hud\.phase !== "result"/);
   assert.match(game, /className="playfieldThrowActions"/);
   assert.match(game, /className="playfieldShareControl"/);
   assert.doesNotMatch(game, /Fast forward/i);
@@ -302,9 +304,13 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.doesNotMatch(game, /fastForwardRef/);
   assert.match(game, /onClick=\{resetAndFocusCanvas\}/);
   assert.match(css, /\.playfieldThrowActions button:disabled \{[\s\S]*?opacity:\s*\.38/);
+  assert.match(css, /\.playfieldThrowControl \{[\s\S]*?animation-delay:\s*70ms/);
+  assert.match(css, /\.playfieldShareControl \{[\s\S]*?animation-delay:\s*230ms/);
+  const shopBackdropRule = css.match(/\.stoneShopBackdrop \{([^}]+)\}/)?.[1] ?? "";
+  assert.doesNotMatch(shopBackdropRule, /backdrop-filter/);
   assert.doesNotMatch(css, /\.introPlay \{ top:/);
   assert.match(game, /function anchor\(\) \{ return \{ x: width \* 0\.5, y: height \* 0\.82 \}/);
-  assert.match(game, /hud\.phase === "flying" \|\| hud\.phase === "resolving" \|\| hud\.phase === "result"/);
+  assert.match(game, /hud\.phase === "result" && !intro/);
   assert.match(game, /className="compactHighscores"/);
   assert.match(game, /New highscore!/);
   assert.doesNotMatch(game, /Live score/);

@@ -203,7 +203,7 @@ button, input { font: inherit; }
 }
 .stoneWidget {
   position: absolute;
-  left: calc(var(--throw-stone-x) + 54px);
+  left: calc(var(--throw-stone-x) + 32px);
   top: var(--throw-stone-y);
   z-index: 4;
   display: flex;
@@ -220,6 +220,7 @@ button, input { font: inherit; }
   cursor: pointer;
   transform: translateY(-50%);
   backdrop-filter: blur(8px);
+  animation: stoneWidgetEnter 360ms cubic-bezier(.2, .85, .2, 1) both;
   transition: border-color 180ms ease, background 180ms ease, transform 180ms ease, box-shadow 180ms ease;
 }
 .stoneWidget:hover,
@@ -232,7 +233,7 @@ button, input { font: inherit; }
 .stoneWidget.upgradeReady {
   border-color: rgba(255, 209, 102, .74);
   box-shadow: 0 0 22px rgba(255, 209, 102, .16);
-  animation: upgradeWidgetPulse 2s ease-in-out infinite;
+  animation: stoneWidgetEnter 360ms cubic-bezier(.2, .85, .2, 1) both, upgradeWidgetPulse 2s ease-in-out 360ms infinite;
 }
 .stoneWidgetPreview {
   display: grid;
@@ -538,7 +539,6 @@ button, input { font: inherit; }
   place-items: center;
   padding: 24px;
   background: rgba(0, 4, 8, .68);
-  backdrop-filter: blur(12px);
   animation: shopBackdropIn 180ms ease both;
 }
 .stoneShop {
@@ -627,6 +627,14 @@ button, input { font: inherit; }
 @keyframes upgradeWidgetPulse {
   0%, 100% { box-shadow: 0 0 12px rgba(255, 209, 102, .08); }
   50% { box-shadow: 0 0 26px rgba(255, 209, 102, .28); }
+}
+@keyframes stoneWidgetEnter {
+  from { opacity: 0; transform: translate(12px, -50%) scale(.94); }
+  to { opacity: 1; transform: translate(0, -50%) scale(1); }
+}
+@keyframes throwActionEnter {
+  from { opacity: 0; transform: translateY(8px) scale(.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 @keyframes achievementToastEnter {
   0% { opacity: 0; transform: translate(-50%, -16px) scale(.82) rotate(-1deg); }
@@ -1233,12 +1241,17 @@ button, input { font: inherit; }
   letter-spacing: .08em;
   text-transform: uppercase;
   cursor: pointer;
+  opacity: 0;
+  transform: translateY(8px) scale(.96);
+  animation: throwActionEnter 360ms cubic-bezier(.2, .85, .2, 1) both;
 }
 .playfieldThrowControl {
   min-width: 108px;
+  animation-delay: 70ms !important;
 }
 .playfieldShareControl {
   min-width: 84px;
+  animation-delay: 230ms !important;
 }
 .playfieldThrowActions button:hover,
 .playfieldThrowActions button:focus-visible {
@@ -1333,7 +1346,7 @@ button, input { font: inherit; }
   .gameBrand { top: 10px; left: 10px; }
   .gameBrandTitle { font-size: 52px; }
   .walletHud { top: 50px; right: 10px; min-width: 96px; }
-  .stoneWidget { left: calc(var(--throw-stone-x) + 42px); min-width: 124px; }
+  .stoneWidget { left: calc(var(--throw-stone-x) + 28px); min-width: 124px; }
   .replayBanner { top: 92px; left: 10px; }
   .replayBannerName { font-size: 18px; }
   .introPaper {
@@ -1376,6 +1389,8 @@ button, input { font: inherit; }
   .scoreParticle,
   .stoneShopBackdrop,
   .stoneShop { animation: none; }
+  .stoneWidget,
+  .playfieldThrowActions button { opacity: 1; transform: none; animation: none; }
 }
 
 .gameShell.lightMode {
