@@ -15,6 +15,9 @@ import {
   finishComplexity,
   GLYPH_PATCHES,
   launchDegrees,
+  LAUNCH_THUMP_END_HZ,
+  launchThumpGain,
+  launchThumpStartHz,
   melodyDegree,
   SLING_TICK_STEPS,
   slingTickDegree,
@@ -22,6 +25,7 @@ import {
   splashDegree,
   splashPeakHz,
 } from "../../lib/audio/chiptune.ts";
+import { HIGHPASS_HZ } from "../../lib/audio/engine.ts";
 import { degreeToFrequency, paletteFromLanding } from "../../lib/audio/theory.ts";
 
 test("every sacred glyph has its own chord, arp, and waveform", () => {
@@ -198,4 +202,19 @@ test("idle voices fall to true silence, not a -80 dB floor", () => {
   assert.match(silence, /fadeToSilence/);
   assert.doesNotMatch(silence, /\.0001/);
   assert.doesNotMatch(source, /setTargetAtTime\(\.0001/);
+});
+
+test("the launch lands on a low thump that clears the master high-pass", () => {
+  assert.ok(LAUNCH_THUMP_END_HZ > HIGHPASS_HZ, "thump must survive the master high-pass");
+  assert.ok(launchThumpStartHz(1) > launchThumpStartHz(0), "a harder pull snaps from higher up");
+  for (const power of [0, .5, 1]) {
+    assert.ok(launchThumpStartHz(power) > LAUNCH_THUMP_END_HZ, "the thump always falls, never rises");
+  }
+});
+
+test("draw power drives how hard the launch hits", () => {
+  assert.ok(launchThumpGain(1) > launchThumpGain(0));
+  assert.ok(launchThumpGain(0) > chordGain(1, 1, false), "the launch punches above the sustained bed");
+  assert.ok(launchThumpGain(1) < 1, "and still leaves headroom");
+  assert.equal(launchThumpGain(2), launchThumpGain(1), "power clamps at full draw");
 });

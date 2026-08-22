@@ -112,6 +112,20 @@ export function slingTickDegree(index: number): number {
   return 2 + Math.max(0, Math.min(SLING_TICK_STEPS, index));
 }
 
+/**
+ * The launch body: a pitched-down thump lands on the release. It bottoms out
+ * above the master high-pass (72 Hz) so the weight survives the bus.
+ */
+export const LAUNCH_THUMP_END_HZ = 88;
+
+export function launchThumpStartHz(power: number): number {
+  return 150 + clamp01(power) * 140;
+}
+
+export function launchThumpGain(power: number): number {
+  return .26 + clamp01(power) * .2;
+}
+
 /** Launch rip: a short upward run that grows a note or two with draw power. */
 export function launchDegrees(power: number): readonly number[] {
   const steps = 3 + Math.round(clamp01(power) * 3);
@@ -365,6 +379,39 @@ export function createChiptuneEngine(shell: EngineShell): ChiptuneEngine {
     scheduleCleanup(context, when + .05, [source, filter, gain, pan]);
   }
 
+  /** Pitched-down low body — the weight behind a launch. */
+  function thump(when: number, volume: number, fromHz: number, toHz: number, duration: number) {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = "triangle";
+    oscillator.frequency.setValueAtTime(fromHz, when);
+    oscillator.frequency.exponentialRampToValueAtTime(Math.max(MIN_SAFE_HZ, toHz), when + duration * .55);
+    gain.gain.setValueAtTime(.0001, when);
+    gain.gain.exponentialRampToValueAtTime(Math.max(.0002, volume), when + .006);
+    gain.gain.exponentialRampToValueAtTime(.0001, when + duration);
+    oscillator.connect(gain).connect(gameplayTransientBus);
+    oscillator.start(when);
+    oscillator.stop(when + duration + .02);
+    scheduleCleanup(context, when + duration + .04, [oscillator, gain]);
+  }
+
+  /** Low-passed noise smack that fattens the first few milliseconds. */
+  function noiseBody(when: number, volume: number, cutoffHz: number) {
+    const source = context.createBufferSource();
+    const filter = context.createBiquadFilter();
+    const gain = context.createGain();
+    source.buffer = noiseBuffer;
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(cutoffHz, when);
+    filter.frequency.exponentialRampToValueAtTime(180, when + .12);
+    gain.gain.setValueAtTime(Math.max(.0002, volume), when);
+    gain.gain.exponentialRampToValueAtTime(.0001, when + .13);
+    source.connect(filter).connect(gain).connect(gameplayTransientBus);
+    source.start(when);
+    source.stop(when + .16);
+    scheduleCleanup(context, when + .18, [source, filter, gain]);
+  }
+
   /** Band-passed noise sweep — the air the stone leaves behind. */
   function whoosh(when: number, duration: number, volume: number, fromHz: number, toHz: number) {
     const source = context.createBufferSource();
@@ -450,13 +497,16 @@ export function createChiptuneEngine(shell: EngineShell): ChiptuneEngine {
       const used = palette ?? paletteFromLanding(-0.58, 0);
       const when = context.currentTime + .01;
       const strength = clamp01(power);
+      // Punch first: low thump plus a noise smack, then the rip climbs off it.
+      thump(when, launchThumpGain(strength), launchThumpStartHz(strength), LAUNCH_THUMP_END_HZ, .26 + strength * .12);
+      noiseBody(when, .2 + strength * .14, 900 + strength * 600);
       const degrees = launchDegrees(strength);
       for (let index = 0; index < degrees.length; index++) {
         const hz = degreeToFrequency(used, degrees[index], MAX_TRANSIENT_HZ);
-        blip(hz, when + index * .038, .085, .1 + strength * .05, "square", 0, { startRatio: 1.12 });
-        blip(hz, when + index * .038, .07, .035, "triangle", 0);
+        blip(hz, when + index * .036, .09, .15 + strength * .07, "square", 0, { startRatio: 1.18 });
+        blip(hz, when + index * .036, .075, .07, "triangle", 0);
       }
-      whoosh(when, .17 + strength * .1, .05 + strength * .05, 620, 2800);
+      whoosh(when, .2 + strength * .12, .08 + strength * .07, 520, 3200);
     },
     splash(skipIndex, glyph, panPosition) {
       if (!palette) return;
