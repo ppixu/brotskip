@@ -7,7 +7,9 @@ import {
   earn,
   equip,
   freshProgression,
+  loadProgression,
   sanitizeProgression,
+  storeProgression,
   updateStreak,
 } from "../../lib/progression/state.ts";
 
@@ -76,4 +78,12 @@ test("sanitize drops unknown ids, keeps starter, survives garbage", () => {
   assert.equal(garbage.collectableStreak, 0);
   assert.deepEqual(sanitizeProgression(null), freshProgression());
   assert.deepEqual(sanitizeProgression("weird"), freshProgression());
+});
+
+test("loadProgression returns fresh state when localStorage is unusable", () => {
+  assert.deepEqual(loadProgression(), freshProgression());
+});
+
+test("storeProgression does not throw when localStorage is unusable", () => {
+  assert.doesNotThrow(() => storeProgression(freshProgression()));
 });
