@@ -1834,8 +1834,10 @@ export default function MandelbrotSkipping() {
       rock.bounceAge = 10;
       phase = "flying";
       hasThrown = true;
-      gameAudio.init();
-      gameAudio.throwStart();
+      if (!introActiveRef.current) {
+        gameAudio.init();
+        gameAudio.throwStart(rawPower);
+      }
       flashlightDirty = true;
       updateHud(true);
     }
@@ -2971,7 +2973,7 @@ export default function MandelbrotSkipping() {
       spawnIntroBackgroundOrbits(now);
       stepLiveBuddhabrot(elapsed);
       advanceOrbits(now, elapsed);
-      gameAudio.update(orbitScores, phase, now);
+      if (!introActiveRef.current) gameAudio.update(orbitScores, phase, now);
       render(now);
       frame = requestAnimationFrame(loop);
     }
@@ -3015,6 +3017,7 @@ export default function MandelbrotSkipping() {
       canvas.setPointerCapture(pointerId);
       if (phase === "ready" && Math.hypot(point.x - rock.x, point.y - rock.y) <= 48) {
         gameAudio.init();
+        gameAudio.slingGrab();
         pointerMode = "aim";
         phase = "aiming";
         if (buddhabrotSlingFadeStarted === 0) buddhabrotSlingFadeStarted = performance.now();
@@ -3060,6 +3063,7 @@ export default function MandelbrotSkipping() {
       pull = { x: a.x + dx * scale, y: a.y + dy * scale };
       rock.x = pull.x;
       rock.y = pull.y;
+      gameAudio.slingPull(Math.min(1, length / maxPull));
       flashlightDirty = true;
     }
 
