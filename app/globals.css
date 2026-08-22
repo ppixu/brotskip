@@ -1342,6 +1342,9 @@ button, input { font: inherit; }
   position: absolute;
   left: 0;
   bottom: 14px;
+  /* The anchor has zero width; without max-content the absolute card
+     shrink-wraps to min-content and wraps every word. */
+  width: max-content;
   max-width: 240px;
   padding: 10px 12px;
   border: 1px solid rgba(140, 220, 255, 0.18);
