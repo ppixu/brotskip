@@ -79,7 +79,7 @@ import {
   type SharedThrow,
 } from "@/lib/throw-share";
 import { COVERAGE_GRID, COVERAGE_WORDS, orbitShape } from "@/lib/orbit-shape";
-import { GLYPH_COUNT, SACRED_PATH_COUNTS, sacredShapeOffset } from "@/lib/sacred-geometry";
+import { GLYPH_COUNT, SACRED_SHAPE_COUNT, SACRED_PATH_COUNTS, sacredShapeOffset } from "@/lib/sacred-geometry";
 import { createGameAudio, finishComplexity, type GameAudio } from "@/lib/audio/index";
 import {
   projectSacredBall,
@@ -1553,7 +1553,8 @@ export default function MandelbrotSkipping() {
       engineRef.current?.setAtmosphere(PLAY_ATMOSPHERE);
       engineRef.current?.setLayer("throw");
       engineRef.current?.setDisplay({ ...displayLayerGains("play"), cone: null, cssWidth: 1, cssHeight: 1 });
-      engineRef.current?.setTuning(tuningRef.current);
+      engineRef.current?.setTuning(clampTuningToStone(tuningRef.current, stoneRef.current));
+      engineRef.current?.setRarity(stoneRef.current.tint, stoneRef.current.tintStrength);
       applyViewRef.current({ centerX: POND_CENTER.x, centerY: POND_CENTER.y, halfY: VIEW_HALF_Y });
       restartRef.current();
       setIntro(false);
@@ -2580,7 +2581,7 @@ export default function MandelbrotSkipping() {
       radius = SOURCE_RADIUS_PX,
       { pixelDots = false } = {},
     ) {
-      const shape = ((glyph % GLYPH_COUNT) + GLYPH_COUNT) % GLYPH_COUNT;
+      const shape = ((glyph % SACRED_SHAPE_COUNT) + SACRED_SHAPE_COUNT) % SACRED_SHAPE_COUNT;
       const shapePaths = SACRED_PATH_COUNTS[shape];
       if (!pixelDots) {
         ctx.strokeStyle = stroke;
@@ -3292,14 +3293,14 @@ export default function MandelbrotSkipping() {
     };
   }, []);
 
+  const equippedStone = stoneById(progression.equippedId);
   const instruction = hud.phase === "ready" ? "Grab the white orb. Pull back and release."
     : hud.phase === "aiming" ? "Aim for deep water · farther pull = faster throw"
-    : hud.phase === "flying" ? `Each splash launches a new ${tuning.sourceDots}-point glyph`
+    : hud.phase === "flying" ? `Each splash launches a new ${Math.min(tuning.sourceDots, equippedStone.dots)}-point glyph`
     : hud.phase === "resolving" ? `Resolving the pond · ${Math.round(hud.progress * 100)}%`
     : "Press Space or throw again";
 
   const depthIndex = Math.max(0, DEPTH_OPTIONS.indexOf(tuning.maxDepth as typeof DEPTH_OPTIONS[number]));
-  const equippedStone = stoneById(progression.equippedId);
   const stoneDepthIndex = Math.max(0, DEPTH_OPTIONS.indexOf(equippedStone.depthCap as typeof DEPTH_OPTIONS[number]));
 
   const resetAndFocusCanvas = () => {
@@ -3534,7 +3535,7 @@ export default function MandelbrotSkipping() {
             <span><span>Orbit limit</span><output>{formatCompact(Math.min(tuning.maxDepth, equippedStone.depthCap))}</output></span>
             <input type="range" min="0" max={stoneDepthIndex} step="1" value={Math.min(depthIndex, stoneDepthIndex)}
               aria-label="Orbit iteration limit"
-              aria-valuetext={`${formatNumber(tuning.maxDepth)} iterations`}
+              aria-valuetext={`${formatNumber(Math.min(tuning.maxDepth, equippedStone.depthCap))} iterations`}
               onChange={(event) => updateTuning({ maxDepth: DEPTH_OPTIONS[Number(event.target.value)] })} />
           </div>
           <div className="tuningControl">

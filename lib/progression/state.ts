@@ -99,8 +99,8 @@ export function updateStreak(state: ProgressionState, hitCollectable: boolean): 
 }
 
 export function loadProgression(knownChallengeIds?: readonly string[]): ProgressionState {
-  if (typeof localStorage === "undefined" || typeof localStorage.getItem !== "function") return freshProgression();
   try {
+    if (typeof localStorage === "undefined" || typeof localStorage.getItem !== "function") return freshProgression();
     return sanitizeProgression(JSON.parse(localStorage.getItem(PROGRESSION_KEY) || "null"), knownChallengeIds);
   } catch {
     return freshProgression();
@@ -108,6 +108,8 @@ export function loadProgression(knownChallengeIds?: readonly string[]): Progress
 }
 
 export function storeProgression(state: ProgressionState): void {
-  if (typeof localStorage === "undefined" || typeof localStorage.setItem !== "function") return;
-  try { localStorage.setItem(PROGRESSION_KEY, JSON.stringify(state)); } catch { /* progression still works for this session */ }
+  try {
+    if (typeof localStorage === "undefined" || typeof localStorage.setItem !== "function") return;
+    localStorage.setItem(PROGRESSION_KEY, JSON.stringify(state));
+  } catch { /* progression still works for this session */ }
 }
