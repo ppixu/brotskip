@@ -203,7 +203,7 @@ button, input { font: inherit; }
 }
 .stoneWidget {
   position: absolute;
-  left: calc(var(--throw-stone-x) + 32px);
+  right: calc(100% - var(--throw-stone-x) + 18px);
   top: var(--throw-stone-y);
   z-index: 4;
   display: flex;
@@ -629,7 +629,7 @@ button, input { font: inherit; }
   50% { box-shadow: 0 0 26px rgba(255, 209, 102, .28); }
 }
 @keyframes stoneWidgetEnter {
-  from { opacity: 0; transform: translate(12px, -50%) scale(.94); }
+  from { opacity: 0; transform: translate(-12px, -50%) scale(.94); }
   to { opacity: 1; transform: translate(0, -50%) scale(1); }
 }
 @keyframes throwActionEnter {
@@ -1346,7 +1346,7 @@ button, input { font: inherit; }
   .gameBrand { top: 10px; left: 10px; }
   .gameBrandTitle { font-size: 52px; }
   .walletHud { top: 50px; right: 10px; min-width: 96px; }
-  .stoneWidget { left: calc(var(--throw-stone-x) + 28px); min-width: 124px; }
+  .stoneWidget { right: calc(100% - var(--throw-stone-x) + 14px); min-width: 124px; }
   .replayBanner { top: 92px; left: 10px; }
   .replayBannerName { font-size: 18px; }
   .introPaper {
