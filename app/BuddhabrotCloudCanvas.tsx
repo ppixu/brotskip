@@ -295,6 +295,7 @@ export default function BuddhabrotCloudCanvas({
     const TOUR_DWELL_MS = 6_000;
     let tourIndex = -1;
     let tourActive = false;
+    let tourOwnsHover = false;
     let nextTourStepAt = 0;
     const tourPosition = new THREE.Vector3();
     const tourQuaternion = new THREE.Quaternion();
@@ -302,7 +303,7 @@ export default function BuddhabrotCloudCanvas({
     function stopTour() {
       if (!tourActive) return;
       tourActive = false;
-      setHoveredRegion(null);
+      if (tourOwnsHover) setHoveredRegion(null);
     }
 
     function updateTour(now: number) {
@@ -319,12 +320,13 @@ export default function BuddhabrotCloudCanvas({
       nextTourStepAt = now + TOUR_DWELL_MS;
       tourIndex = (tourIndex + 1) % SPLAT_REGIONS.length;
       const region = SPLAT_REGIONS[tourIndex];
-      setHoveredRegion(region);
+      setHoveredRegion(region, true);
       tourPosition.set(region.center[0], region.center[1], region.center[2]);
       spawnRippleAt(now, tourPosition, tourQuaternion.identity());
     }
 
-    function setHoveredRegion(region: SplatRegion | null) {
+    function setHoveredRegion(region: SplatRegion | null, fromTour = false) {
+      tourOwnsHover = fromTour && region !== null;
       if (region === hoveredRegion) return;
       hoveredRegion = region;
       if (region) {
