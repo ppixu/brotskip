@@ -11,12 +11,14 @@ function paperWords(text: string) {
 }
 
 export default function BuddhabrotIntro({
-  fading, onPlay, playerName, onPlayerNameChange,
+  fading, onPlay, playerName, onPlayerNameChange, legacySplat, onLegacySplatChange,
 }: {
   fading: boolean;
   onPlay?: () => void;
   playerName: string;
   onPlayerNameChange: (name: string) => void;
+  legacySplat: boolean;
+  onLegacySplatChange: (value: boolean) => void;
 }) {
   const { wikipedia } = BUDDHABROT_EXPLAIN;
   const mandelbrot = MANDELBROT_EXPLAIN;
@@ -98,6 +100,15 @@ export default function BuddhabrotIntro({
       {splatReady && (
         <button type="button" className="introPlay" onClick={onPlay} aria-label="Play">Play</button>
       )}
+      <label className="introDebugToggle">
+        <input
+          type="checkbox"
+          checked={legacySplat}
+          aria-label="Load the legacy SPZ splat cloud instead of the compact format"
+          onChange={(event) => onLegacySplatChange(event.target.checked)}
+        />
+        Legacy splat
+      </label>
     </div>
   );
 }

@@ -853,6 +853,23 @@ button, input { font: inherit; }
   background: rgba(8, 14, 16, .72);
   outline: none;
 }
+.introDebugToggle {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(223, 251, 255, 0.5);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  user-select: none;
+}
+.introDebugToggle input {
+  accent-color: #65b9ff;
+}
 .playfieldThrowActions {
   position: absolute;
   left: var(--throw-stone-x);

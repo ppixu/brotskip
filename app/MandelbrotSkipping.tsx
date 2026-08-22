@@ -160,6 +160,7 @@ type Tuning = {
   coordinateAxes: boolean;
   rotateRight: boolean;
   doublePixels: boolean;
+  legacySplat: boolean;
 };
 
 type OrbitEngine = {
@@ -239,6 +240,7 @@ const DEFAULT_TUNING: Tuning = {
   coordinateAxes: false,
   rotateRight: true,
   doublePixels: false,
+  legacySplat: false,
 };
 const TUNING_KEY = "mandelbrot-skipping:tuning:v8";
 const SOURCE_RADIUS_PX = 10;
@@ -734,12 +736,13 @@ function sanitizeTuning(value: Partial<Tuning> | null | undefined): Tuning {
   const coordinateAxes = value?.coordinateAxes === true;
   const rotateRight = value?.rotateRight !== false;
   const doublePixels = value?.doublePixels === true;
+  const legacySplat = value?.legacySplat === true;
   const requestedPreview = Math.round(Number(value?.previewIterations) || DEFAULT_TUNING.previewIterations);
   const previewIterations = Math.max(
     MIN_PREVIEW_ITERATIONS,
     Math.min(MAX_PREVIEW_ITERATIONS, requestedPreview),
   );
-  return { sourceDots, maxDepth, acceleration, linePersist, previewOrbits, previewIterations, skipColors, coordinateAxes, rotateRight, doublePixels };
+  return { sourceDots, maxDepth, acceleration, linePersist, previewOrbits, previewIterations, skipColors, coordinateAxes, rotateRight, doublePixels, legacySplat };
 }
 
 function loadTuning(): Tuning {
@@ -3317,6 +3320,8 @@ export default function MandelbrotSkipping() {
             playerName={playerName}
             onPlayerNameChange={renameCurrent}
             onPlay={finishOpening}
+            legacySplat={tuning.legacySplat}
+            onLegacySplatChange={(value) => updateTuning({ legacySplat: value })}
           />
         )}
         {(hud.phase === "flying" || hud.phase === "resolving" || hud.phase === "result") && !intro && (
