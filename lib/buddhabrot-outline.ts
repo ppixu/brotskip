@@ -1,7 +1,7 @@
 import { TRAIL_BOUNDS, complexToScreen, type AtlasBounds, type ViewTransform } from "./view-map.ts";
 
-/** 50% brighter than the previous 0.042 pond blit. */
-export const BUDDHABROT_OUTLINE_ALPHA = 0.063;
+/** 25% brighter than the previous 0.063 cached pond blit, before sling. */
+export const BUDDHABROT_OUTLINE_ALPHA = 0.07875;
 
 export type AffineTransform = {
   a: number;

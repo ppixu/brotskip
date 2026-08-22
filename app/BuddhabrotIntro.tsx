@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import type { SplatRegion } from "@/lib/splat-regions";
-import { BUDDHABROT_EXPLAIN, MANDELBROT_EXPLAIN } from "@/lib/buddhabrot/explain";
+import { BUDDHABROT_EXPLAIN } from "@/lib/buddhabrot/explain";
 import BuddhabrotCloudCanvas from "./BuddhabrotCloudCanvas";
 
 function paperWords(text: string) {
@@ -11,18 +11,25 @@ function paperWords(text: string) {
   ));
 }
 
+function ExternalLinkIcon() {
+  return (
+    <svg className="externalLinkIcon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M14 4h6v6" />
+      <path d="M20 4 11 13" />
+      <path d="M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5" />
+    </svg>
+  );
+}
+
 export default function BuddhabrotIntro({
-  fading, onPlay, playerName, onPlayerNameChange, legacySplat, onLegacySplatChange,
+  fading, onPlay, legacySplat, onLegacySplatChange,
 }: {
   fading: boolean;
   onPlay?: () => void;
-  playerName: string;
-  onPlayerNameChange: (name: string) => void;
   legacySplat: boolean;
   onLegacySplatChange: (value: boolean) => void;
 }) {
-  const { wikipedia } = BUDDHABROT_EXPLAIN;
-  const mandelbrot = MANDELBROT_EXPLAIN;
+  const { introFormula, wikipedia } = BUDDHABROT_EXPLAIN;
   const [loadProgress, setLoadProgress] = useState(0);
   const [splatReady, setSplatReady] = useState(false);
   const [region, setRegion] = useState<SplatRegion | null>(null);
@@ -76,15 +83,18 @@ export default function BuddhabrotIntro({
                 <a className="introPaperWiki" href={region.link} target="_blank" rel="noreferrer">
                   Wikipedia
                 </a>
-                <span className="introPaperWikiBox">↗</span>
+                <span className="introPaperWikiBox"><ExternalLinkIcon /></span>
               </>
             )}
           </p>
         </aside>
       )}
-      <article className="introPaper introPaperRight" aria-label="Buddhabrot, from Wikipedia">
+      <article className="introPaper" aria-label="Buddhabrot, from Wikipedia">
         <p className="introPaperJournal">{wikipedia.journal}</p>
         <h1 className="introPaperTitle">{wikipedia.title}</h1>
+        <p className="introPaperFormula" aria-label="Buddhabrot iteration formula">
+          {introFormula}
+        </p>
         <p className="introPaperLede">
           {wikipedia.sentences.map((sentence) => (
             <span key={sentence.cite}>
@@ -101,38 +111,9 @@ export default function BuddhabrotIntro({
           <a className="introPaperWiki" href={wikipedia.references[1].url} target="_blank" rel="noreferrer">
             Wikipedia
           </a>
-          <span className="introPaperWikiBox">↗</span>
+          <span className="introPaperWikiBox"><ExternalLinkIcon /></span>
         </p>
-        <figure className="introPaperFigure">
-          <img src={BUDDHABROT_EXPLAIN.image.src} alt={BUDDHABROT_EXPLAIN.image.alt} loading="lazy" />
-        </figure>
       </article>
-      <article className="introPaper" aria-label="Mandelbrot set, from Wikipedia">
-        <p className="introPaperJournal">{mandelbrot.journal}</p>
-        <h2 className="introPaperTitle">{mandelbrot.title}</h2>
-        <p className="introPaperLede">
-          {mandelbrot.lede}{" "}
-          <a className="introPaperWiki" href={mandelbrot.source.url} target="_blank" rel="noreferrer">
-            Wikipedia
-          </a>
-          <span className="introPaperWikiBox">↗</span>
-        </p>
-        <figure className="introPaperFigure">
-          <img src={mandelbrot.image.src} alt={mandelbrot.image.alt} loading="lazy" />
-        </figure>
-      </article>
-      <div className="introNameEntry">
-        <label className="introNameLabel" htmlFor="intro-name">Your name</label>
-        <input
-          id="intro-name"
-          className="introNameInput"
-          aria-label="High score name"
-          autoComplete="nickname"
-          maxLength={12}
-          value={playerName}
-          onChange={(event) => onPlayerNameChange(event.target.value)}
-        />
-      </div>
       {splatReady && (
         <button type="button" className="introPlay" onClick={onPlay} aria-label="Play">Play</button>
       )}

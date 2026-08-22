@@ -15,6 +15,8 @@ const CENTER_MAX = 8;
 const ANGLE_MIN = -Math.PI;
 const ANGLE_MAX = Math.PI;
 
+export const SHARE_FIXED_GLYPH_MAX = 7;
+
 export type SharedThrow = {
   version: 1;
   view: ViewTransform;
@@ -26,6 +28,9 @@ export type SharedThrow = {
   seed: number;
   sourceDots: number;
   name: string;
+  /** Stone shapeIndex (0-7) stamped on the sharer's throw, if any. Absent on
+   * older links, which fall back to the cycling glyph animation. */
+  fixedGlyph?: number;
 };
 
 export function sanitizeShareName(name: string) {
@@ -69,7 +74,16 @@ function readNumber(value: string | undefined) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function validateShot(shot: Omit<SharedThrow, "version" | "name"> & { name?: string }): SharedThrow | null {
+function sanitizeFixedGlyph(value: number | undefined): number | undefined {
+  if (value == null || !Number.isFinite(value)) return undefined;
+  if (value !== Math.round(value)) return undefined;
+  if (value < 0 || value > SHARE_FIXED_GLYPH_MAX) return undefined;
+  return value;
+}
+
+function validateShot(
+  shot: Omit<SharedThrow, "version" | "name" | "fixedGlyph"> & { name?: string; fixedGlyph?: number },
+): SharedThrow | null {
   if (!Number.isFinite(shot.view.centerX) || !Number.isFinite(shot.view.centerY) || !Number.isFinite(shot.view.halfY)) {
     return null;
   }
@@ -83,6 +97,7 @@ function validateShot(shot: Omit<SharedThrow, "version" | "name"> & { name?: str
     shot.sourceDots !== Math.round(shot.sourceDots)
   ) return null;
   if (shot.view.halfY < SHARE_MIN_VIEW_HALF_Y || shot.view.halfY > SHARE_MAX_VIEW_HALF_Y) return null;
+  const fixedGlyph = sanitizeFixedGlyph(shot.fixedGlyph);
   return {
     version: 1,
     view: shot.view,
@@ -94,6 +109,7 @@ function validateShot(shot: Omit<SharedThrow, "version" | "name"> & { name?: str
     seed: shot.seed | 0,
     sourceDots: shot.sourceDots,
     name: sanitizeShareName(shot.name ?? "YOU"),
+    ...(fixedGlyph !== undefined ? { fixedGlyph } : {}),
   };
 }
 
@@ -136,8 +152,10 @@ function decodeWire(payload: string): SharedThrow | null {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (view.getUint8(0) !== THROW_SHARE_WIRE_VERSION) return null;
   const nameLength = view.getUint8(19);
-  if (bytes.length !== 20 + nameLength) return null;
-  const name = new TextDecoder().decode(bytes.subarray(20, 20 + nameLength));
+  const baseLength = 20 + nameLength;
+  if (bytes.length !== baseLength && bytes.length !== baseLength + 1) return null;
+  const name = new TextDecoder().decode(bytes.subarray(20, baseLength));
+  const fixedGlyph = bytes.length === baseLength + 1 ? view.getUint8(baseLength) : undefined;
   return validateShot({
     view: {
       centerX: dequantize(view.getUint16(1), CENTER_MIN, CENTER_MAX),
@@ -152,13 +170,15 @@ function decodeWire(payload: string): SharedThrow | null {
     sourceDots: view.getUint8(14),
     seed: view.getInt32(15),
     name,
+    fixedGlyph,
   });
 }
 
 export function encodeSharedThrow(shot: SharedThrow) {
   const name = sanitizeShareName(shot.name);
   const nameBytes = new TextEncoder().encode(name);
-  const bytes = new Uint8Array(20 + nameBytes.length);
+  const fixedGlyph = sanitizeFixedGlyph(shot.fixedGlyph);
+  const bytes = new Uint8Array(20 + nameBytes.length + (fixedGlyph !== undefined ? 1 : 0));
   const view = new DataView(bytes.buffer);
   view.setUint8(0, THROW_SHARE_WIRE_VERSION);
   view.setUint16(1, quantize(shot.view.centerX, CENTER_MIN, CENTER_MAX));
@@ -173,6 +193,7 @@ export function encodeSharedThrow(shot: SharedThrow) {
   view.setInt32(15, shot.seed | 0);
   view.setUint8(19, nameBytes.length);
   bytes.set(nameBytes, 20);
+  if (fixedGlyph !== undefined) view.setUint8(20 + nameBytes.length, fixedGlyph);
   return bytesToBase64Url(bytes);
 }
 

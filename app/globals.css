@@ -164,6 +164,110 @@ button, input { font: inherit; }
   transition: transform 180ms ease, background 180ms ease;
 }
 .themeToggle[aria-pressed="true"] .themeToggleThumb { transform: translateX(12px); }
+.walletHud {
+  position: absolute;
+  top: 58px;
+  right: 14px;
+  z-index: 6;
+  display: flex;
+  min-width: 112px;
+  flex-direction: column;
+  align-items: flex-end;
+  padding: 7px 10px 8px;
+  border: 1px solid rgba(255, 209, 102, .28);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, .46);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+  backdrop-filter: blur(8px);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, .6);
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+.walletHudReceiving {
+  border-color: rgba(255, 209, 102, .82);
+  box-shadow: 0 0 28px rgba(255, 209, 102, .22);
+  animation: walletHudReceive 900ms ease both;
+}
+.walletHudLabel {
+  color: #c9a84d;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+}
+.walletHudValue {
+  margin-top: 2px;
+  color: #ffe39a;
+  font-size: 16px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.stoneWidget {
+  position: absolute;
+  right: calc(100% - var(--throw-stone-x) + 18px);
+  top: var(--throw-stone-y);
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 138px;
+  min-height: 48px;
+  padding: 4px 9px 4px 4px;
+  border: 1px solid rgba(151, 231, 240, .2);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .48);
+  color: #cbe8ee;
+  text-align: left;
+  cursor: pointer;
+  transform: translateY(-50%);
+  backdrop-filter: blur(8px);
+  animation: stoneWidgetEnter 360ms cubic-bezier(.2, .85, .2, 1) both;
+  transition: border-color 180ms ease, background 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+}
+.stoneWidget:hover,
+.stoneWidget:focus-visible {
+  border-color: rgba(210, 247, 255, .62);
+  background: rgba(7, 22, 27, .72);
+  outline: none;
+  transform: translateY(-50%) scale(1.025);
+}
+.stoneWidget.upgradeReady {
+  border-color: rgba(255, 209, 102, .74);
+  box-shadow: 0 0 22px rgba(255, 209, 102, .16);
+  animation: stoneWidgetEnter 360ms cubic-bezier(.2, .85, .2, 1) both, upgradeWidgetPulse 2s ease-in-out 360ms infinite;
+}
+.stoneWidgetPreview {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, .11), transparent 68%);
+}
+.stonePreview { display: block; overflow: visible; }
+.stonePreviewAura { transform-box: fill-box; transform-origin: center; animation: premiumAuraPulse 1.7s ease-in-out infinite; }
+.stoneWidgetCopy { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
+.stoneWidgetCopy strong {
+  overflow: hidden;
+  color: #edfaff;
+  font-size: 10px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stoneWidgetCopy small {
+  color: #7897a4;
+  font-size: 8px;
+  white-space: nowrap;
+}
+.stoneWidgetCopy em {
+  color: #ffd166;
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 850;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
 .compactScore {
   position: absolute;
   right: 36px;
@@ -244,6 +348,42 @@ button, input { font: inherit; }
   text-transform: uppercase;
   animation: highscoreAnnouncement 700ms cubic-bezier(.2, .8, .2, 1) both;
 }
+.highscoreNameEntry {
+  display: flex;
+  width: min(180px, 62vw);
+  margin-top: 10px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  pointer-events: auto;
+  animation: highscoreAnnouncement 700ms cubic-bezier(.2, .8, .2, 1) both;
+}
+.highscoreNameLabel {
+  color: rgba(237, 250, 255, .65);
+  font-family: Palatino, "Palatino Linotype", "Iowan Old Style", "Times New Roman", Times, serif;
+  font-size: 10px;
+  font-variant: small-caps;
+  letter-spacing: .22em;
+  text-transform: lowercase;
+}
+.highscoreNameInput {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(220, 245, 250, .42);
+  border-radius: var(--intro-pill-radius);
+  background: rgba(0, 0, 0, .55);
+  color: #edfaff;
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: .08em;
+  text-align: center;
+  text-transform: uppercase;
+  outline: none;
+}
+.highscoreNameInput:focus {
+  border-color: rgba(236, 252, 255, .78);
+}
 @keyframes highscoreListEnter {
   from { opacity: 0; transform: translateY(-10px) scale(.94); }
   60% { opacity: 1; transform: translateY(2px) scale(1.03); }
@@ -301,6 +441,225 @@ button, input { font: inherit; }
   font-weight: 800;
   letter-spacing: .18em;
   text-transform: uppercase;
+}
+.challengeToast {
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(10, 30, 40, .85);
+  border: 1px solid rgba(255, 209, 102, .5);
+  color: #ffd166;
+  font-size: 11px;
+  z-index: 30;
+}
+.achievementToast {
+  display: flex;
+  min-width: min(280px, calc(100vw - 32px));
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 16px;
+  overflow: hidden;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(20, 29, 43, .94), rgba(42, 25, 56, .92));
+  box-shadow: 0 16px 50px rgba(0, 0, 0, .42), 0 0 30px rgba(255, 209, 102, .14);
+  animation: achievementToastEnter 680ms cubic-bezier(.2, .85, .2, 1) both;
+}
+.achievementToast::before,
+.achievementToast::after {
+  position: absolute;
+  width: 90px;
+  height: 90px;
+  border: 1px solid rgba(255, 209, 102, .22);
+  border-radius: 50%;
+  content: "";
+  pointer-events: none;
+}
+.achievementToast::before { top: -55px; right: -24px; animation: achievementHalo 3s ease-in-out infinite; }
+.achievementToast::after { bottom: -72px; left: -28px; border-color: rgba(192, 132, 252, .2); }
+.achievementToastKicker {
+  color: #ffd166;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+}
+.achievementToastAward { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; }
+.achievementToastAward strong { color: #fff2c4; font-size: 12px; }
+.achievementToastAward small { color: #d4b9ee; font-size: 9px; white-space: nowrap; }
+.walletTransfer {
+  position: absolute;
+  right: 74px;
+  bottom: 122px;
+  z-index: 28;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  pointer-events: none;
+  text-align: right;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, .8);
+  animation: walletTransferLabel 1650ms cubic-bezier(.2, .75, .2, 1) both;
+}
+.walletTransfer strong { color: #ffe39a; font-size: 21px; font-variant-numeric: tabular-nums; }
+.walletTransfer span { color: #ffd166; font-size: 9px; font-weight: 850; letter-spacing: .14em; text-transform: uppercase; }
+.walletTransfer small { margin-top: 3px; color: #d8baf4; font-size: 8px; }
+.walletTransferParticles { position: absolute; inset: 0; overflow: visible; }
+.scoreParticle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #ffd166;
+  box-shadow: 0 0 8px #ffd166;
+  animation: walletParticle 1250ms cubic-bezier(.2, .75, .2, 1) both;
+}
+.walletTransferParticles i:nth-child(1) { --particle-x: -34px; --particle-y: -62vh; animation-delay: 20ms; }
+.walletTransferParticles i:nth-child(2) { --particle-x: 8px; --particle-y: -70vh; animation-delay: 75ms; }
+.walletTransferParticles i:nth-child(3) { --particle-x: 44px; --particle-y: -58vh; animation-delay: 110ms; }
+.walletTransferParticles i:nth-child(4) { --particle-x: -58px; --particle-y: -52vh; animation-delay: 145ms; }
+.walletTransferParticles i:nth-child(5) { --particle-x: 72px; --particle-y: -66vh; animation-delay: 180ms; }
+.walletTransferParticles i:nth-child(6) { --particle-x: -12px; --particle-y: -76vh; animation-delay: 215ms; }
+.walletTransferParticles i:nth-child(7) { --particle-x: 104px; --particle-y: -50vh; animation-delay: 250ms; }
+.walletTransferParticles i:nth-child(8) { --particle-x: -88px; --particle-y: -68vh; animation-delay: 285ms; }
+.walletTransferParticles i:nth-child(9) { --particle-x: 28px; --particle-y: -48vh; animation-delay: 320ms; }
+.walletTransferParticles i:nth-child(10) { --particle-x: -110px; --particle-y: -60vh; animation-delay: 355ms; }
+.walletTransferParticles i:nth-child(11) { --particle-x: 62px; --particle-y: -74vh; animation-delay: 390ms; }
+.walletTransferParticles i:nth-child(12) { --particle-x: -46px; --particle-y: -73vh; animation-delay: 425ms; }
+.walletTransferParticles i:nth-child(13) { --particle-x: 124px; --particle-y: -63vh; animation-delay: 460ms; }
+.walletTransferParticles i:nth-child(14) { --particle-x: -72px; --particle-y: -46vh; animation-delay: 495ms; }
+.stoneShopBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 4, 8, .68);
+  animation: shopBackdropIn 180ms ease both;
+}
+.stoneShop {
+  width: min(720px, 100%);
+  max-height: min(760px, 92vh);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid rgba(151, 231, 240, .22);
+  border-radius: 20px;
+  background: linear-gradient(145deg, rgba(8, 18, 23, .98), rgba(14, 8, 24, .98));
+  box-shadow: 0 30px 90px rgba(0, 0, 0, .58), 0 0 50px rgba(98, 232, 255, .08);
+  animation: shopPanelIn 360ms cubic-bezier(.2, .85, .2, 1) both;
+}
+.stoneShopHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.stoneShopKicker { color: #62e8ff; font-size: 9px; font-weight: 850; letter-spacing: .18em; text-transform: uppercase; }
+.stoneShop h2 { margin: 5px 0 5px; color: #f4fdff; font-size: 27px; letter-spacing: -.04em; }
+.stoneShopHeader p { max-width: 500px; margin: 0; color: #7897a4; font-size: 11px; line-height: 1.45; }
+.stoneShopClose {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border: 1px solid rgba(151, 231, 240, .2);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .04);
+  color: #b9d7df;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.stoneShopClose:hover,
+.stoneShopClose:focus-visible { border-color: rgba(210, 247, 255, .62); color: white; outline: none; }
+.stoneShopWallet { margin: 20px 0 14px; color: #c9a84d; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
+.stoneShopWallet strong { color: #ffe39a; font-size: 18px; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.stoneShopGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.stoneShopCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, .025);
+  transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+}
+.stoneShopCard:hover { border-color: rgba(151, 231, 240, .3); background: rgba(255, 255, 255, .05); transform: translateY(-2px); }
+.stoneShopCard.locked { opacity: .68; }
+.stoneShopCard.equipped { border-color: rgba(98, 232, 255, .45); background: rgba(98, 232, 255, .06); }
+.stoneShopCardBody { min-width: 0; flex: 1; }
+.stoneShopCardTitle { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.stoneShopCardTitle strong { overflow: hidden; color: #edfaff; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.stoneShopCardTitle span { color: #7897a4; font-size: 8px; text-transform: uppercase; }
+.stoneShopCard p { min-height: 26px; margin: 4px 0 8px; color: #7897a4; font-size: 9px; line-height: 1.35; }
+.stoneShopAction,
+.stoneShopState {
+  display: inline-flex;
+  min-height: 27px;
+  align-items: center;
+  padding: 0 9px;
+  border: 1px solid rgba(210, 247, 255, .24);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .05);
+  color: #dffbff;
+  font-size: 9px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.stoneShopAction:hover,
+.stoneShopAction:focus-visible { border-color: rgba(210, 247, 255, .62); background: rgba(255, 255, 255, .12); outline: none; }
+.stoneShopAction:disabled { border-color: rgba(255, 255, 255, .1); color: #526d79; cursor: not-allowed; }
+.stoneShopState { border-color: rgba(98, 232, 255, .28); color: #62e8ff; cursor: default; }
+.stoneShopCard.rarity-common .stoneShopCardTitle strong { color: #d6e0eb; }
+.stoneShopCard.rarity-uncommon .stoneShopCardTitle strong { color: #69f6ae; }
+.stoneShopCard.rarity-rare .stoneShopCardTitle strong { color: #70c5ff; }
+.stoneShopCard.rarity-epic .stoneShopCardTitle strong { color: #eca9ff; }
+.stoneShopCard.rarity-legendary .stoneShopCardTitle strong { color: #ffe45d; }
+.stoneShopCard.rarity-common { border-color: rgba(185, 202, 219, .13); }
+.stoneShopCard.rarity-uncommon { border-color: rgba(105, 246, 174, .16); }
+.stoneShopCard.rarity-rare { border-color: rgba(112, 197, 255, .18); }
+.stoneShopCard.rarity-epic { border-color: rgba(236, 169, 255, .22); }
+.stoneShopCard.rarity-legendary { border-color: rgba(255, 228, 93, .28); }
+@keyframes walletHudReceive {
+  0%, 100% { transform: scale(1); }
+  42% { transform: scale(1.08); }
+}
+@keyframes upgradeWidgetPulse {
+  0%, 100% { box-shadow: 0 0 12px rgba(255, 209, 102, .08); }
+  50% { box-shadow: 0 0 26px rgba(255, 209, 102, .28); }
+}
+@keyframes stoneWidgetEnter {
+  from { opacity: 0; transform: translate(-12px, -50%) scale(.94); }
+  to { opacity: 1; transform: translate(0, -50%) scale(1); }
+}
+@keyframes throwActionEnter {
+  from { opacity: 0; transform: translateY(8px) scale(.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes achievementToastEnter {
+  0% { opacity: 0; transform: translate(-50%, -16px) scale(.82) rotate(-1deg); }
+  65% { opacity: 1; transform: translate(-50%, 3px) scale(1.035) rotate(.2deg); }
+  100% { opacity: 1; transform: translate(-50%, 0) scale(1) rotate(0); }
+}
+@keyframes achievementHalo {
+  0%, 100% { transform: scale(.82); opacity: .45; }
+  50% { transform: scale(1.2); opacity: .95; }
+}
+@keyframes walletTransferLabel {
+  0% { opacity: 0; transform: translateY(18px) scale(.82); }
+  20%, 72% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-34px) scale(.92); }
+}
+@keyframes walletParticle {
+  0% { opacity: 0; transform: translate(0, 0) scale(.35); }
+  18% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--particle-x), var(--particle-y)) scale(.08); }
+}
+@keyframes shopBackdropIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes shopPanelIn { from { opacity: 0; transform: translateY(18px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes premiumAuraPulse {
+  0%, 100% { opacity: .28; transform: scale(.9); }
+  50% { opacity: .86; transform: scale(1.08); }
 }
 .gameShell.replayMode {
   --cyan: #c9a0ff;
@@ -493,6 +852,44 @@ button, input { font: inherit; }
   border-top: 1px solid rgba(255, 255, 255, .09);
   border-bottom: 1px solid rgba(255, 255, 255, .09);
 }
+.stonePanel {
+  flex: none;
+  margin: 0 0 20px;
+  padding: 14px 0 16px;
+  border-top: 1px solid rgba(255, 255, 255, .09);
+}
+.challengePanel {
+  flex: none;
+  margin: 0 0 20px;
+  padding: 0 0 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, .09);
+}
+.challengeList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.challengeList li { display: flex; justify-content: space-between; gap: 10px; color: #7897a4; font-size: 9px; }
+.challengeList li.challengeDone { color: #6ee7a0; }
+.stoneList { display: flex; flex-direction: column; gap: 6px; }
+.stoneCard {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 10px;
+  align-items: center;
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 8px;
+}
+.stoneCard.locked { opacity: .62; }
+.stoneCard.equipped { border-color: rgba(255, 255, 255, .28); }
+.stoneName { font-size: 10px; font-weight: 750; }
+.stoneMeta { grid-column: 1; color: #7897a4; font-size: 8.5px; }
+.stoneAction { grid-row: 1 / span 2; justify-self: end; font-size: 8.5px; }
+.stoneEquipped { color: #dffbff; font-size: 8.5px; letter-spacing: .08em; text-transform: uppercase; }
+.rarity-common .stoneName { color: #c3c9d4; }
+.rarity-uncommon .stoneName { color: #6ee7a0; }
+.rarity-rare .stoneName { color: #60a5fa; }
+.rarity-epic .stoneName { color: #c084fc; }
+.rarity-legendary .stoneName { color: #facc15; }
+.walletRow { color: #7897a4; font-size: 9px; }
+.walletRow strong { color: #ffd166; font-variant-numeric: tabular-nums; }
 .tuningHeading,
 .tuningControl > span {
   display: flex;
@@ -665,7 +1062,6 @@ button, input { font: inherit; }
 .introOverlay.fading { pointer-events: none; }
 .introOverlay.fading .introChrome,
 .introOverlay.fading .introPaper,
-.introOverlay.fading .introNameEntry,
 .introOverlay.fading .introPlay {
   opacity: 0;
   pointer-events: none;
@@ -709,19 +1105,6 @@ button, input { font: inherit; }
   font-family: Palatino, "Palatino Linotype", "Iowan Old Style", "Times New Roman", Times, serif;
   transition: opacity 280ms ease;
 }
-.introPaperRight {
-  left: auto;
-  right: 14px;
-}
-.introPaperFigure {
-  margin: 12px 0 0;
-}
-.introPaperFigure img {
-  display: block;
-  width: 100%;
-  height: auto;
-  opacity: .82;
-}
 .introPaperJournal {  margin: 0;
   color: rgba(255, 255, 255, .62);
   font-size: 9px;
@@ -736,6 +1119,14 @@ button, input { font: inherit; }
   font-style: italic;
   font-weight: 500;
   letter-spacing: .01em;
+  text-align: center;
+}
+.introPaperFormula {
+  margin: -2px 0 10px;
+  font-family: "STIX Two Math", "Cambria Math", Palatino, "Times New Roman", Times, serif;
+  font-size: 15px;
+  letter-spacing: .03em;
+  opacity: .82;
   text-align: center;
 }
 .introPaperLede {
@@ -759,6 +1150,18 @@ button, input { font: inherit; }
   text-decoration-color: rgba(255, 255, 255, .42);
   text-underline-offset: 2px;
 }
+.externalLinkIcon {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+  vertical-align: -0.08em;
+}
 .introPaperWiki:hover,
 .introPaperWiki:focus-visible {
   color: #fff;
@@ -766,9 +1169,11 @@ button, input { font: inherit; }
   outline: none;
 }
 .introPaperWikiBox {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   margin-left: 4px;
-  padding: 0 3px;
+  padding: 2px 3px;
   border: 1px solid rgba(255, 255, 255, .42);
   border-radius: 4px;
   font-size: .78em;
@@ -808,45 +1213,6 @@ button, input { font: inherit; }
   text-transform: uppercase;
   cursor: pointer;
   transition: opacity 280ms ease, border-color 180ms ease, background 180ms ease;
-}
-.introNameEntry {
-  position: absolute;
-  left: var(--throw-stone-x);
-  top: calc(var(--throw-stone-y) - 34px);
-  transform: translate(-50%, -100%);
-  z-index: 3;
-  display: flex;
-  width: min(180px, min(320px, 62vw));
-  flex-direction: column;
-  align-items: center;
-  gap: 5px;
-  transition: opacity 280ms ease;
-}
-.introNameLabel {
-  color: rgba(237, 250, 255, .65);
-  font-family: Palatino, "Palatino Linotype", "Iowan Old Style", "Times New Roman", Times, serif;
-  font-size: 10px;
-  font-variant: small-caps;
-  letter-spacing: .22em;
-  text-transform: lowercase;
-}
-.introNameInput {
-  width: 100%;
-  min-height: 36px;
-  padding: 0 12px;
-  border: 1px solid rgba(220, 245, 250, .42);
-  border-radius: var(--intro-pill-radius);
-  background: rgba(0, 0, 0, .55);
-  color: #edfaff;
-  font-size: 12px;
-  font-weight: 750;
-  letter-spacing: .08em;
-  text-align: center;
-  text-transform: uppercase;
-  outline: none;
-}
-.introNameInput:focus {
-  border-color: rgba(236, 252, 255, .78);
 }
 .introPlay:hover,
 .introPlay:focus-visible {
@@ -893,12 +1259,17 @@ button, input { font: inherit; }
   letter-spacing: .08em;
   text-transform: uppercase;
   cursor: pointer;
+  opacity: 0;
+  transform: translateY(8px) scale(.96);
+  animation: throwActionEnter 360ms cubic-bezier(.2, .85, .2, 1) both;
 }
 .playfieldThrowControl {
   min-width: 108px;
+  animation-delay: 70ms !important;
 }
 .playfieldShareControl {
   min-width: 84px;
+  animation-delay: 230ms !important;
 }
 .playfieldThrowActions button:hover,
 .playfieldThrowActions button:focus-visible {
@@ -1025,18 +1396,23 @@ button, input { font: inherit; }
   .playfieldDock { left: 10px; bottom: 10px; }
   .gameBrand { top: 10px; left: 10px; }
   .gameBrandTitle { font-size: 52px; }
+  .walletHud { top: 50px; right: 10px; min-width: 96px; }
+  .stoneWidget { right: calc(100% - var(--throw-stone-x) + 14px); min-width: 124px; }
   .replayBanner { top: 92px; left: 10px; }
   .replayBannerName { font-size: 18px; }
   .introPaper {
     width: min(17rem, calc(50% - 8px));
     padding: 12px 14px 10px;
   }
-  .introPaperFigure img { opacity: .7; }
   .introPaperTitle { font-size: 24px; margin: 2px 0 8px; }
+  .introPaperFormula { font-size: 12px; margin-bottom: 8px; }
   .introPaperLede { font-size: 12px; }
   .introPaperLede::first-letter { font-size: 3.2em; }
   .introPlay { min-height: 44px; }
   .introRegionCard { bottom: 84px; }
+  .stoneShopBackdrop { padding: 10px; }
+  .stoneShop { max-height: 96vh; padding: 16px; border-radius: 16px; }
+  .stoneShopGrid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 430px) {
@@ -1053,9 +1429,20 @@ button, input { font: inherit; }
   .compactHighscoreEntry.current, .compactScoreAnnouncement { animation: none; }
   .themeToggleThumb { transition: none; }
   .introOverlay { transition: none; }
-  .introChrome, .introPaper, .introNameEntry, .introPlay { transition: none; }
+  .introChrome, .introPaper, .introPlay { transition: none; }
+  .highscoreNameEntry { animation: none; }
   .introCloudHost.fading { transition: opacity 200ms linear; }
   .howItWorksPanel { transition: none; }
+  .walletHudReceiving,
+  .stoneWidget.upgradeReady,
+  .achievementToast,
+  .achievementToast::before,
+  .walletTransfer,
+  .scoreParticle,
+  .stoneShopBackdrop,
+  .stoneShop { animation: none; }
+  .stoneWidget,
+  .playfieldThrowActions button { opacity: 1; transform: none; animation: none; }
 }
 
 .gameShell.lightMode {
@@ -1089,7 +1476,9 @@ button, input { font: inherit; }
 .gameShell.lightMode .compactHighscoreEmpty { color: #789199; }
 .gameShell.lightMode .railToggle,
 .gameShell.lightMode .themeToggle,
-.gameShell.lightMode .howItWorksTrigger {
+.gameShell.lightMode .howItWorksTrigger,
+.gameShell.lightMode .walletHud,
+.gameShell.lightMode .stoneWidget {
   border-color: rgba(20, 76, 84, .22);
   background: rgba(248, 251, 250, .82);
   color: #4d737b;
@@ -1111,6 +1500,12 @@ button, input { font: inherit; }
   background: #087d99;
   box-shadow: 0 0 7px rgba(8, 125, 153, .35);
 }
+.gameShell.lightMode .walletHud { box-shadow: 0 8px 24px rgba(46, 75, 77, .12); text-shadow: none; }
+.gameShell.lightMode .walletHudLabel { color: #8a6400; }
+.gameShell.lightMode .walletHudValue { color: #8a6400; }
+.gameShell.lightMode .stoneWidgetCopy strong { color: #17333a; }
+.gameShell.lightMode .stoneWidgetCopy small { color: #607b82; }
+.gameShell.lightMode .stoneWidget.upgradeReady { border-color: rgba(138, 100, 0, .52); }
 .gameShell.lightMode .replayBannerName { color: #543f70; }
 .gameShell.lightMode .replayBannerLabel { color: #806ba0; }
 .gameShell.lightMode .scoreRail { border-left-color: rgba(20, 76, 84, .14); }
@@ -1134,11 +1529,20 @@ button, input { font: inherit; }
   color: #17333a;
 }
 .gameShell.lightMode .tuningPanel,
+.gameShell.lightMode .stonePanel,
 .gameShell.lightMode .railResult { border-color: rgba(20, 76, 84, .12); }
 .gameShell.lightMode .tuningHeading,
-.gameShell.lightMode .tuningControl output { color: #315e68; }
+.gameShell.lightMode .tuningControl output,
+.gameShell.lightMode .stoneEquipped { color: #315e68; }
 .gameShell.lightMode .tuningHeading span:last-child { color: #789199; }
-.gameShell.lightMode .tuningControl { color: #607b82; }
+.gameShell.lightMode .tuningControl,
+.gameShell.lightMode .stoneMeta,
+.gameShell.lightMode .walletRow,
+.gameShell.lightMode .challengeList li { color: #607b82; }
+.gameShell.lightMode .challengeList li.challengeDone { color: #1d7a4f; }
+.gameShell.lightMode .walletRow strong { color: #8a6400; }
+.gameShell.lightMode .stoneCard { border-color: rgba(20, 76, 84, .12); }
+.gameShell.lightMode .stoneCard.equipped { border-color: rgba(20, 76, 84, .34); }
 .gameShell.lightMode .tuningNote { color: #789199; }
 .gameShell.lightMode .tuningCheck { color: #4d737b; }
 .gameShell.lightMode .tuningControl input[type="range"]::-webkit-slider-runnable-track,
@@ -1163,6 +1567,26 @@ button, input { font: inherit; }
 .gameShell.lightMode .railHint { color: #789199; }
 .gameShell.lightMode .railFooter { color: #8ca2a5; }
 .gameShell.lightMode .gpuNote { color: #a34d4d; }
+.gameShell.lightMode .stoneShopBackdrop { background: rgba(231, 242, 240, .72); }
+.gameShell.lightMode .stoneShop { border-color: rgba(20, 76, 84, .18); background: linear-gradient(145deg, rgba(248, 251, 250, .98), rgba(239, 247, 245, .98)); box-shadow: 0 30px 90px rgba(46, 75, 77, .22); }
+.gameShell.lightMode .stoneShop h2 { color: #17333a; }
+.gameShell.lightMode .stoneShopHeader p,
+.gameShell.lightMode .stoneShopCard p,
+.gameShell.lightMode .stoneShopCardTitle span { color: #607b82; }
+.gameShell.lightMode .stoneShopCard { border-color: rgba(20, 76, 84, .12); background: rgba(255, 255, 255, .5); }
+.gameShell.lightMode .stoneShopCard.equipped { border-color: rgba(8, 125, 153, .35); background: rgba(8, 125, 153, .05); }
+.gameShell.lightMode .stoneShopCardTitle strong { color: #17333a; }
+.gameShell.lightMode .stoneShopCard.rarity-common .stoneShopCardTitle strong { color: #52697f; }
+.gameShell.lightMode .stoneShopCard.rarity-uncommon .stoneShopCardTitle strong { color: #168457; }
+.gameShell.lightMode .stoneShopCard.rarity-rare .stoneShopCardTitle strong { color: #176fae; }
+.gameShell.lightMode .stoneShopCard.rarity-epic .stoneShopCardTitle strong { color: #8c45b0; }
+.gameShell.lightMode .stoneShopCard.rarity-legendary .stoneShopCardTitle strong { color: #a36c00; }
+.gameShell.lightMode .stoneShopAction,
+.gameShell.lightMode .stoneShopState,
+.gameShell.lightMode .stoneShopClose { border-color: rgba(20, 76, 84, .22); background: rgba(255, 255, 255, .66); color: #315e68; }
+.gameShell.lightMode .stoneShopState { color: #087d99; }
+.gameShell.lightMode .stoneShopWallet { color: #8a6400; }
+.gameShell.lightMode .stoneShopWallet strong { color: #8a6400; }
 .gameShell.lightMode .howItWorksPanel {
   border-color: rgba(20, 76, 84, .16);
   background: rgba(248, 251, 250, .96);
@@ -1181,11 +1605,11 @@ button, input { font: inherit; }
   color: #17333a;
 }
 .gameShell.lightMode .introPaperJournal { color: rgba(23, 51, 58, .58); }
-.gameShell.lightMode .introPaperSource a,
+.gameShell.lightMode .introPaperWiki,
 .gameShell.lightMode .introPaperCite a { color: rgba(23, 51, 58, .74); }
-.gameShell.lightMode .introPaperSource a { text-decoration-color: rgba(23, 51, 58, .35); }
-.gameShell.lightMode .introPaperSource a:hover,
-.gameShell.lightMode .introPaperSource a:focus-visible,
+.gameShell.lightMode .introPaperWiki { text-decoration-color: rgba(23, 51, 58, .35); }
+.gameShell.lightMode .introPaperWiki:hover,
+.gameShell.lightMode .introPaperWiki:focus-visible,
 .gameShell.lightMode .introPaperCite a:hover,
 .gameShell.lightMode .introPaperCite a:focus-visible { color: #087d99; }
 .gameShell.lightMode .introPlay {
@@ -1193,13 +1617,13 @@ button, input { font: inherit; }
   background: rgba(248, 251, 250, .76);
   color: #17333a;
 }
-.gameShell.lightMode .introNameLabel { color: rgba(23, 51, 58, .62); }
-.gameShell.lightMode .introNameInput {
+.gameShell.lightMode .highscoreNameLabel { color: rgba(23, 51, 58, .62); }
+.gameShell.lightMode .highscoreNameInput {
   border-color: rgba(20, 76, 84, .35);
   background: rgba(248, 251, 250, .76);
   color: #17333a;
 }
-.gameShell.lightMode .introNameInput:focus { border-color: rgba(8, 125, 153, .62); }
+.gameShell.lightMode .highscoreNameInput:focus { border-color: rgba(8, 125, 153, .62); }
 .gameShell.lightMode .introPlay:hover,
 .gameShell.lightMode .introPlay:focus-visible {
   border-color: rgba(8, 125, 153, .62);

@@ -35,6 +35,7 @@ test("the overlay explains the precomputed 3D Gaussian cloud", () => {
   const copy = BUDDHABROT_EXPLAIN.paragraphs.join(" ");
   assert.equal(BUDDHABROT_EXPLAIN.trigger, "Buddhabrot");
   assert.equal(BUDDHABROT_EXPLAIN.formula, "z → z² + c");
+  assert.equal(BUDDHABROT_EXPLAIN.introFormula, "z₀ = 0,   zₙ₊₁ = zₙ² + c");
   assert.match(copy, /Mandelbrot/);
   assert.match(copy, /escape/);
   assert.match(copy, /Melinda Green/);
@@ -60,6 +61,7 @@ test("loading paper quotes Wikipedia's first paragraph with numbered references"
   assert.match(paper.references[0].text, /Buddhabrot Technique/);
   assert.match(paper.references[1].text, /Wikipedia/);
   assert.equal(paper.references[1].url, "https://en.wikipedia.org/wiki/Buddhabrot");
+  assert.equal(paper.title, "The Buddhabrot");
   assert.match(paper.journal, /fractal/i);
 });
 

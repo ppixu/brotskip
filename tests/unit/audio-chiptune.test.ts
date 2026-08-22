@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import {
   arpIntervalSeconds,
   arpPattern,
@@ -13,10 +14,18 @@ import {
   fanfareTier,
   finishComplexity,
   GLYPH_PATCHES,
+  launchDegrees,
+  LAUNCH_THUMP_END_HZ,
+  launchThumpGain,
+  launchThumpStartHz,
   melodyDegree,
+  SLING_TICK_STEPS,
+  slingTickDegree,
+  slingTickIndex,
   splashDegree,
   splashPeakHz,
 } from "../../lib/audio/chiptune.ts";
+import { HIGHPASS_HZ } from "../../lib/audio/engine.ts";
 import { degreeToFrequency, paletteFromLanding } from "../../lib/audio/theory.ts";
 
 test("every sacred glyph has its own chord, arp, and waveform", () => {
@@ -149,4 +158,63 @@ test("fanfare melody and final chord stay on the tonic triad, never a clashing 2
     }
   }
   assert.ok(fanfareMelodyDegrees(3).length > fanfareMelodyDegrees(0).length);
+});
+
+test("the sling draw ratchets through discrete steps, never a held tone", () => {
+  assert.equal(slingTickIndex(0), 0);
+  assert.equal(slingTickIndex(1), SLING_TICK_STEPS);
+  assert.equal(slingTickIndex(2), SLING_TICK_STEPS);
+  assert.equal(slingTickIndex(-1), 0);
+  let previous = -1;
+  for (let step = 0; step <= 20; step++) {
+    const index = slingTickIndex(step / 20);
+    assert.ok(index >= previous, "tick index never falls as the draw grows");
+    previous = index;
+  }
+  assert.equal(new Set(Array.from({ length: 21 }, (_, i) => slingTickIndex(i / 20))).size, SLING_TICK_STEPS + 1);
+});
+
+test("pulling further raises the ratchet pitch", () => {
+  const palette = paletteFromLanding(-0.58, 0);
+  const low = degreeToFrequency(palette, slingTickDegree(1));
+  const high = degreeToFrequency(palette, slingTickDegree(SLING_TICK_STEPS));
+  assert.ok(high > low);
+  for (let index = 0; index <= SLING_TICK_STEPS; index++) {
+    assert.equal(slingTickDegree(index), Math.round(slingTickDegree(index)));
+  }
+});
+
+test("the launch rip climbs and gets longer with draw power", () => {
+  const soft = launchDegrees(0);
+  const hard = launchDegrees(1);
+  assert.ok(hard.length > soft.length);
+  for (const run of [soft, hard]) {
+    assert.ok(run.length >= 3);
+    for (let index = 1; index < run.length; index++) assert.ok(run[index] > run[index - 1]);
+  }
+});
+
+test("idle voices fall to true silence, not a -80 dB floor", () => {
+  const source = readFileSync(new URL("../../lib/audio/chiptune.ts", import.meta.url), "utf8");
+  const fade = source.match(/function fadeToSilence[\s\S]*?\n {2}\}/)?.[0] ?? "";
+  assert.match(fade, /linearRampToValueAtTime\(0,/);
+  const silence = source.match(/function silenceVoices\(\)[\s\S]*?\n {2}\}/)?.[0] ?? "";
+  assert.match(silence, /fadeToSilence/);
+  assert.doesNotMatch(silence, /\.0001/);
+  assert.doesNotMatch(source, /setTargetAtTime\(\.0001/);
+});
+
+test("the launch lands on a low thump that clears the master high-pass", () => {
+  assert.ok(LAUNCH_THUMP_END_HZ > HIGHPASS_HZ, "thump must survive the master high-pass");
+  assert.ok(launchThumpStartHz(1) > launchThumpStartHz(0), "a harder pull snaps from higher up");
+  for (const power of [0, .5, 1]) {
+    assert.ok(launchThumpStartHz(power) > LAUNCH_THUMP_END_HZ, "the thump always falls, never rises");
+  }
+});
+
+test("draw power drives how hard the launch hits", () => {
+  assert.ok(launchThumpGain(1) > launchThumpGain(0));
+  assert.ok(launchThumpGain(0) > chordGain(1, 1, false), "the launch punches above the sustained bed");
+  assert.ok(launchThumpGain(1) < 1, "and still leaves headroom");
+  assert.equal(launchThumpGain(2), launchThumpGain(1), "power clamps at full draw");
 });

@@ -23,10 +23,12 @@ export type GameAudio = {
   setVolume(volume: number): void;
   setMuted(muted: boolean): void;
   playStart(): void;
-  throwStart(): void;
+  slingGrab(): void;
+  slingPull(tension: number): void;
+  throwStart(power?: number): void;
   splash(skipIndex: number, glyph: number, panPosition: number): void;
   update(orbits: readonly OrbitFeatureInput[], phase: GamePhase, nowMs: number): void;
-  finish(scoreRatio: number): void;
+  finish(scoreRatio: number): number;
   reset(): void;
   destroy(): void;
 };
@@ -107,11 +109,24 @@ export function createGameAudio(): GameAudio {
         ensureIntro()?.play();
       } catch { /* audio stays optional */ }
     },
-    throwStart() {
+    slingGrab() {
       try {
         ensureEngine();
         if (!shell || shell.context.state !== "running") return;
-        engine?.throwStart();
+        engine?.slingGrab();
+      } catch { /* audio stays optional */ }
+    },
+    slingPull(tension) {
+      try {
+        if (!shell || shell.context.state !== "running") return;
+        engine?.slingPull(tension);
+      } catch { /* audio stays optional */ }
+    },
+    throwStart(power) {
+      try {
+        ensureEngine();
+        if (!shell || shell.context.state !== "running") return;
+        engine?.throwStart(power);
       } catch { /* audio stays optional */ }
     },
     splash(skipIndex, glyph, panPosition) {
@@ -130,13 +145,13 @@ export function createGameAudio(): GameAudio {
       try {
         if (!shell) return;
         if (shell.context.state !== "running") return;
-        const current = ensureEngine();
-        if (!current) return;
         const playing = (phase === "flying" || phase === "resolving") && orbits.length > 0;
         if (!playing) {
-          current.silence();
+          engine?.silence();
           return;
         }
+        const current = ensureEngine();
+        if (!current) return;
         if (nowMs - lastUpdate < UPDATE_INTERVAL_MS) return;
         lastUpdate = nowMs;
         if (!palette) establishPalette(orbits[0].cr, orbits[0].ci);
@@ -149,8 +164,9 @@ export function createGameAudio(): GameAudio {
     },
     finish(scoreRatio) {
       try {
-        engine?.finish(Math.max(0, Math.min(1, scoreRatio)));
+        return engine?.finish(Math.max(0, Math.min(1, scoreRatio))) ?? 0;
       } catch { /* audio stays optional */ }
+      return 0;
     },
     reset() {
       try {
