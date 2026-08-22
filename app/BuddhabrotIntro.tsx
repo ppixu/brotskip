@@ -54,7 +54,30 @@ export default function BuddhabrotIntro({
         onLoadProgress={handleLoadProgress}
         onReady={handleReady}
         onRegionChange={handleRegionChange}
-      />
+      >
+        {region && (
+          <aside
+            className={`introRegionCard ${regionVisible || cardHovered ? "visible" : ""}`}
+            aria-live="polite"
+            onPointerEnter={() => setCardHovered(true)}
+            onPointerLeave={() => setCardHovered(false)}
+          >
+            <h3 className="introRegionName">{region.name}</h3>
+            <p className="introRegionBlurb">
+              {region.blurb}
+              {region.link && (
+                <>
+                  {" "}
+                  <a className="introPaperWiki" href={region.link} target="_blank" rel="noreferrer">
+                    Wikipedia
+                  </a>
+                  <span className="introPaperWikiBox"><ExternalLinkIcon /></span>
+                </>
+              )}
+            </p>
+          </aside>
+        )}
+      </BuddhabrotCloudCanvas>
       <div className="introChrome">
         <span
           className={`introLoadProgress ${splatReady ? "complete" : ""}`}
@@ -67,28 +90,6 @@ export default function BuddhabrotIntro({
           <i style={{ width: `${loadProgress * 100}%` }} />
         </span>
       </div>
-      {region && (
-        <aside
-          className={`introRegionCard ${regionVisible || cardHovered ? "visible" : ""}`}
-          aria-live="polite"
-          onPointerEnter={() => setCardHovered(true)}
-          onPointerLeave={() => setCardHovered(false)}
-        >
-          <h3 className="introRegionName">{region.name}</h3>
-          <p className="introRegionBlurb">
-            {region.blurb}
-            {region.link && (
-              <>
-                {" "}
-                <a className="introPaperWiki" href={region.link} target="_blank" rel="noreferrer">
-                  Wikipedia
-                </a>
-                <span className="introPaperWikiBox"><ExternalLinkIcon /></span>
-              </>
-            )}
-          </p>
-        </aside>
-      )}
       <article className="introPaper" aria-label="Buddhabrot, from Wikipedia">
         <p className="introPaperJournal">{wikipedia.journal}</p>
         <h1 className="introPaperTitle">{wikipedia.title}</h1>

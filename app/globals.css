@@ -1330,11 +1330,18 @@ button, input { font: inherit; }
   transition: width 80ms linear;
 }
 .introLoadProgress.complete { opacity: 0; }
+.introRegionAnchor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  pointer-events: none;
+  will-change: transform;
+}
 .introRegionCard {
   position: absolute;
-  left: 18px;
-  bottom: 52px;
-  z-index: 3;
+  left: 0;
+  bottom: 14px;
   max-width: 240px;
   padding: 10px 12px;
   border: 1px solid rgba(140, 220, 255, 0.18);
@@ -1342,13 +1349,13 @@ button, input { font: inherit; }
   background: rgba(4, 10, 18, 0.78);
   color: #dffbff;
   opacity: 0;
-  transform: translateY(4px);
+  transform: translateX(-50%) translateY(4px);
   transition: opacity 200ms ease, transform 200ms ease;
   pointer-events: none;
 }
 .introRegionCard.visible {
   opacity: 1;
-  transform: translateY(0);
+  transform: translateX(-50%) translateY(0);
   pointer-events: auto;
 }
 .introRegionName {
@@ -1409,7 +1416,6 @@ button, input { font: inherit; }
   .introPaperLede { font-size: 12px; }
   .introPaperLede::first-letter { font-size: 3.2em; }
   .introPlay { min-height: 44px; }
-  .introRegionCard { bottom: 84px; }
   .stoneShopBackdrop { padding: 10px; }
   .stoneShop { max-height: 96vh; padding: 16px; border-radius: 16px; }
   .stoneShopGrid { grid-template-columns: 1fr; }

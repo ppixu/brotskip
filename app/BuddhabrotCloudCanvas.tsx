@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import * as THREE from "three";
 import { PackedSplats, SparkRenderer, SplatMesh, dyno } from "@sparkjsdev/spark";
 import {
@@ -91,6 +91,7 @@ export default function BuddhabrotCloudCanvas({
   legacySplat = false,
   onRegionChange,
   tune,
+  children,
 }: {
   fading: boolean;
   onLoadProgress?: (progress: number) => void;
@@ -99,8 +100,10 @@ export default function BuddhabrotCloudCanvas({
   legacySplat?: boolean;
   onRegionChange?: (region: SplatRegion | null) => void;
   tune?: Partial<IntroPlayTune>;
+  children?: ReactNode;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
   const fadingRef = useRef(fading);
   const tuneRef = useRef(resolveIntroPlayTune(tune));
   const [ready, setReady] = useState(false);
@@ -150,6 +153,9 @@ export default function BuddhabrotCloudCanvas({
     let dragging = false;
     let lastPointerX = 0;
     let lastPointerY = 0;
+    let cssWidth = 0;
+    let cssHeight = 0;
+    const anchorPoint = new THREE.Vector3();
 
     const spark = new SparkRenderer({
       renderer,
@@ -517,9 +523,36 @@ export default function BuddhabrotCloudCanvas({
       const rect = host!.getBoundingClientRect();
       const width = Math.max(1, Math.round(rect.width));
       const height = Math.max(1, Math.round(rect.height));
+      cssWidth = width;
+      cssHeight = height;
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height, false);
+    }
+
+    // Projects the hovered region's top edge to screen space and moves the
+    // caption-card anchor there imperatively, so the card tracks the region
+    // as the cloud rotates without triggering React re-renders every frame.
+    function updateRegionAnchor() {
+      const anchor = anchorRef.current;
+      if (!anchor || !hoveredRegion) return;
+      anchorPoint.set(
+        hoveredRegion.center[0],
+        hoveredRegion.center[1] + hoveredRegion.radii[1],
+        hoveredRegion.center[2],
+      );
+      anchorPoint.project(camera);
+      const x = THREE.MathUtils.clamp(
+        ((anchorPoint.x + 1) / 2) * cssWidth,
+        90,
+        Math.max(90, cssWidth - 90),
+      );
+      const y = THREE.MathUtils.clamp(
+        (1 - (anchorPoint.y + 1) / 2) * cssHeight,
+        70,
+        Math.max(70, cssHeight - 24),
+      );
+      anchor.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
     }
 
     function render(now: number) {
@@ -559,7 +592,9 @@ export default function BuddhabrotCloudCanvas({
         target.z + Math.cos(yaw) * cosPitch * distance,
       );
       camera.lookAt(target);
+      camera.updateMatrixWorld();
       updateTour(now);
+      updateRegionAnchor();
       const strengthTarget = hoveredRegion && !dragging && !fadingRef.current ? 1 : 0;
       regionStrength.value += (strengthTarget - regionStrength.value) * Math.min(1, delta / 140);
       updateRipples(now);
@@ -624,6 +659,8 @@ export default function BuddhabrotCloudCanvas({
       className={`introCloudHost ${ready ? "ready" : ""} ${fading ? "fading" : ""}`}
       role="img"
       aria-label={`${variant === "classic" ? "True z squared plus c" : "Complex Henon"} precomputed 3D Buddhabrot Gaussian cloud. Drag to orbit.`}
-    />
+    >
+      <div ref={anchorRef} className="introRegionAnchor">{children}</div>
+    </div>
   );
 }
