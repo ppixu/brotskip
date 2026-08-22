@@ -171,6 +171,7 @@ type OrbitScore = {
   sumXY: number;
   resolved: boolean;
   score: number;
+  boost: number;
   offscreenStreak: number;
   tinyHopStreak: number;
 };
@@ -1630,6 +1631,10 @@ export default function MandelbrotSkipping() {
     let lastHud = 0;
     let rock = { x: 0, y: 0, vx: 0, vy: 0, z: 0, vz: 0, spin: 0, skips: 0, bounceAge: 10 };
     let plannedSkips = MIN_SKIPS;
+    let collectable: Collectable | null = null;
+    let collectableHitCount = 0;
+    let boostMultiplier = 1;
+    let depthSurge = false;
     let impacts: Array<{ cr: number; ci: number; born: number; index: number; glyph: number }> = [];
     let ripples: Array<{ cr: number; ci: number; born: number; index: number; lifetime?: number; maxRadius?: number }> = [];
     let orbitScores: OrbitScore[] = [];
@@ -1763,7 +1768,7 @@ export default function MandelbrotSkipping() {
       const now = performance.now();
       if (!force && now - lastHud < 33) return;
       const deepest = orbitScores.reduce((best, orbit) => Math.max(best, orbit.shownDepth), 0);
-      const score = orbitScores.reduce((sum, orbit) => sum + scoreForOrbit(orbit, orbit.shownDepth), 0);
+      const score = orbitScores.reduce((sum, orbit) => sum + scoreForOrbit(orbit, orbit.shownDepth) * orbit.boost, 0);
       const coverage = orbitScores.reduce((sum, orbit) => sum + orbit.distinct, 0);
       const spread = orbitScores.length
         ? orbitScores.reduce((sum, orbit) => sum + orbitShape(orbit).spread, 0) / orbitScores.length
@@ -1797,7 +1802,9 @@ export default function MandelbrotSkipping() {
 
     function stoneTuning(): Tuning {
       if (spectatorRef.current) return tuningRef.current;
-      return clampTuningToStone(tuningRef.current, stoneRef.current);
+      const clamped = clampTuningToStone(tuningRef.current, stoneRef.current);
+      if (!depthSurge) return clamped;
+      return { ...clamped, maxDepth: surgedDepth(clamped.maxDepth) };
     }
 
     function resetRound() {
@@ -1816,6 +1823,12 @@ export default function MandelbrotSkipping() {
       const a = anchor();
       pull = { ...a };
       rock = { x: a.x, y: a.y, vx: 0, vy: 0, z: 0, vz: 0, spin: 0, skips: 0, bounceAge: 10 };
+      collectable = spectatorRef.current || introActiveRef.current
+        ? null
+        : rollCollectable(Math.random, width, height);
+      collectableHitCount = 0;
+      boostMultiplier = 1;
+      depthSurge = false;
       setCurrentResultId(null);
       engineRef.current?.clear();
       engineRef.current?.setIterationBoost(1);
@@ -1907,6 +1920,7 @@ export default function MandelbrotSkipping() {
             zr: 0, zi: 0,
             cr: orbitSource.x, ci: orbitSource.y, depth: 0, shownDepth: 0,
             skip: index, glyph, stepDistance: 0, distanceContraction: 0, resolved: false, score: 0,
+            boost: boostMultiplier,
             offscreenStreak: 0, tinyHopStreak: 0,
             cells: new Uint32Array(COVERAGE_WORDS), distinct: 0,
             sumX: 0, sumY: 0, sumXX: 0, sumYY: 0, sumXY: 0,
@@ -1935,7 +1949,7 @@ export default function MandelbrotSkipping() {
       orbitScores.forEach((orbit) => {
         if (!orbit.resolved) {
           orbit.resolved = true;
-          orbit.score = scoreForOrbit(orbit, orbit.depth);
+          orbit.score = scoreForOrbit(orbit, orbit.depth) * orbit.boost;
         }
         orbit.shownDepth = orbit.depth;
       });
@@ -2039,7 +2053,7 @@ export default function MandelbrotSkipping() {
         if (orbit.depth >= depthCap) orbit.resolved = true;
         if (orbit.resolved) {
           orbit.shownDepth = orbit.depth;
-          orbit.score = scoreForOrbit(orbit, orbit.depth);
+          orbit.score = scoreForOrbit(orbit, orbit.depth) * orbit.boost;
         }
       }
       easeShownDepths();
@@ -2070,6 +2084,18 @@ export default function MandelbrotSkipping() {
         rock.skips += 1;
         rock.bounceAge = 0;
         spawnImpact(rock.x, rock.y, rock.skips, shapeOffset, now);
+        if (collectable && collectableHit(collectable, rock.x, rock.y)) {
+          const type = collectable.type;
+          collectable = null;
+          collectableHitCount += 1;
+          if (type === "multiplier") boostMultiplier = COLLECTABLE_SCORE_MULTIPLIER;
+          if (type === "extraSkips") plannedSkips = Math.min(MAX_SKIPS, plannedSkips + COLLECTABLE_EXTRA_SKIPS);
+          if (type === "depthSurge") {
+            depthSurge = true;
+            engineRef.current?.setTuning(stoneTuning());
+          }
+          if ("vibrate" in navigator) navigator.vibrate?.(30);
+        }
         const remaining = plannedSkips - rock.skips;
         rock.vz = Math.max(Math.abs(rock.vz) * 0.56, pondScale() * (0.05 + remaining * 0.008));
         rock.vx *= 0.79;
@@ -2910,6 +2936,23 @@ export default function MandelbrotSkipping() {
       drawPrediction(a);
       drawAimOrbitPreview(a);
       drawEffects(now);
+      if (collectable && !introActiveRef.current && (phase === "ready" || phase === "aiming" || phase === "flying")) {
+        const pulse = 1 + Math.sin(now / 240) * 0.18;
+        const sigilColor = COLLECTABLE_COLORS[collectable.type];
+        ctx.save();
+        ctx.globalAlpha = 0.9;
+        ctx.strokeStyle = sigilColor;
+        ctx.shadowColor = sigilColor;
+        ctx.shadowBlur = 18;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(collectable.x, collectable.y, COLLECTABLE_RADIUS_PX * 0.55 * pulse, 0, TAU);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(collectable.x, collectable.y, COLLECTABLE_RADIUS_PX * 0.22 * pulse, 0, TAU);
+        ctx.stroke();
+        ctx.restore();
+      }
       drawRock(now);
       drawTutorialArrow(now);
     }
