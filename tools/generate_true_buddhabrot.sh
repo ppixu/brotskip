@@ -18,7 +18,7 @@ clang++ -O3 -std=c++20 -pthread \
   --output "$build_dir/splat.ply" \
   --compact-output "$build_dir/splat.bbp"
 
-gzip -9 -c "$build_dir/splat.bbp" > "$repo_dir/public/true-buddhabrot-450k.bbp.gz"
+gzip -9 -c "$build_dir/splat.bbp" > "$repo_dir/public/true-buddhabrot-450k.bbpz"
 
 # The legacy SPZ in public/ must stay byte-identical for the debug A/B switch.
 # Regenerate it only on explicit request.
@@ -31,4 +31,4 @@ if [ "${BUDDHABROT_WRITE_SPZ:-0}" = "1" ]; then
     -w
 fi
 
-du -h "$build_dir/splat.ply" "$build_dir/splat.bbp" "$repo_dir/public/true-buddhabrot-450k.bbp.gz"
+du -h "$build_dir/splat.ply" "$build_dir/splat.bbp" "$repo_dir/public/true-buddhabrot-450k.bbpz"

@@ -213,7 +213,9 @@ export default function BuddhabrotCloudCanvas({
 
     const useCompact = classic && !legacySplat;
     const assetName = classic ? "true-buddhabrot-4096.spz" : "henon-buddhabrot-4096.spz";
-    const compactName = "true-buddhabrot-450k.bbp.gz";
+    // Name must not end in .gz: production asset servers hide .gz files as
+    // precompressed variants of a base file, so direct requests 404.
+    const compactName = "true-buddhabrot-450k.bbpz";
     let splat: SplatMesh | null = null;
 
     const splatSize = dyno.dynoFloat(tuneRef.current.splatSize);

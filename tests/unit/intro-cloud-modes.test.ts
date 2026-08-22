@@ -16,10 +16,10 @@ test("both loading choices use the same draggable SPZ renderer", () => {
   assert.match(cloud, /!dragging/);
   assert.doesNotMatch(cloud, /webgpu/);
   assert.ok(existsSync(new URL("../../public/true-buddhabrot-4096.spz", import.meta.url)));
-  const compactUrl = new URL("../../public/true-buddhabrot-450k.bbp.gz", import.meta.url);
+  const compactUrl = new URL("../../public/true-buddhabrot-450k.bbpz", import.meta.url);
   assert.ok(existsSync(compactUrl));
   assert.ok(statSync(compactUrl).size < 1_600_000, "compact asset larger than budget");
-  assert.match(cloud, /true-buddhabrot-450k\.bbp\.gz/);
+  assert.match(cloud, /true-buddhabrot-450k\.bbpz/);
   assert.match(cloud, /DecompressionStream\("gzip"\)/);
   assert.match(cloud, /pushSplat/);
   assert.match(cloud, /legacySplat/);
