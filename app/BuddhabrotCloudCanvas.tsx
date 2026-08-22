@@ -326,6 +326,7 @@ export default function BuddhabrotCloudCanvas({
       pressX = event.clientX;
       pressY = event.clientY;
       lastInteraction = performance.now();
+      setHoveredRegion(null);
       renderer.domElement.setPointerCapture(event.pointerId);
       renderer.domElement.classList.add("dragging");
     };
@@ -605,7 +606,7 @@ export default function BuddhabrotCloudCanvas({
         target.z + Math.cos(yaw) * cosPitch * distance,
       );
       camera.lookAt(target);
-      const strengthTarget = hoveredRegion && !fadingRef.current ? 1 : 0;
+      const strengthTarget = hoveredRegion && !dragging && !fadingRef.current ? 1 : 0;
       regionStrength.value += (strengthTarget - regionStrength.value) * Math.min(1, delta / 140);
       updateRipples(now);
       renderer.render(scene, camera);
