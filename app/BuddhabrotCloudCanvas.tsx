@@ -288,9 +288,41 @@ export default function BuddhabrotCloudCanvas({
     const pointerNdc = new THREE.Vector2();
     const raycaster = new THREE.Raycaster();
     let hoveredRegion: SplatRegion | null = null;
-    // Stamped on every pointer event; read by Task 4's idle tour, not yet wired up here.
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    // Stamped on every pointer event; read by the idle tour below.
     let lastInteraction = performance.now();
+
+    const IDLE_TOUR_AFTER_MS = 9_000;
+    const TOUR_DWELL_MS = 6_000;
+    let tourIndex = -1;
+    let tourActive = false;
+    let nextTourStepAt = 0;
+    const tourPosition = new THREE.Vector3();
+    const tourQuaternion = new THREE.Quaternion();
+
+    function stopTour() {
+      if (!tourActive) return;
+      tourActive = false;
+      setHoveredRegion(null);
+    }
+
+    function updateTour(now: number) {
+      if (reduceMotion || fadingRef.current || !splatReady || dragging) {
+        stopTour();
+        return;
+      }
+      if (now - lastInteraction < IDLE_TOUR_AFTER_MS) {
+        stopTour();
+        return;
+      }
+      if (tourActive && now < nextTourStepAt) return;
+      tourActive = true;
+      nextTourStepAt = now + TOUR_DWELL_MS;
+      tourIndex = (tourIndex + 1) % SPLAT_REGIONS.length;
+      const region = SPLAT_REGIONS[tourIndex];
+      setHoveredRegion(region);
+      tourPosition.set(region.center[0], region.center[1], region.center[2]);
+      spawnRippleAt(now, tourPosition, tourQuaternion.identity());
+    }
 
     function setHoveredRegion(region: SplatRegion | null) {
       if (region === hoveredRegion) return;
@@ -476,12 +508,10 @@ export default function BuddhabrotCloudCanvas({
       return fallback;
     }
 
-    function spawnRipple(now: number) {
-      const sample = pickVisibleSplat();
-      if (!sample) return;
+    function spawnRippleAt(now: number, position: THREE.Vector3, quaternion: THREE.Quaternion) {
       const group = new THREE.Group();
-      group.position.copy(sample.center);
-      group.quaternion.copy(sample.quaternion);
+      group.position.copy(position);
+      group.quaternion.copy(quaternion);
       group.quaternion.multiply(new THREE.Quaternion().random());
 
       const rings = RIPPLE_DELAYS.map((_, index) => {
@@ -516,6 +546,12 @@ export default function BuddhabrotCloudCanvas({
       group.add(beacon);
       scene.add(group);
       ripples.push({ born: now, group, beacon, rings });
+    }
+
+    function spawnRipple(now: number) {
+      const sample = pickVisibleSplat();
+      if (!sample) return;
+      spawnRippleAt(now, sample.center, sample.quaternion);
     }
 
     function updateRipples(now: number) {
@@ -606,6 +642,7 @@ export default function BuddhabrotCloudCanvas({
         target.z + Math.cos(yaw) * cosPitch * distance,
       );
       camera.lookAt(target);
+      updateTour(now);
       const strengthTarget = hoveredRegion && !dragging && !fadingRef.current ? 1 : 0;
       regionStrength.value += (strengthTarget - regionStrength.value) * Math.min(1, delta / 140);
       updateRipples(now);
