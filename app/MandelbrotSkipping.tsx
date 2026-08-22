@@ -1411,6 +1411,7 @@ export default function MandelbrotSkipping() {
   const playerNameRef = useRef("YOU");
   const [progression, setProgression] = useState<ProgressionState>(freshProgression);
   const progressionRef = useRef<ProgressionState>(progression);
+  const [challengeToast, setChallengeToast] = useState<string | null>(null);
   const stoneRef = useRef<StoneDef>(stoneById(progression.equippedId));
   const tuningRef = useRef<Tuning>({ ...DEFAULT_TUNING });
   const invalidateFlashlightRef = useRef<() => void>(() => {});
@@ -1455,6 +1456,12 @@ export default function MandelbrotSkipping() {
     });
     return () => cancelAnimationFrame(frame);
   }, []);
+
+  useEffect(() => {
+    if (!challengeToast) return;
+    const timer = window.setTimeout(() => setChallengeToast(null), 4500);
+    return () => window.clearTimeout(timer);
+  }, [challengeToast]);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -1979,6 +1986,24 @@ export default function MandelbrotSkipping() {
       }
       if (currentShareRef.current) {
         history.replaceState(null, "", throwShareUrl(window.location.href, currentShareRef.current));
+      }
+      if (!spectatorRef.current && !introActiveRef.current) {
+        const summary: ThrowSummary = {
+          score: total, skips: rock.skips, deepest, coverage,
+          collectablesHit: collectableHitCount,
+        };
+        let nextProgression = updateProgressionStreak(progressionRef.current, collectableHitCount > 0);
+        nextProgression = earnProgression(nextProgression, total);
+        const earnedChallenges = evaluateChallenges(summary, nextProgression);
+        nextProgression = completeProgressionChallenges(nextProgression, earnedChallenges);
+        progressionRef.current = nextProgression;
+        setProgression(nextProgression);
+        storeProgression(nextProgression);
+        if (earnedChallenges.length) {
+          setChallengeToast(earnedChallenges
+            .map((challenge) => `${challenge.label} +${formatCompact(challenge.bounty)}`)
+            .join(" · "));
+        }
       }
       setHud({ phase, score: total, skips: rock.skips, deepest, progress: 1, coverage, spread });
       const victoryDuration = gameAudio.finish(finishComplexity({
@@ -3348,6 +3373,7 @@ export default function MandelbrotSkipping() {
             onPlay={finishOpening}
           />
         )}
+        {challengeToast && <div className="challengeToast" role="status">{challengeToast}</div>}
         {(hud.phase === "flying" || hud.phase === "resolving" || hud.phase === "result") && !intro && (
           <div className="playfieldThrowActions">
             {hud.phase === "result" && (
