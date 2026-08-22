@@ -3138,6 +3138,8 @@ export default function MandelbrotSkipping() {
 
     function onKeyDown(event: KeyboardEvent) {
       if (introActiveRef.current) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
       if (event.key === "Escape") cancelAim();
       if ((event.key === " " || event.key === "Enter") && phase === "result") {
         event.preventDefault();
@@ -3274,8 +3276,6 @@ export default function MandelbrotSkipping() {
         {intro && (
           <BuddhabrotIntro
             fading={introFading}
-            playerName={playerName}
-            onPlayerNameChange={renameCurrent}
             onPlay={finishOpening}
           />
         )}
@@ -3323,6 +3323,20 @@ export default function MandelbrotSkipping() {
             <span className="compactScoreLabel">{hud.phase === "result" ? "Final score" : "Score"}</span>
             <strong className="compactScoreNumber">{formatNumber(hud.score)}</strong>
             {currentIsHighscore && <span className="compactScoreAnnouncement" role="status" aria-live="assertive">New highscore!</span>}
+            {currentIsHighscore && (
+              <div className="highscoreNameEntry">
+                <label className="highscoreNameLabel" htmlFor="highscore-name">Your name</label>
+                <input
+                  id="highscore-name"
+                  className="highscoreNameInput"
+                  aria-label="High score name"
+                  autoComplete="nickname"
+                  maxLength={12}
+                  value={playerName}
+                  onChange={(event) => renameCurrent(event.target.value)}
+                />
+              </div>
+            )}
           </div>
         )}
         {!intro && (

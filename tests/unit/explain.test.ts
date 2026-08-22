@@ -60,6 +60,7 @@ test("loading paper quotes Wikipedia's first paragraph with numbered references"
   assert.match(paper.references[0].text, /Buddhabrot Technique/);
   assert.match(paper.references[1].text, /Wikipedia/);
   assert.equal(paper.references[1].url, "https://en.wikipedia.org/wiki/Buddhabrot");
+  assert.equal(paper.title, "The Buddhabrot");
   assert.match(paper.journal, /fractal/i);
 });
 

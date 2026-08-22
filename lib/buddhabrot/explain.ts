@@ -14,7 +14,7 @@ export const BUDDHABROT_EXPLAIN = {
   },
   wikipedia: {
     journal: "Fractal density of escaping orbits",
-    title: "Buddhabrot",
+    title: "The Buddhabrot",
     sentences: [
       {
         text: "The Buddhabrot is the probability distribution over the trajectories of points that escape the Mandelbrot fractal.",
