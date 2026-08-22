@@ -3593,8 +3593,8 @@ export default function MandelbrotSkipping() {
         </button>
         {!intro && (
           <div className={`walletHud ${walletTransfer ? "walletHudReceiving" : ""}`} aria-live="polite">
-            <span className="walletHudLabel">Cash</span>
-            <strong className="walletHudValue">$ {formatNumber(walletDisplay)}</strong>
+            <span className="walletHudLabel">Orbits</span>
+            <strong className="walletHudValue">{formatNumber(walletDisplay)}</strong>
           </div>
         )}
         {replayMode && (
@@ -3615,7 +3615,7 @@ export default function MandelbrotSkipping() {
             {achievementNotice.awards.map((award) => (
               <span className="achievementToastAward" key={award.label}>
                 <strong>{award.label}</strong>
-                <small>+{formatCompact(award.bounty)} cash</small>
+                <small>+{formatCompact(award.bounty)} Orbits</small>
               </span>
             ))}
           </div>
@@ -3623,7 +3623,7 @@ export default function MandelbrotSkipping() {
         {walletTransfer && !intro && (
           <div className="walletTransfer" aria-hidden="true" key={walletTransfer.id}>
             <strong>+{formatNumber(walletTransfer.score)}</strong>
-            <span>score to cash</span>
+            <span>score to Orbits</span>
             {walletTransfer.bonus > 0 && <small>+{formatCompact(walletTransfer.bonus)} achievement bonus</small>}
             <div className="walletTransferParticles">
               {Array.from({ length: 14 }, (_, index) => <i className="scoreParticle" key={index} />)}
@@ -3725,7 +3725,7 @@ export default function MandelbrotSkipping() {
           <span className="liveLabel">{hud.phase === "result" ? "Final score" : "Score"}</span>
           <strong className="liveNumber">{formatNumber(visibleScore)}</strong>
           <span className="liveMeta">{hud.skips} skips · {hud.deepest ? formatNumber(hud.deepest) : "0"} deep · {hud.coverage} cells · {Math.round(hud.spread * 100)}% spread</span>
-          <span className="walletRow">Cash <strong>$ {formatNumber(walletDisplay)}</strong></span>
+          <span className="walletRow">Orbits <strong>{formatNumber(walletDisplay)}</strong></span>
           <span className="liveProgress"><i style={{ width: `${Math.max(2, hud.progress * 100)}%` }} /></span>
           <div className="throwShareRow">
             <button
@@ -3764,7 +3764,7 @@ export default function MandelbrotSkipping() {
                     ? <span className="stoneAction stoneEquipped">Equipped</span>
                     : owned
                       ? <button type="button" className="rethrowButton stoneAction" onClick={() => equipStone(stone.id)}>Equip</button>
-                      : <button type="button" className="rethrowButton stoneAction" disabled={!affordable} onClick={() => buyStone(stone.id)}>{formatCompact(stone.price)} pts</button>}
+                      : <button type="button" className="rethrowButton stoneAction" disabled={!affordable} onClick={() => buyStone(stone.id)}>{formatCompact(stone.price)} Orbits</button>}
                 </div>
               );
             })}
@@ -3865,7 +3865,7 @@ export default function MandelbrotSkipping() {
               return (
                 <li key={challenge.id} className={done ? "challengeDone" : ""}>
                   <span>{challenge.label}</span>
-                  <span>{done ? "✓" : `${formatCompact(challenge.bounty)} pts`}</span>
+                  <span>{done ? "✓" : `${formatCompact(challenge.bounty)} Orbits`}</span>
                 </li>
               );
             })}
@@ -3900,11 +3900,11 @@ export default function MandelbrotSkipping() {
               <div>
                 <span className="stoneShopKicker">Stone vault</span>
                 <h2 id="stone-shop-title">Choose your throw</h2>
-                <p>Buy a new stone with cash from your scores. Every stone doubles the dots it can carry.</p>
+                <p>Buy a new stone with Orbits from your scores. Every stone doubles the dots it can carry.</p>
               </div>
               <button type="button" className="stoneShopClose" onClick={() => setStoneShopOpen(false)} aria-label="Close stone shop">×</button>
             </header>
-            <div className="stoneShopWallet">Cash <strong>$ {formatNumber(walletDisplay)}</strong></div>
+            <div className="stoneShopWallet">Orbits <strong>{formatNumber(walletDisplay)}</strong></div>
             <div className="stoneShopGrid">
               {STONES.map((stone) => {
                 const owned = progression.ownedIds.includes(stone.id);
@@ -3922,7 +3922,7 @@ export default function MandelbrotSkipping() {
                         <button type="button" className="stoneShopAction" onClick={() => equipStone(stone.id)}>Equip</button>
                       ) : (
                         <button type="button" className="stoneShopAction" disabled={!affordable} onClick={() => buyStone(stone.id)}>
-                          {stone.price === 0 ? "Free" : `$ ${formatCompact(stone.price)}`}
+                          {stone.price === 0 ? "Free" : `${formatCompact(stone.price)} Orbits`}
                         </button>
                       )}
                     </div>
