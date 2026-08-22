@@ -173,7 +173,6 @@ test("opening and flashlight hide orbit lines, go grayscale, and throw overlappi
   assert.match(source, /setAtmosphere/);
   assert.match(source, /INTRO_ATMOSPHERE/);
   assert.match(source, /introRocks/);
-  assert.match(source, /INTRO_THROW_STAGGER_MS/);
   assert.match(source, /INTRO_THROWS_PER_WAVE/);
   assert.match(source, /INTRO_ROCK_DRAW_EVERY/);
   assert.match(source, /body\.draw/);
@@ -235,9 +234,12 @@ test("opening waits for a Play tap and gameplay rethrow sits on the throw stone"
   assert.match(intro, /introPaper/);
   assert.match(intro, /introPaperRight/);
   assert.match(intro, /introPaperFigure/);
-  assert.match(intro, /Mandelbrot set is a famous mathematical pattern/);
-  assert.match(intro, /buddhabrot-paper\.png/);
-  assert.match(intro, /mandelbrot-paper\.png/);
+  assert.match(intro, /MANDELBROT_EXPLAIN/);
+  assert.match(intro, /mandelbrot\.lede/);
+  const explain = readFileSync(new URL("../../lib/buddhabrot/explain.ts", import.meta.url), "utf8");
+  assert.match(explain, /Mandelbrot set is a famous mathematical pattern/);
+  assert.match(explain, /buddhabrot-paper\.png/);
+  assert.match(explain, /mandelbrot-paper\.png/);
   assert.match(intro, /introPaperWiki/);
   assert.match(intro, /introPaperWikiBox/);
   assert.doesNotMatch(intro, /Read more about/);

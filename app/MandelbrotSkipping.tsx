@@ -31,7 +31,6 @@ import {
   INTRO_BACKGROUND_SPAWN_MS,
   INTRO_MAX_DEPTH,
   INTRO_SOURCE_DOTS,
-  INTRO_THROW_STAGGER_MS,
   INTRO_THROWS_PER_WAVE,
   INTRO_ROCK_DRAW_EVERY,
   INTRO_TRAIL_FADE_MS,
@@ -990,7 +989,7 @@ async function createOrbitEngine(canvas: HTMLCanvasElement, gpu: GpuContext, int
   let mriWarmupStartedAt = 0;
   let mriLoopStartedAt = 0;
   let layer: "pond" | "throw" = "pond";
-  let pondBounds = { ...TRAIL_BOUNDS };
+  const pondBounds = { ...TRAIL_BOUNDS };
   let throwBounds = { ...TRAIL_BOUNDS };
   let lastDrawTime = 0;
 
@@ -1511,6 +1510,7 @@ export default function MandelbrotSkipping() {
     const share = initialThrowShare(window.location, navigation?.type);
     pendingShareRef.current = share;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time boot flag, no cascade
     setPondReady(true);
     if (share || reduceMotion) return;
     introActiveRef.current = true;
@@ -1542,6 +1542,7 @@ export default function MandelbrotSkipping() {
       setIntroFading(false);
     }, INTRO_PLAY_EXIT_MS);
   }, []);
+  // eslint-disable-next-line react-hooks/refs -- latest-ref pattern, read only from handlers
   endOpeningRef.current = finishOpening;
 
   useEffect(() => {
@@ -2489,11 +2490,6 @@ export default function MandelbrotSkipping() {
       gridDirty = false;
     }
 
-    function drawScientificGrid() {
-      if (gridDirty) rebuildScientificGrid();
-      ctx.drawImage(gridCanvas, 0, 0, width, height);
-    }
-
     function drawSacredGlyph(
       glyph: number,
       dots: number,
@@ -3243,6 +3239,7 @@ export default function MandelbrotSkipping() {
     restartRef.current();
     requestAnimationFrame(() => gameCanvasRef.current?.focus());
   };
+  // eslint-disable-next-line react-hooks/refs -- latest-ref pattern, read only from handlers
   throwAgainRef.current = resetAndFocusCanvas;
 
   const replayThrow = () => {

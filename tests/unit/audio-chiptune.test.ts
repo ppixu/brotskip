@@ -94,8 +94,8 @@ test("long spirals drop the bass pad an octave", () => {
 });
 
 test("bass pad moves on a slow ambient pulse, not eighth-note beats", () => {
-  assert.ok(bassIntervalSeconds(4) > 1.2);
-  assert.ok(bassIntervalSeconds(4) > arpIntervalSeconds(1, 1) * 8);
+  assert.ok(bassIntervalSeconds() > 1.2);
+  assert.ok(bassIntervalSeconds() > arpIntervalSeconds(1, 1) * 8);
 });
 
 test("deeper spirals climb the pentatonic instead of looping the same lick", () => {

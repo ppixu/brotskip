@@ -83,7 +83,7 @@ export function bassDegree(step: number, depthBand: number, glyph: number): numb
   return walk + octave;
 }
 
-export function bassIntervalSeconds(_depthBand: number): number {
+export function bassIntervalSeconds(): number {
   return 60 / DEFAULT_BPM * 8;
 }
 
