@@ -1112,6 +1112,14 @@ button, input { font: inherit; }
   letter-spacing: .01em;
   text-align: center;
 }
+.introPaperFormula {
+  margin: -2px 0 10px;
+  font-family: "STIX Two Math", "Cambria Math", Palatino, "Times New Roman", Times, serif;
+  font-size: 15px;
+  letter-spacing: .03em;
+  opacity: .82;
+  text-align: center;
+}
 .introPaperLede {
   margin: 0;
   font-size: 14px;
@@ -1333,6 +1341,7 @@ button, input { font: inherit; }
     padding: 12px 14px 10px;
   }
   .introPaperTitle { font-size: 24px; margin: 2px 0 8px; }
+  .introPaperFormula { font-size: 12px; margin-bottom: 8px; }
   .introPaperLede { font-size: 12px; }
   .introPaperLede::first-letter { font-size: 3.2em; }
   .introPlay { min-height: 44px; }

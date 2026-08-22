@@ -35,6 +35,7 @@ test("the overlay explains the precomputed 3D Gaussian cloud", () => {
   const copy = BUDDHABROT_EXPLAIN.paragraphs.join(" ");
   assert.equal(BUDDHABROT_EXPLAIN.trigger, "Buddhabrot");
   assert.equal(BUDDHABROT_EXPLAIN.formula, "z → z² + c");
+  assert.equal(BUDDHABROT_EXPLAIN.introFormula, "z₀ = 0,   zₙ₊₁ = zₙ² + c");
   assert.match(copy, /Mandelbrot/);
   assert.match(copy, /escape/);
   assert.match(copy, /Melinda Green/);

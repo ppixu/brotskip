@@ -11,7 +11,10 @@ test("intro loading bar tracks the classic splat and Play waits for it", () => {
   assert.match(intro, /onLoadProgress=\{handleLoadProgress\}/);
   assert.match(intro, /onReady=\{handleReady\}/);
   assert.match(intro, /variant="classic"/);
+  assert.match(intro, /introPaperFormula/);
+  assert.match(intro, /introFormula/);
   assert.match(intro, /\{splatReady && \(/);
   assert.match(css, /\.introLoadProgress \{/);
+  assert.match(css, /\.introPaperFormula \{/);
   assert.match(css, /\.introLoadProgress\.complete \{ opacity: 0; \}/);
 });

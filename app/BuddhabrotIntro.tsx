@@ -26,7 +26,7 @@ export default function BuddhabrotIntro({
   fading: boolean;
   onPlay?: () => void;
   }) {
-  const { wikipedia } = BUDDHABROT_EXPLAIN;
+  const { introFormula, wikipedia } = BUDDHABROT_EXPLAIN;
   const [loadProgress, setLoadProgress] = useState(0);
   const [splatReady, setSplatReady] = useState(false);
   const handleLoadProgress = useCallback((progress: number) => setLoadProgress(progress), []);
@@ -54,6 +54,9 @@ export default function BuddhabrotIntro({
       <article className="introPaper" aria-label="Buddhabrot, from Wikipedia">
         <p className="introPaperJournal">{wikipedia.journal}</p>
         <h1 className="introPaperTitle">{wikipedia.title}</h1>
+        <p className="introPaperFormula" aria-label="Buddhabrot iteration formula">
+          {introFormula}
+        </p>
         <p className="introPaperLede">
           {wikipedia.sentences.map((sentence) => (
             <span key={sentence.cite}>
