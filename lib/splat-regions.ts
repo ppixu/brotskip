@@ -1,8 +1,10 @@
 /**
  * Named ellipsoid regions of the intro Buddhabrot splat cloud, in splat
  * space: x = Im(z), y = -(Re(z) + 0.5), z = Im(c). See lib/splat-orbit.ts.
- * Centers and radii are calibrated with the ?regions=1 mode in
- * app/BuddhabrotCloudCanvas.tsx.
+ * Centers and radii are calibrated numerically from the shipped asset's
+ * actual density field (x-y projection of public/true-buddhabrot-450k.bbp.gz),
+ * not by hand. app/BuddhabrotCloudCanvas.tsx's ?regions=1 mode overlays a
+ * wireframe ellipsoid per region for visual verification against the cloud.
  */
 
 export type Vec3 = { x: number; y: number; z: number };
@@ -23,45 +25,45 @@ export const SPLAT_REGIONS: readonly SplatRegion[] = [
     id: "spire",
     name: "Spire",
     blurb: "The needle — escape paths whose parameters ride the real axis out toward c = −2.",
-    center: [0, 1.52, 0],
-    radii: [0.16, 0.5, 0.5],
+    center: [0, 1.17, 0],
+    radii: [0.13, 0.2, 0.5],
   },
   {
     id: "ushnisha",
     name: "Ushnisha",
     blurb: "The oval crown — orbits that linger longest before escaping stack their final hops here.",
-    center: [0, 1.04, 0],
-    radii: [0.24, 0.2, 0.6],
+    center: [0, 0.95, 0],
+    radii: [0.18, 0.12, 0.5],
     link: BUDDHABROT_WIKI,
   },
   {
     id: "tika",
     name: "Tika",
     blurb: "The forehead mark — a dense knot of near-periodic escapes just above the head.",
-    center: [0, 0.86, 0],
-    radii: [0.1, 0.09, 0.5],
+    center: [0, 0.7, 0],
+    radii: [0.1, 0.08, 0.4],
     link: BUDDHABROT_WIKI,
   },
   {
     id: "head",
     name: "Head",
     blurb: "Escapes seeded around the period-2 disk trace the head's glow.",
-    center: [0, 0.62, 0],
-    radii: [0.36, 0.3, 0.7],
+    center: [0, 0.55, 0],
+    radii: [0.34, 0.28, 0.65],
   },
   {
     id: "shoulders",
     name: "Shoulders",
     blurb: "The folded arms — mid-length orbits sweeping wide of the imaginary axis.",
-    center: [0, 0.08, 0],
-    radii: [0.95, 0.3, 0.8],
+    center: [0, 0.12, 0],
+    radii: [0.95, 0.25, 0.75],
   },
   {
     id: "body",
     name: "Body",
     blurb: "The seated body — the broad bulk of short escape paths around the main cardioid.",
-    center: [0, -0.55, 0],
-    radii: [0.9, 0.6, 0.95],
+    center: [0, -0.5, 0],
+    radii: [1.0, 0.55, 0.9],
   },
 ];
 

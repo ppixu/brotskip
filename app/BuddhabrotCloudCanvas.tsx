@@ -172,6 +172,7 @@ export default function BuddhabrotCloudCanvas({
     let previousTime = performance.now();
     let pageVisible = !document.hidden;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const calibrateRegions = new URLSearchParams(window.location.search).has("regions");
 
     const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -272,6 +273,17 @@ export default function BuddhabrotCloudCanvas({
       mesh.opacity = 0.82;
       splat = mesh;
       scene.add(mesh);
+      if (calibrateRegions) {
+        for (const region of SPLAT_REGIONS) {
+          const wire = new THREE.Mesh(
+            new THREE.SphereGeometry(1, 16, 12),
+            new THREE.MeshBasicMaterial({ color: 0x65b9ff, wireframe: true, transparent: true, opacity: 0.22 }),
+          );
+          wire.position.set(region.center[0], region.center[1], region.center[2]);
+          wire.scale.set(region.radii[0], region.radii[1], region.radii[2]);
+          scene.add(wire);
+        }
+      }
       return mesh.initialized;
     }).then((mesh) => {
       if (!mesh || disposed) return;
@@ -380,6 +392,36 @@ export default function BuddhabrotCloudCanvas({
       dragging = false;
       renderer.domElement.classList.remove("dragging");
       lastInteraction = performance.now();
+      if (calibrateRegions && Math.hypot(event.clientX - pressX, event.clientY - pressY) <= 5) {
+        const packed = splat?.packedSplats;
+        if (packed) {
+          const rect = renderer.domElement.getBoundingClientRect();
+          pointerNdc.set(
+            ((event.clientX - rect.left) / rect.width) * 2 - 1,
+            -((event.clientY - rect.top) / rect.height) * 2 + 1,
+          );
+          raycaster.setFromCamera(pointerNdc, camera);
+          const { origin, direction } = raycaster.ray;
+          const count = packed.getNumSplats();
+          let best: { point: THREE.Vector3; score: number } | null = null;
+          const toSplat = new THREE.Vector3();
+          for (let index = 0; index < count; index += 7) {
+            const sample = packed.getSplat(index);
+            if (sample.opacity < 0.12) continue;
+            toSplat.copy(sample.center).sub(origin);
+            const along = toSplat.dot(direction);
+            if (along <= 0) continue;
+            const offAxis = toSplat.addScaledVector(direction, -along).length();
+            const score = offAxis + along * 0.01;
+            if (offAxis < 0.06 && (!best || score < best.score)) {
+              best = { point: sample.center.clone(), score };
+            }
+          }
+          if (best) {
+            console.log(`[regions] splat-space hit: [${best.point.x.toFixed(3)}, ${best.point.y.toFixed(3)}, ${best.point.z.toFixed(3)}]`);
+          }
+        }
+      }
       if (fadingRef.current || !splatReady || event.pointerType !== "touch") return;
       if (Math.hypot(event.clientX - pressX, event.clientY - pressY) > 5) return;
       const tapped = pickAtPointer(event);
