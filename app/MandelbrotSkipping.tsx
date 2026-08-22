@@ -79,6 +79,7 @@ import {
   type SharedThrow,
 } from "@/lib/throw-share";
 import { COVERAGE_GRID, COVERAGE_WORDS, orbitShape } from "@/lib/orbit-shape";
+import { GLYPH_COUNT, SACRED_PATH_COUNTS, sacredShapeOffset } from "@/lib/sacred-geometry";
 import { createGameAudio, finishComplexity, type GameAudio } from "@/lib/audio/index";
 import {
   projectSacredBall,
@@ -204,8 +205,6 @@ type FlyingRock = {
   ripple: boolean;
 };
 
-const GLYPH_COUNT = 7;
-const SACRED_PATH_COUNTS = [2, 2, 2, 4, 2, 3, 7] as const;
 const MIN_SOURCE_DOTS = 6;
 const MAX_SOURCE_DOTS = 128;
 const MAX_SOURCES = 4096;
@@ -749,51 +748,6 @@ function loadTuning(): Tuning {
 
 function storeTuning(tuning: Tuning) {
   try { localStorage.setItem(TUNING_KEY, JSON.stringify(tuning)); } catch { /* tuning still works for this session */ }
-}
-
-function samplePolygon(vertices: Array<{ x: number; y: number }>, t: number) {
-  const position = ((t % 1) + 1) % 1 * vertices.length;
-  const edge = Math.floor(position) % vertices.length;
-  const local = position - Math.floor(position);
-  const a = vertices[edge];
-  const b = vertices[(edge + 1) % vertices.length];
-  return { x: a.x + (b.x - a.x) * local, y: a.y + (b.y - a.y) * local };
-}
-
-function regularVertices(sides: number, rotation = -Math.PI / 2) {
-  return Array.from({ length: sides }, (_, index) => ({
-    x: Math.cos(rotation + index * TAU / sides),
-    y: Math.sin(rotation + index * TAU / sides),
-  }));
-}
-
-function sacredShapeOffset(shape: number, path: number, t: number) {
-  const circle = (cx: number, cy: number, radius: number) => ({
-    x: cx + Math.cos(t * TAU - Math.PI / 2) * radius,
-    y: cy + Math.sin(t * TAU - Math.PI / 2) * radius,
-  });
-  switch (shape % GLYPH_COUNT) {
-    case 0: return circle(0, 0, path === 0 ? 1 : .46); // concentric halo
-    case 1: return path === 0 ? samplePolygon(regularVertices(3), t) : circle(0, 0, .48); // triangle mandala
-    case 2: return circle(path === 0 ? -.32 : .32, 0, .68); // vesica piscis
-    case 3: { // four-petal rose
-      const angle = path * Math.PI / 2;
-      return circle(Math.cos(angle) * .43, Math.sin(angle) * .43, .52);
-    }
-    case 4: { // pentagram and inner seal
-      if (path === 1) return circle(0, 0, .34);
-      const vertices = regularVertices(5);
-      return samplePolygon([vertices[0], vertices[2], vertices[4], vertices[1], vertices[3]], t);
-    }
-    case 5: return path < 2
-      ? samplePolygon(regularVertices(3, -Math.PI / 2 + path * Math.PI), t)
-      : circle(0, 0, .34); // hexagram and inner seal
-    default: { // flower of life
-      if (path === 0) return circle(0, 0, .42);
-      const angle = (path - 1) * TAU / 6 - Math.PI / 2;
-      return circle(Math.cos(angle) * .42, Math.sin(angle) * .42, .42);
-    }
-  }
 }
 
 function impactSources(x: number, y: number, width: number, height: number, view: ViewTransform, count: number, shape: number, rotateRight: boolean) {
