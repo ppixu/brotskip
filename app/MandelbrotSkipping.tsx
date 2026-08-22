@@ -3604,6 +3604,21 @@ export default function MandelbrotSkipping() {
           </section>
         )}
 
+        <section className="challengePanel" aria-label="Challenges">
+          <div className="tuningHeading"><span>Challenges</span><span>{progression.completedChallengeIds.length}/{CHALLENGES.length}</span></div>
+          <ul className="challengeList">
+            {CHALLENGES.map((challenge) => {
+              const done = progression.completedChallengeIds.includes(challenge.id);
+              return (
+                <li key={challenge.id} className={done ? "challengeDone" : ""}>
+                  <span>{challenge.label}</span>
+                  <span>{done ? "✓" : `${formatCompact(challenge.bounty)} pts`}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+
         <h2 className="railTitle">Local legends</h2>
         <p className="railSub">Depth, distinct points, and spatial spread all score. Later skips multiply the result.</p>
         {gpuError && <p className="gpuNote" role="status">{gpuError}</p>}

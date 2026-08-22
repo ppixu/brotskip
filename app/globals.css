@@ -548,6 +548,15 @@ button, input { font: inherit; }
   padding: 14px 0 16px;
   border-top: 1px solid rgba(255, 255, 255, .09);
 }
+.challengePanel {
+  flex: none;
+  margin: 0 0 20px;
+  padding: 0 0 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, .09);
+}
+.challengeList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.challengeList li { display: flex; justify-content: space-between; gap: 10px; color: #7897a4; font-size: 9px; }
+.challengeList li.challengeDone { color: #6ee7a0; }
 .stoneList { display: flex; flex-direction: column; gap: 6px; }
 .stoneCard {
   display: grid;
@@ -1129,7 +1138,9 @@ button, input { font: inherit; }
 .gameShell.lightMode .tuningHeading span:last-child { color: #789199; }
 .gameShell.lightMode .tuningControl,
 .gameShell.lightMode .stoneMeta,
-.gameShell.lightMode .walletRow { color: #607b82; }
+.gameShell.lightMode .walletRow,
+.gameShell.lightMode .challengeList li { color: #607b82; }
+.gameShell.lightMode .challengeList li.challengeDone { color: #1d7a4f; }
 .gameShell.lightMode .walletRow strong { color: #8a6400; }
 .gameShell.lightMode .stoneCard { border-color: rgba(20, 76, 84, .12); }
 .gameShell.lightMode .stoneCard.equipped { border-color: rgba(20, 76, 84, .34); }
