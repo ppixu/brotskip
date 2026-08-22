@@ -542,6 +542,35 @@ button, input { font: inherit; }
   border-top: 1px solid rgba(255, 255, 255, .09);
   border-bottom: 1px solid rgba(255, 255, 255, .09);
 }
+.stonePanel {
+  flex: none;
+  margin: 0 0 20px;
+  padding: 14px 0 16px;
+  border-top: 1px solid rgba(255, 255, 255, .09);
+}
+.stoneList { display: flex; flex-direction: column; gap: 6px; }
+.stoneCard {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 10px;
+  align-items: center;
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 8px;
+}
+.stoneCard.locked { opacity: .62; }
+.stoneCard.equipped { border-color: rgba(255, 255, 255, .28); }
+.stoneName { font-size: 10px; font-weight: 750; }
+.stoneMeta { grid-column: 1; color: #7897a4; font-size: 8.5px; }
+.stoneAction { grid-row: 1 / span 2; justify-self: end; font-size: 8.5px; }
+.stoneEquipped { color: #dffbff; font-size: 8.5px; letter-spacing: .08em; text-transform: uppercase; }
+.rarity-common .stoneName { color: #c3c9d4; }
+.rarity-uncommon .stoneName { color: #6ee7a0; }
+.rarity-rare .stoneName { color: #60a5fa; }
+.rarity-epic .stoneName { color: #c084fc; }
+.rarity-legendary .stoneName { color: #facc15; }
+.walletRow { color: #7897a4; font-size: 9px; }
+.walletRow strong { color: #ffd166; font-variant-numeric: tabular-nums; }
 .tuningHeading,
 .tuningControl > span {
   display: flex;
@@ -1092,11 +1121,15 @@ button, input { font: inherit; }
   color: #17333a;
 }
 .gameShell.lightMode .tuningPanel,
+.gameShell.lightMode .stonePanel,
 .gameShell.lightMode .railResult { border-color: rgba(20, 76, 84, .12); }
 .gameShell.lightMode .tuningHeading,
-.gameShell.lightMode .tuningControl output { color: #315e68; }
+.gameShell.lightMode .tuningControl output,
+.gameShell.lightMode .stoneEquipped { color: #315e68; }
 .gameShell.lightMode .tuningHeading span:last-child { color: #789199; }
-.gameShell.lightMode .tuningControl { color: #607b82; }
+.gameShell.lightMode .tuningControl,
+.gameShell.lightMode .stoneMeta,
+.gameShell.lightMode .walletRow { color: #607b82; }
 .gameShell.lightMode .tuningNote { color: #789199; }
 .gameShell.lightMode .tuningCheck { color: #4d737b; }
 .gameShell.lightMode .tuningControl input[type="range"]::-webkit-slider-runnable-track,

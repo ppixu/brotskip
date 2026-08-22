@@ -1607,6 +1607,26 @@ export default function MandelbrotSkipping() {
     invalidateFlashlightRef.current();
   }, []);
 
+  const applyProgression = useCallback((next: ProgressionState) => {
+    progressionRef.current = next;
+    setProgression(next);
+    storeProgression(next);
+    const stone = stoneById(next.equippedId);
+    stoneRef.current = stone;
+    engineRef.current?.setTuning(clampTuningToStone(tuningRef.current, stone));
+    engineRef.current?.setRarity(stone.tint, stone.tintStrength);
+  }, []);
+
+  const buyStone = useCallback((stoneId: string) => {
+    const bought = buyProgression(progressionRef.current, stoneId);
+    if (bought === progressionRef.current) return;
+    applyProgression(equipProgression(bought, stoneId));
+  }, [applyProgression]);
+
+  const equipStone = useCallback((stoneId: string) => {
+    applyProgression(equipProgression(progressionRef.current, stoneId));
+  }, [applyProgression]);
+
   const toggleTheme = () => {
     setLightMode((previous) => {
       const next = !previous;
@@ -3452,6 +3472,7 @@ export default function MandelbrotSkipping() {
           <span className="liveLabel">{hud.phase === "result" ? "Final score" : "Score"}</span>
           <strong className="liveNumber">{formatNumber(hud.score)}</strong>
           <span className="liveMeta">{hud.skips} skips · {hud.deepest ? formatNumber(hud.deepest) : "0"} deep · {hud.coverage} cells · {Math.round(hud.spread * 100)}% spread</span>
+          <span className="walletRow">Wallet <strong>{formatNumber(progression.wallet)}</strong> pts</span>
           <span className="liveProgress"><i style={{ width: `${Math.max(2, hud.progress * 100)}%` }} /></span>
           <div className="throwShareRow">
             <button
@@ -3472,6 +3493,28 @@ export default function MandelbrotSkipping() {
             >
               {shareStatus || "Share throw"}
             </button>
+          </div>
+        </section>
+
+        <section className="stonePanel" aria-label="Stone collection">
+          <div className="tuningHeading"><span>Stones</span><span>{progression.ownedIds.length}/{STONES.length}</span></div>
+          <div className="stoneList">
+            {STONES.map((stone) => {
+              const owned = progression.ownedIds.includes(stone.id);
+              const isEquipped = progression.equippedId === stone.id;
+              const affordable = progression.wallet >= stone.price;
+              return (
+                <div key={stone.id} className={`stoneCard rarity-${stone.rarity} ${isEquipped ? "equipped" : owned ? "owned" : "locked"}`}>
+                  <span className="stoneName">{stone.name}</span>
+                  <span className="stoneMeta">{stone.dots} dots · {formatCompact(stone.depthCap)} deep · {expectedSkips(stone.skipDecay).toFixed(1)} avg skips</span>
+                  {isEquipped
+                    ? <span className="stoneAction stoneEquipped">Equipped</span>
+                    : owned
+                      ? <button type="button" className="rethrowButton stoneAction" onClick={() => equipStone(stone.id)}>Equip</button>
+                      : <button type="button" className="rethrowButton stoneAction" disabled={!affordable} onClick={() => buyStone(stone.id)}>{formatCompact(stone.price)} pts</button>}
+                </div>
+              );
+            })}
           </div>
         </section>
 
