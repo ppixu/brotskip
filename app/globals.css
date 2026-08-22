@@ -1130,6 +1130,9 @@ button, input { font: inherit; }
 .gameShell.lightMode .tuningControl,
 .gameShell.lightMode .stoneMeta,
 .gameShell.lightMode .walletRow { color: #607b82; }
+.gameShell.lightMode .walletRow strong { color: #8a6400; }
+.gameShell.lightMode .stoneCard { border-color: rgba(20, 76, 84, .12); }
+.gameShell.lightMode .stoneCard.equipped { border-color: rgba(20, 76, 84, .34); }
 .gameShell.lightMode .tuningNote { color: #789199; }
 .gameShell.lightMode .tuningCheck { color: #4d737b; }
 .gameShell.lightMode .tuningControl input[type="range"]::-webkit-slider-runnable-track,
