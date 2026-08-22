@@ -1658,6 +1658,7 @@ export default function MandelbrotSkipping() {
     let lastHud = 0;
     let rock = { x: 0, y: 0, vx: 0, vy: 0, z: 0, vz: 0, spin: 0, skips: 0, bounceAge: 10 };
     let plannedSkips = MIN_SKIPS;
+    let spectatorFixedGlyph: number | null = null;
     let collectable: Collectable | null = null;
     let collectableHitCount = 0;
     let boostMultiplier = 1;
@@ -1846,6 +1847,7 @@ export default function MandelbrotSkipping() {
       lastIntroLaunch = 0;
       lastIntroBackground = 0;
       shapeOffset = Math.floor(Math.random() * GLYPH_COUNT);
+      spectatorFixedGlyph = null;
       gameAudio.reset();
       const a = anchor();
       pull = { ...a };
@@ -1922,6 +1924,7 @@ export default function MandelbrotSkipping() {
       shapeOffset = shot.glyph;
       shotId = shot.seed;
       plannedSkips = shot.skips;
+      spectatorFixedGlyph = typeof shot.fixedGlyph === "number" ? shot.fixedGlyph : null;
       launchRock(shot.angle, shot.power);
     }
     playThrowRef.current = playSharedThrow;
@@ -1931,7 +1934,7 @@ export default function MandelbrotSkipping() {
       const mapped = screenToComplex(x, y, width, height, viewRef.current, tuningRef.current.rotateRight);
       const source = { x: Math.fround(mapped.x), y: Math.fround(mapped.y) };
       const glyph = spectatorRef.current || introActiveRef.current
-        ? (glyphOffset + index - 1) % GLYPH_COUNT
+        ? (spectatorFixedGlyph ?? (glyphOffset + index - 1) % GLYPH_COUNT)
         : stoneRef.current.shapeIndex;
       const dots = introActiveRef.current ? INTRO_SOURCE_DOTS : stoneTuning().sourceDots;
       const sources = impactSources(
@@ -3219,7 +3222,8 @@ export default function MandelbrotSkipping() {
         skips: plannedSkips,
         glyph: shapeOffset,
         seed: shotId,
-        sourceDots: tuningRef.current.sourceDots,
+        sourceDots: stoneTuning().sourceDots,
+        fixedGlyph: stoneRef.current.shapeIndex,
         name: playerNameRef.current || "YOU",
       };
       setHasShare(true);
